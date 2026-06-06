@@ -83,6 +83,7 @@
   "devDependencies": {
     "@babel/plugin-proposal-private-property-in-object": "7.21.11",
     "@craco/craco": "7.1.0",
+    "@emergentbase/visual-edits": "https://assets.emergent.sh/npm/emergentbase-visual-edits-1.0.8.tgz",
     "@eslint/js": "9.23.0",
     "@types/lodash": "4.17.24",
     "autoprefixer": "10.4.20",
@@ -95,5 +96,20 @@
     "globals": "15.15.0",
     "postcss": "8.4.49",
     "tailwindcss": "3.4.17"
-  }
+  },
+  "overrides": {
+    "schema-utils@2.7.0": {
+      "ajv": "6.12.6",
+      "ajv-keywords": "3.5.2"
+    },
+    "schema-utils@2.7.1": {
+      "ajv": "6.12.6",
+      "ajv-keywords": "3.5.2"
+    },
+    "schema-utils@3.3.0": {
+      "ajv": "6.12.6",
+      "ajv-keywords": "3.5.2"
+    }
+  },
+  "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e"
 }

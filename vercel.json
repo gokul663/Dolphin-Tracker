@@ -1,11 +1,6 @@
 {
-  "buildCommand": "cd frontend && CI=false npm install --legacy-peer-deps && CI=false npm run build",
+  "buildCommand": "cd frontend && CI=false yarn build",
   "outputDirectory": "frontend/build",
   "framework": "create-react-app",
-  "installCommand": "cd frontend && npm install --legacy-peer-deps",
-  "build": {
-    "env": {
-      "NODE_VERSION": "18"
-    }
-  }
+  "installCommand": "cd frontend && yarn install --ignore-engines"
 }

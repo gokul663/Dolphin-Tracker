@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Atlanta Install — Route Planner</title>
+<title>Route Planner</title>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;600&display=swap" rel="stylesheet">
 <style>
 :root{
@@ -46,10 +46,8 @@ select:focus,input:focus{border-color:var(--accent);}
 .installer-tabs{display:flex;gap:12px;margin-bottom:18px;flex-wrap:wrap;}
 .itab{padding:12px 22px;font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.9px;cursor:pointer;border-radius:12px;border:1px solid #cbd5e1;background:var(--card);color:var(--muted);transition:all .2s;box-shadow:0 4px 12px rgba(15,91,124,.10);}
 .itab:hover{border-color:var(--accent);color:var(--accent);}
-.itab.Murugan.on{background:var(--m-dim);border-color:var(--m-border);color:var(--m-color);}
-.itab.Abubaker.on{background:var(--a-dim);border-color:var(--a-border);color:var(--a-color);}
-.itab.Xak.on{background:var(--x-dim);border-color:var(--x-border);color:var(--x-color);}
 .installer-badge{font-size:10px;padding:3px 7px;border-radius:999px;margin-left:7px;font-weight:700;}
+.territory-tag{display:inline-flex;align-items:center;border:1px solid rgba(15,91,124,.25);background:rgba(15,91,124,.07);color:#0F5B7C;border-radius:999px;padding:3px 8px;font-family:'IBM Plex Mono',monospace;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;}
 .badge-m{background:var(--m-dim);border:1px solid var(--m-border);color:var(--m-color);}
 .badge-a{background:var(--a-dim);border:1px solid var(--a-border);color:var(--a-color);}
 .badge-x{background:var(--x-dim);border:1px solid var(--x-border);color:var(--x-color);}
@@ -57,9 +55,6 @@ select:focus,input:focus{border-color:var(--accent);}
 /* SECTION HEADER */
 .section-header{display:flex;align-items:center;gap:14px;margin:8px 0 14px;padding:12px 14px;border:1px solid #e2e8f0;border-radius:12px;background:#f1f5f9;}
 .section-title{font-family:'Bebas Neue',sans-serif;font-size:30px;letter-spacing:3px;line-height:1;}
-.section-title.Murugan{color:var(--m-color);}
-.section-title.Abubaker{color:var(--a-color);}
-.section-title.Xak{color:var(--x-color);}
 .section-meta{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--muted);}
 
 /* DAY GRID */
@@ -68,18 +63,14 @@ select:focus,input:focus{border-color:var(--accent);}
 /* DAY CARD */
 .day-card{background:#ffffff;border:1px solid #e2e8f0;border-radius:16px;overflow:hidden;transition:all .2s;box-shadow:0 4px 14px rgba(15,91,124,.08);}
 .day-card:hover{border-color:rgba(15,91,124,.45);transform:translateY(-1px);box-shadow:0 8px 22px rgba(15,91,124,.12);}
-.day-card.Murugan{border-top:4px solid var(--m-color);}
-.day-card.Abubaker{border-top:4px solid var(--a-color);}
-.day-card.Xak{border-top:4px solid var(--x-color);}
 
 /* DAY CARD HEADER */
 .day-hdr{background:#f8fafc;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none;border-bottom:1px solid #e2e8f0;}
 .day-title{font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:2px;line-height:1;}
-.day-title.Murugan{color:var(--m-color);}
-.day-title.Abubaker{color:var(--a-color);}
-.day-title.Xak{color:var(--x-color);}
 .day-meta{display:flex;align-items:center;gap:6px;}
 .day-badge{font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:800;padding:5px 10px;border-radius:999px;background:var(--accent);color:#ffffff;}
+.day-info{width:29px;height:29px;border:1px solid #cbd5e1;border-radius:8px;background:#ffffff;color:var(--accent);font-family:Georgia,serif;font-size:15px;font-weight:800;line-height:1;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;}
+.day-info:hover,.day-info:focus-visible{border-color:var(--accent);background:rgba(15,91,124,.06);outline:none;}
 .day-cities{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--soft);padding:8px 16px 10px;border-bottom:1px solid rgba(148,163,184,.14);letter-spacing:.2px;}
 .toggle{background:rgba(15,91,124,.04);border:1px solid #cbd5e1;border-radius:8px;color:var(--muted);font-size:13px;cursor:pointer;padding:5px 8px;font-family:'IBM Plex Mono',monospace;}
 .toggle:hover{color:var(--accent);}
@@ -95,8 +86,41 @@ select:focus,input:focus{border-color:var(--accent);}
 .stop-num{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--accent2);min-width:28px;margin-top:2px;font-weight:800;}
 .stop-body{flex:1;min-width:0;}
 .stop-store{font-weight:600;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.stop-addr{color:var(--muted);font-size:9px;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.stop-addr{color:#334155;font-size:14px;line-height:1.45;margin-top:8px;white-space:normal;overflow:visible;font-weight:600;}
 .stop-brand{font-family:'IBM Plex Mono',monospace;font-size:8px;padding:1px 5px;border-radius:2px;background:rgba(8,145,178,.10);border:1px solid rgba(8,145,178,.30);color:var(--accent2);white-space:nowrap;flex-shrink:0;}
+.stop-pa{display:inline-flex;align-items:center;margin-top:10px;padding:4px 8px;border:1px solid #bfdbfe;border-radius:10px;background:#eff6ff;color:#1d4ed8;font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:800;letter-spacing:.3px;max-width:100%;white-space:normal;overflow-wrap:anywhere;word-break:break-word;line-height:1.4;}
+.breakdown-panel{display:grid;grid-template-columns:minmax(260px,350px) minmax(0,1fr);gap:14px;margin:0 0 18px;}
+.breakdown-group{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:15px 16px;box-shadow:0 3px 10px rgba(15,91,124,.05);}
+.breakdown-title{font-family:'IBM Plex Mono',monospace;font-size:13px;text-transform:uppercase;letter-spacing:.8px;color:var(--soft);font-weight:800;margin-bottom:11px;}
+.breakdown-items{display:flex;gap:8px;flex-wrap:wrap;}
+.breakdown-chip{font-family:'IBM Plex Mono',monospace;font-size:13px;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;background:#f8fafc;color:#334155;line-height:1.5;}
+.breakdown-chip strong{color:var(--green);}.breakdown-chip em{color:var(--accent2);font-style:normal;}
+.dma-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;}
+.dma-card{border:1px solid #cbd5e1;border-radius:10px;padding:13px;background:#f8fafc;min-width:0;}
+.dma-name{font-family:'IBM Plex Mono',monospace;font-size:15px;font-weight:900;color:#0F5B7C;margin-bottom:7px;overflow-wrap:anywhere;}
+.dma-summary{font-family:'IBM Plex Mono',monospace;font-size:12px;line-height:1.65;color:#64748b;margin-bottom:9px;padding-bottom:9px;border-bottom:1px solid #cbd5e1;}
+.dma-summary b{color:#0f172a;}.dma-summary strong{color:var(--green);}.dma-summary em{color:var(--accent2);font-style:normal;}
+.venue-row{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px;align-items:center;padding:8px 0;border-top:1px solid #e2e8f0;font-family:'IBM Plex Mono',monospace;font-size:12px;line-height:1.45;}
+.venue-row:first-child{border-top:0;}.venue-name{overflow-wrap:anywhere;color:#334155;}.venue-counts{white-space:nowrap;}
+@media(max-width:800px){.breakdown-panel{grid-template-columns:1fr;}}
+
+.project-map-panel{background:#ffffff;border:1px solid #e2e8f0;border-radius:14px;margin:0 0 18px;box-shadow:0 4px 12px rgba(15,91,124,.06);overflow:hidden;}
+.project-map-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:14px 16px;border-bottom:1px solid #e2e8f0;background:#f8fafc;}
+.project-map-title{font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:900;text-transform:uppercase;letter-spacing:1px;color:#0F5B7C;}
+.project-map-meta{font-family:'IBM Plex Mono',monospace;font-size:11px;color:#64748b;}
+.project-map-legend{display:flex;gap:8px;flex-wrap:wrap;padding:12px 16px;border-bottom:1px solid #e2e8f0;background:#ffffff;}
+.map-legend-item{display:inline-flex;align-items:center;gap:6px;font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:.4px;border:1px solid #cbd5e1;background:#ffffff;border-radius:999px;padding:6px 9px;cursor:pointer;}
+.map-legend-item:hover{border-color:#0F5B7C;color:#0F5B7C;}
+.map-legend-item.off{opacity:.38;background:#f8fafc;}
+.map-legend-item.on{border-color:#0F5B7C;background:rgba(15,91,124,.07);color:#0F5B7C;}
+.map-dot{width:11px;height:11px;border-radius:50%;border:2px solid #ffffff;box-shadow:0 0 0 1px rgba(15,23,42,.2);}
+#projectMap{height:460px;width:100%;background:#e2e8f0;}
+.project-map-empty{height:260px;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px;font-family:'IBM Plex Mono',monospace;font-size:12px;color:#64748b;background:#f8fafc;}
+.map-info{font-family:Arial,sans-serif;max-width:260px;color:#0f172a;}
+.map-info-title{font-weight:700;font-size:14px;margin-bottom:4px;}
+.map-info-line{font-size:12px;line-height:1.4;color:#475569;margin-top:3px;}
+.map-info-status{display:inline-block;margin-top:8px;padding:4px 7px;border-radius:999px;color:#fff;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;}
+@media(max-width:700px){#projectMap{height:360px;}.project-map-head{align-items:flex-start;}}
 
 
 /* INSTALL STATUS FIELDS */
@@ -115,6 +139,7 @@ select:focus,input:focus{border-color:var(--accent);}
 .mini-btn:hover{border-color:var(--accent);color:var(--accent);}
 .mini-btn.save{border-color:var(--green-border);color:var(--green);}
 .mini-btn.dots{font-size:15px;line-height:12px;padding:5px 10px;}
+.mini-btn.active{border-color:var(--accent);color:var(--accent);background:rgba(15,91,124,.08);}
 .install-row{display:grid;grid-template-columns:175px 1fr;gap:10px;align-items:start;margin-top:10px;}
 .modem-box{background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:10px;}
 .modem-check{display:flex;align-items:center;gap:8px;font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--muted);white-space:nowrap;font-weight:700;}
@@ -123,6 +148,14 @@ select:focus,input:focus{border-color:var(--accent);}
 .status-complete{border-color:var(--green-border);color:var(--green);background:var(--green-dim);}
 .status-technical{border-color:var(--red-border);color:var(--red);background:var(--red-dim);}
 .status-other{border-color:rgba(250,204,21,.42);color:var(--accent2);background:rgba(250,204,21,.12);}
+.day-statuses{display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end;}
+.day-status{font-family:'IBM Plex Mono',monospace;font-size:9px;font-weight:800;padding:4px 7px;border-radius:999px;border:1px solid #cbd5e1;background:#fff;color:#64748b;white-space:nowrap;}
+.day-status.complete{border-color:var(--green-border);color:var(--green);background:var(--green-dim);}
+.day-status.technical{border-color:var(--red-border);color:var(--red);background:var(--red-dim);}
+.day-status.other{border-color:rgba(250,204,21,.42);color:#a16207;background:rgba(250,204,21,.12);}
+.installer-name-wrap{display:inline-flex;align-items:center;gap:7px;}
+.installer-rename{border:1px solid #cbd5e1;background:#fff;color:#64748b;border-radius:7px;padding:4px 7px;cursor:pointer;font-size:10px;font-family:'IBM Plex Mono',monospace;}
+.installer-rename:hover{border-color:var(--accent);color:var(--accent);}
 .stop-select[data-status="Complete"]{border-color:var(--green-border);background:rgba(34,197,94,.10);}
 .stop-select[data-status="Technical Issue"]{border-color:var(--red-border);background:rgba(251,113,133,.10);}
 .stop-select[data-status="Other"]{border-color:rgba(250,204,21,.42);background:rgba(250,204,21,.10);}
@@ -131,12 +164,10 @@ select:focus,input:focus{border-color:var(--accent);}
 /* DAY CARD FOOTER */
 .day-acts{padding:12px 16px;background:#f8fafc;border-top:1px solid #e2e8f0;display:flex;gap:8px;flex-wrap:wrap;}
 .rbtn{border:none;padding:8px 12px;font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.7px;cursor:pointer;border-radius:9px;text-decoration:none;display:inline-flex;align-items:center;gap:6px;transition:all .15s;white-space:nowrap;}
-.rbtn.maps-m{background:var(--m-color);color:#0b0d10;}
-.rbtn.maps-m:hover{opacity:.85;}
-.rbtn.maps-a{background:var(--a-color);color:#0b0d10;}
-.rbtn.maps-a:hover{opacity:.85;}
-.rbtn.maps-x{background:var(--x-color);color:#0b0d10;}
-.rbtn.maps-x:hover{opacity:.85;}
+.rbtn.maps{color:#0b0d10;}
+.rbtn.maps:hover{opacity:.85;}
+.rbtn.route-complete{background:#dcfce7;color:#166534;border:1px solid #86efac;cursor:default;}
+.day-link.disabled{color:#16a34a;cursor:default;text-decoration:none;font-weight:700;}
 .rbtn.sec{background:var(--card);border:1px solid var(--border);color:var(--muted);}
 .rbtn.sec:hover{border-color:var(--accent);color:var(--accent);}
 
@@ -147,6 +178,32 @@ select:focus,input:focus{border-color:var(--accent);}
 .summary-table tr:hover td{background:#f8fafc;}
 .day-link{color:var(--accent);cursor:pointer;text-decoration:none;}
 .day-link:hover{text-decoration:underline;}
+
+/* ROUTE REASSIGNMENT CONFIRMATION */
+.confirm-overlay{position:fixed;inset:0;z-index:2000;display:none;align-items:center;justify-content:center;padding:20px;background:rgba(15,23,42,.55);backdrop-filter:blur(4px);}
+.confirm-overlay.open{display:flex;}
+.confirm-dialog{width:min(460px,100%);background:#ffffff;border:1px solid #fda4af;border-radius:14px;box-shadow:0 24px 70px rgba(15,23,42,.28);padding:24px;}
+.confirm-title{display:flex;align-items:center;gap:9px;color:#be123c;font-family:'IBM Plex Mono',monospace;font-size:15px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;}
+.confirm-description{margin-top:7px;color:#64748b;font-size:14px;}
+.confirm-warning{margin-top:18px;padding:15px;border:1px solid #fecdd3;border-radius:10px;background:#fff1f2;}
+.confirm-warning-title{display:flex;align-items:center;gap:7px;color:#be123c;font-weight:700;font-size:14px;margin-bottom:10px;}
+.confirm-detail{display:grid;grid-template-columns:82px 1fr;gap:6px;font-family:'IBM Plex Mono',monospace;font-size:12px;color:#334155;}
+.confirm-detail span:first-child{color:#94a3b8;}
+.confirm-impact{margin-top:15px;color:#64748b;font-size:12px;line-height:1.55;}
+.confirm-actions{display:flex;justify-content:flex-end;gap:9px;margin-top:22px;}
+.confirm-btn{border-radius:8px;padding:9px 14px;font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:800;cursor:pointer;}
+.confirm-btn.cancel{border:1px solid #cbd5e1;background:#ffffff;color:#334155;}
+.confirm-btn.cancel:hover{background:#f1f5f9;}
+.confirm-btn.accept{border:1px solid #e11d48;background:#e11d48;color:#ffffff;}
+.confirm-btn.accept:hover{background:#be123c;}
+.address-dialog{width:min(640px,100%);max-height:calc(100vh - 40px);display:flex;flex-direction:column;border-color:#bfdbfe;}
+.address-dialog .confirm-title{color:var(--accent);}
+.address-list{display:flex;flex-direction:column;gap:9px;max-height:55vh;overflow-y:auto;margin-top:17px;padding-right:4px;}
+.address-row{display:grid;grid-template-columns:28px minmax(0,1fr);gap:10px;padding:11px 12px;border:1px solid #e2e8f0;border-radius:10px;background:#f8fafc;}
+.address-number{width:26px;height:26px;border-radius:50%;background:#dbeafe;color:#1d4ed8;font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center;}
+.address-store{font-size:13px;font-weight:700;color:#0f172a;margin-bottom:3px;}
+.address-pa{display:inline-flex;margin-bottom:5px;padding:3px 7px;border-radius:8px;background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8;font-family:'IBM Plex Mono',monospace;font-size:9px;font-weight:800;max-width:100%;white-space:normal;overflow-wrap:anywhere;word-break:break-word;line-height:1.4;}
+.address-full{font-size:14px;line-height:1.45;color:#475569;overflow-wrap:anywhere;}
 
 /* NO RESULTS */
 #noRes{display:none;text-align:center;padding:70px;color:var(--muted);font-family:'IBM Plex Mono',monospace;font-size:14px;}
@@ -161,19 +218,17 @@ select:focus,input:focus{border-color:var(--accent);}
 <body>
 
 <header>
-  <div class="logo" style="visibility:hidden;min-width:340px" onclick="window.parent.postMessage({type:'go-home'},'*')">ATLANTA <span>ROUTE PLANNER</span></div>
+  <div class="logo" style="visibility:hidden;min-width:340px" onclick="window.parent.postMessage({type:'go-home'},'*')">PROJECT <span>ROUTE PLANNER</span></div>
   <div id="dbStatus" style="display:none;font-family:'IBM Plex Mono',monospace;font-size:10px;padding:4px 10px;border-radius:20px;background:rgba(255,255,255,.06);border:1px solid rgba(148,163,184,.2);color:var(--muted);">
     &#9679; Connecting to MongoDB…
   </div>
   <div class="hstats">
-    <div class="hs"><span class="hs-n" id="hTotal">—</span><span class="hs-l">Total Sites</span></div>
+    <div class="hs"><span class="hs-n" id="hTotal">—</span><span class="hs-l">Total Screens</span></div>
     <div class="hs"><span class="hs-n" id="hComplete" style="color:var(--green)">0</span><span class="hs-l">Completed</span></div>
-    <div class="hs"><span class="hs-n" id="hPending" style="color:var(--accent2)">—</span><span class="hs-l">Pending</span></div>
+    <div class="hs"><span class="hs-n" id="hPending" style="color:var(--accent2)">—</span><span class="hs-l">Upcoming</span></div>
     <div class="hs"><span class="hs-n" id="hTechIssue" style="color:var(--red)">0</span><span class="hs-l">Tech Issue</span></div>
     <div class="hs"><span class="hs-n" id="hOther" style="color:var(--accent2)">0</span><span class="hs-l">Other</span></div>
-    <div class="hs"><span class="hs-n" style="color:var(--m-color)" id="hM">0/0</span><span class="hs-l">Murugan Done/Pending</span></div>
-    <div class="hs"><span class="hs-n" style="color:var(--a-color)" id="hA">0/0</span><span class="hs-l">Abubaker Done/Pending</span></div>
-    <div class="hs"><span class="hs-n" style="color:var(--x-color)" id="hX">0/0</span><span class="hs-l">Xak Done/Pending</span></div>
+    <div id="hInstallerStats" style="display:contents"></div>
     <div class="hs"><span class="hs-n" id="hDays" style="color:var(--accent2)">—</span><span class="hs-l">Max Days</span></div>
   </div>
 </header>
@@ -194,36 +249,104 @@ select:focus,input:focus{border-color:var(--accent);}
       <input id="txtDay" type="text" placeholder="e.g. 1, 2, 3..." oninput="applyFilters()" style="width:100px">
     </div>
     <div class="cg">
+      <label>Filter PA</label>
+      <select id="selPA" onchange="applyFilters();updateHeaderStats()" style="min-width:150px">
+        <option value="ALL">All PAs</option>
+      </select>
+    </div>
+    <div class="cg">
       <label>Search stops</label>
-      <input id="txtQ" type="text" placeholder="Address, city, store, brand..." oninput="applyFilters()" style="width:200px">
+      <input id="txtQ" type="text" placeholder="Address, store, DMA, venue..." oninput="applyFilters()" style="width:220px">
     </div>
     <div style="margin-left:auto;display:flex;gap:5px;flex-wrap:wrap;">
       <button class="btn" onclick="expandAll()">&#9660; Expand All</button>
       <button class="btn" onclick="collapseAll()">&#9650; Collapse All</button>
+      <button class="btn" id="rebalanceBtn" onclick="openRebalanceConfirm()">&#8635; Re-optimize Upcoming</button>
       <button class="btn csv" onclick="exportAllCSV()">&#8681; Export CSV</button>
     </div>
   </div>
 
-  <!-- INSTALLER TABS (badges populated by JS from ROUTE_STATS) -->
-  <div class="installer-tabs">
-    <button class="itab Murugan on" onclick="selectInstaller('Murugan',this)">
-      Murugan <span class="installer-badge badge-m" id="badgeM">—</span>
-    </button>
-    <button class="itab Abubaker" onclick="selectInstaller('Abubaker',this)">
-      Abubaker <span class="installer-badge badge-a" id="badgeA">—</span>
-    </button>
-    <button class="itab Xak" onclick="selectInstaller('Xak',this)">
-      Xak <span class="installer-badge badge-x" id="badgeX">—</span>
-    </button>
-    <button class="itab" style="margin-left:auto;" onclick="selectInstaller('ALL',this)">
-      All Installers
-    </button>
+  <div class="breakdown-panel" id="metadataBreakdown"></div>
+
+  <div class="project-map-panel" aria-label="Project status map">
+    <div class="project-map-head">
+      <div>
+        <div class="project-map-title">Project Status Map</div>
+        <div class="project-map-meta" id="projectMapMeta">Loading project locations…</div>
+      </div>
+      <div class="project-map-meta">Overview only · daily route map links remain separate</div>
+    </div>
+    <div class="project-map-legend" id="projectMapLegend"></div>
+    <div id="projectMap"></div>
   </div>
+
+  <!-- INSTALLER TABS (badges populated by JS from ROUTE_STATS) -->
+  <div class="installer-tabs" id="installerTabs"></div>
 
   <!-- MAIN CONTENT -->
   <div id="mainContent"></div>
   <div id="noRes">No routes match your filter.</div>
 
+</div>
+
+<div class="confirm-overlay" id="reassignConfirm" role="dialog" aria-modal="true" aria-labelledby="reassignTitle">
+  <div class="confirm-dialog">
+    <div class="confirm-title" id="reassignTitle"><span aria-hidden="true">&#9888;</span> Confirm Route Reassignment</div>
+    <div class="confirm-description">Review this change before updating the route plan.</div>
+    <div class="confirm-warning">
+      <div class="confirm-warning-title">You are about to move this location:</div>
+      <div class="confirm-detail"><span>Location:</span><strong id="reassignLocation"></strong></div>
+      <div class="confirm-detail"><span>From:</span><strong id="reassignFrom"></strong></div>
+      <div class="confirm-detail"><span>To:</span><strong id="reassignTo"></strong></div>
+    </div>
+    <div class="confirm-impact">This keeps existing day assignments, optimizes only the affected day routes, and updates their Google Maps links. The change persists after refresh.</div>
+    <div class="confirm-actions">
+      <button type="button" class="confirm-btn cancel" id="reassignCancel">Cancel</button>
+      <button type="button" class="confirm-btn accept" id="reassignAccept">Confirm &amp; Re-route</button>
+    </div>
+  </div>
+</div>
+
+<div class="confirm-overlay" id="renameInstallerModal" role="dialog" aria-modal="true" aria-labelledby="renameInstallerTitle">
+  <div class="confirm-dialog">
+    <div class="confirm-title" id="renameInstallerTitle">Rename Installer</div>
+    <div class="confirm-description" id="renameInstallerContext">This updates the installer name across routes, saved stop records, summaries, and exports.</div>
+    <div style="margin-top:18px">
+      <label class="stop-field-label" for="renameInstallerInput">New installer name</label>
+      <input type="text" id="renameInstallerInput" style="width:100%;background:#fff" autocomplete="off">
+      <div id="renameInstallerError" style="display:none;color:#be123c;font-family:'IBM Plex Mono',monospace;font-size:11px;margin-top:7px"></div>
+    </div>
+    <div class="confirm-actions">
+      <button type="button" class="confirm-btn cancel" id="renameInstallerCancel">Cancel</button>
+      <button type="button" class="confirm-btn accept" id="renameInstallerAccept" style="background:#0F5B7C;border-color:#0F5B7C">Save Name</button>
+    </div>
+  </div>
+</div>
+
+<div class="confirm-overlay" id="dayAddressModal" role="dialog" aria-modal="true" aria-labelledby="dayAddressTitle">
+  <div class="confirm-dialog address-dialog">
+    <div class="confirm-title" id="dayAddressTitle">Day Address Details</div>
+    <div class="confirm-description" id="dayAddressSubtitle"></div>
+    <div class="address-list" id="dayAddressList"></div>
+    <div class="confirm-actions">
+      <button type="button" class="confirm-btn cancel" id="dayAddressClose">Close</button>
+    </div>
+  </div>
+</div>
+
+<div class="confirm-overlay" id="rebalanceModal" role="dialog" aria-modal="true" aria-labelledby="rebalanceTitle">
+  <div class="confirm-dialog">
+    <div class="confirm-title" id="rebalanceTitle"><span aria-hidden="true">&#8635;</span> Re-optimize Upcoming Routes</div>
+    <div class="confirm-description">This geographically rebuilds days for upcoming locations across current installers.</div>
+    <div class="confirm-warning">
+      <div class="confirm-warning-title">Existing upcoming day assignments will change.</div>
+      <div class="confirm-impact">Completed, technical issue, and other locations remain assigned where they are. Statuses, comments, and additional tasks are preserved.</div>
+    </div>
+    <div class="confirm-actions">
+      <button type="button" class="confirm-btn cancel" id="rebalanceCancel">Cancel</button>
+      <button type="button" class="confirm-btn accept" id="rebalanceAccept" style="background:#0F5B7C;border-color:#0F5B7C">Confirm Re-optimization</button>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -252,16 +375,17 @@ let ROUTE_STATS={};
 
 // ── APP ───────────────────────────────────────────────────────────────────
 
-const INSTALLER_COLORS = {
-  Murugan:  {cls:'maps-m', color:'var(--m-color)'},
-  Abubaker: {cls:'maps-a', color:'var(--a-color)'},
-  Xak:      {cls:'maps-x', color:'var(--x-color)'}
-};
-
-let activeInstaller = 'Murugan';
+const COLOR_PALETTE = ['#f97316', '#38bdf8', '#a78bfa', '#22c55e', '#f43f5e', '#eab308', '#14b8a6', '#ec4899'];
+let INSTALLERS = [];
+let INSTALLER_COLORS = {};
+let INSTALLER_TAGS = {};
+let activeInstaller = 'ALL';
+let activeVenueType = null;
+let PROJECT_READ_ONLY = false;
+let PROJECT_PA = '';
 
 // ── MONGODB STATE ─────────────────────────────────────────────────────────
-// All stop statuses, comments, installer names, and modem flags are stored
+// All stop statuses, comments, installer names, and task flags are stored
 // in MongoDB via the FastAPI backend (server.py).
 //
 // In-memory cache mirrors the DB so the UI never blocks on a network call.
@@ -275,14 +399,27 @@ let activeInstaller = 'Murugan';
 //  installer_name string   Technician who did the install (may differ from route owner)
 //  status         string   "Incomplete" | "Complete" | "Technical Issue" | "Other"
 //  comment        string   Free-text field notes
-//  modem          boolean  ARA modem collected?
+//  modem          boolean  Legacy ARA modem collected flag (read-only project)
+//  additional_task boolean Additional task flag for Route Planner projects
+//  venue_code     string   Editable venue identifier imported from the sheet
 //  updatedAt      string   ISO-8601 timestamp (set server-side on every write)
 //  updatedBy      string   Technician name (optional, sent by client)
 // ─────────────────────────────────────────────────────────────────────────
 
 const API_BASE = (window.TRACKER_API_BASE || 'http://localhost:8000');
 const STATUS_OPTIONS = ['Incomplete', 'Complete', 'Technical Issue', 'Other'];
-const INSTALLER_NAME_OPTIONS = ['Murugan', 'Abubaker', 'Xak'];
+const STATUS_MAP = {
+  'Complete': {color: '#16a34a', label: 'Complete'},
+  'Incomplete': {color: '#d97706', label: 'Upcoming'},
+  'Technical Issue': {color: '#dc2626', label: 'Technical Issue'},
+  'Other': {color: '#7c3aed', label: 'Other'}
+};
+let INSTALLER_NAME_OPTIONS = [];
+let projectMap = null;
+let projectMapInfo = null;
+let projectMapMarkers = [];
+let googleMapsLoadPromise = null;
+let activeMapStatuses = new Set(STATUS_OPTIONS);
 
 // In-memory cache — populated from MongoDB on page load
 let savedState = {};
@@ -300,13 +437,206 @@ function defaultStopState(s) {
     installer_name: s.installer || '',
     status:         'Incomplete',
     comment:        '',
-    modem:          false
+    modem:          false,
+    additional_task: false,
+    venue_code:     s.venue_code || ''
   };
 }
 
 function getStopState(s) {
   const key = stopKey(s);
   return Object.assign(defaultStopState(s), savedState[key] || {});
+}
+
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, char => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  })[char]);
+}
+
+function setProjectMapMessage(message) {
+  const mapEl = document.getElementById('projectMap');
+  if (!mapEl || projectMap) return;
+  mapEl.innerHTML = `<div class="project-map-empty">${escapeHtml(message)}</div>`;
+}
+
+function renderProjectMapLegend() {
+  const legend = document.getElementById('projectMapLegend');
+  if (!legend) return;
+  legend.replaceChildren();
+  STATUS_OPTIONS.forEach(status => {
+    const meta = STATUS_MAP[status] || STATUS_MAP.Other;
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = `map-legend-item ${activeMapStatuses.has(status) ? 'on' : 'off'}`;
+    item.title = `Toggle ${meta.label} pins`;
+    item.setAttribute('aria-pressed', String(activeMapStatuses.has(status)));
+    item.innerHTML = `<span class="map-dot" style="background:${meta.color}"></span>${escapeHtml(meta.label)}`;
+    item.onclick = () => {
+      if (activeMapStatuses.has(status)) {
+        if (activeMapStatuses.size === 1) activeMapStatuses = new Set(STATUS_OPTIONS);
+        else activeMapStatuses.delete(status);
+      } else {
+        activeMapStatuses.add(status);
+      }
+      renderProjectMapLegend();
+      updateProjectMap();
+    };
+    legend.appendChild(item);
+  });
+}
+
+function getMapFilteredStops() {
+  const dayValue = document.getElementById('txtDay')?.value.trim() || '';
+  const pa = selectedPA();
+  const q = (document.getElementById('txtQ')?.value || '').toLowerCase().trim();
+  const selectedDays = dayValue
+    ? dayValue.split(/[, ]+/).map(value => parseInt(value, 10)).filter(value => !Number.isNaN(value))
+    : null;
+  const installers = activeInstaller === 'ALL' ? INSTALLERS : [activeInstaller];
+  const rows = [];
+
+  installers.forEach(installer => {
+    (ROUTES[installer] || []).forEach((day, index) => {
+      const dayNumber = index + 1;
+      if (selectedDays && !selectedDays.includes(dayNumber)) return;
+      (day || []).forEach(stop => {
+        if (!matchesSelectedPA(stop, pa)) return;
+        if (activeVenueType && String(stop.venue_type || 'Not provided').trim() !== activeVenueType) return;
+        const state = getStopState(stop);
+        const status = state.status || 'Incomplete';
+        if (!activeMapStatuses.has(STATUS_MAP[status] ? status : 'Other')) return;
+        const haystack = [stop.addr, stop.city, stop.zip, stopPA(stop), stop.dma, stop.venue_type, state.venue_code, state.store_name, state.brand, state.installer_name, state.status, state.comment, stop.id]
+          .join(' ')
+          .toLowerCase();
+        if (q && !haystack.includes(q)) return;
+        const lat = Number(stop.lat);
+        const lng = Number(stop.lng);
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+        rows.push({stop, state, installer, dayNumber, lat, lng});
+      });
+    });
+  });
+
+  return rows;
+}
+
+function projectMarkerIcon(status) {
+  const meta = STATUS_MAP[status] || STATUS_MAP.Other;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="34" height="46" viewBox="0 0 34 46"><path fill="${meta.color}" stroke="#ffffff" stroke-width="3" d="M17 2C8.7 2 2 8.7 2 17c0 11.1 15 27 15 27s15-15.9 15-27C32 8.7 25.3 2 17 2z"/><circle cx="17" cy="17" r="6" fill="#ffffff"/></svg>`;
+  return {
+    url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
+    scaledSize: new google.maps.Size(34, 46),
+    anchor: new google.maps.Point(17, 44)
+  };
+}
+
+async function loadGoogleMaps() {
+  if (window.google?.maps) return true;
+  if (googleMapsLoadPromise) return googleMapsLoadPromise;
+
+  googleMapsLoadPromise = (async () => {
+    try {
+      const res = await fetch(API_BASE + '/config/maps');
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const config = await res.json();
+      const key = config.google_maps_api_key;
+      if (!key) throw new Error('Google Maps API key is not configured');
+      await new Promise((resolve, reject) => {
+        window.__routePlannerMapReady = resolve;
+        const script = document.createElement('script');
+        script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&callback=__routePlannerMapReady`;
+        script.async = true;
+        script.defer = true;
+        script.onerror = () => reject(new Error('Google Maps script failed to load'));
+        document.head.appendChild(script);
+      });
+      return true;
+    } catch (error) {
+      console.error('Project map failed to load:', error);
+      setProjectMapMessage(error.message || 'Project map is unavailable.');
+      return false;
+    }
+  })();
+
+  return googleMapsLoadPromise;
+}
+
+async function initProjectMap() {
+  renderProjectMapLegend();
+  const ready = await loadGoogleMaps();
+  if (!ready) return;
+  if (!projectMap) {
+    projectMap = new google.maps.Map(document.getElementById('projectMap'), {
+      center: {lat: 39.5, lng: -98.35},
+      zoom: 4,
+      mapTypeControl: false,
+      streetViewControl: false,
+      fullscreenControl: true
+    });
+    projectMapInfo = new google.maps.InfoWindow();
+  }
+  updateProjectMap();
+}
+
+function updateProjectMap() {
+  const metaEl = document.getElementById('projectMapMeta');
+  if (!metaEl) return;
+  const rows = getMapFilteredStops();
+  const counts = {Complete: 0, Incomplete: 0, 'Technical Issue': 0, Other: 0};
+  rows.forEach(({state}) => {
+    const status = state.status || 'Incomplete';
+    counts[STATUS_MAP[status] ? status : 'Other']++;
+  });
+  metaEl.textContent = `${rows.length} mapped locations · ${counts.Complete} complete · ${counts.Incomplete} upcoming · ${counts['Technical Issue']} technical · ${counts.Other} other`;
+
+  if (!projectMap) {
+    setProjectMapMessage(rows.length ? 'Loading Google Map…' : 'No mapped locations match the current filters.');
+    return;
+  }
+
+  projectMapMarkers.forEach(marker => marker.setMap(null));
+  projectMapMarkers = [];
+  if (!rows.length) {
+    projectMap.setCenter({lat: 39.5, lng: -98.35});
+    projectMap.setZoom(4);
+    return;
+  }
+
+  const bounds = new google.maps.LatLngBounds();
+  rows.forEach(({stop, state, installer, dayNumber, lat, lng}) => {
+    const status = state.status || 'Incomplete';
+    const meta = STATUS_MAP[status] || STATUS_MAP.Other;
+    const marker = new google.maps.Marker({
+      map: projectMap,
+      position: {lat, lng},
+      title: `${state.store_name || stop.store_name || stop.addr} · ${status}`,
+      icon: projectMarkerIcon(status)
+    });
+    marker.addListener('click', () => {
+      const address = [stop.addr, stop.city, stop.state, stop.zip].filter(Boolean).join(', ');
+      projectMapInfo.setContent(`
+        <div class="map-info">
+          <div class="map-info-title">${escapeHtml(state.store_name || stop.store_name || 'Location')}</div>
+          <div class="map-info-line">${escapeHtml(address)}</div>
+          <div class="map-info-line">Installer: ${escapeHtml(state.installer_name || installer || 'Not assigned')}</div>
+          <div class="map-info-line">Route day: ${escapeHtml(dayNumber)}</div>
+          ${stop.dma ? `<div class="map-info-line">DMA: ${escapeHtml(stop.dma)}</div>` : ''}
+          <span class="map-info-status" style="background:${meta.color}">${escapeHtml(meta.label)}</span>
+        </div>
+      `);
+      projectMapInfo.open(projectMap, marker);
+    });
+    projectMapMarkers.push(marker);
+    bounds.extend({lat, lng});
+  });
+
+  if (rows.length === 1) {
+    projectMap.setCenter(bounds.getCenter());
+    projectMap.setZoom(13);
+  } else {
+    projectMap.fitBounds(bounds, 54);
+  }
 }
 
 // ── DB READ ───────────────────────────────────────────────────────────────
@@ -383,16 +713,50 @@ function statusClass(status) {
   return '';
 }
 
+function statusLabel(status) {
+  return (STATUS_MAP[status] || STATUS_MAP.Other).label;
+}
+
 function updateStatusPill(selectEl) {
   const item = selectEl.closest('.stop-item');
   const pill = item ? item.querySelector('.status-pill') : null;
   if (!pill) return;
   pill.className = 'status-pill ' + statusClass(selectEl.value);
-  pill.textContent = selectEl.value;
+  pill.textContent = statusLabel(selectEl.value);
 }
 
-function computeStatusStats() {
-  const techs = ['Murugan', 'Abubaker', 'Xak'];
+function projectPaValues() {
+  return String(PROJECT_PA || '').split(',').map(value => value.trim()).filter(Boolean);
+}
+
+function stopPA(stop) {
+  const value = String(stop.pa || '').trim();
+  if (value) return value;
+  const projectValues = projectPaValues();
+  return projectValues.length === 1 ? projectValues[0] : '';
+}
+
+function selectedPA() {
+  return document.getElementById('selPA')?.value || 'ALL';
+}
+
+function matchesSelectedPA(stop, pa = selectedPA()) {
+  return pa === 'ALL' || stopPA(stop) === pa;
+}
+
+function configurePAFilter() {
+  const select = document.getElementById('selPA');
+  if (!select) return;
+  const previous = select.value;
+  const values = [...new Set(allRouteStops().map(stopPA).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  select.replaceChildren(new Option('All PAs', 'ALL'));
+  values.forEach(value => select.appendChild(new Option(value, value)));
+  select.value = values.includes(previous) ? previous : 'ALL';
+  select.disabled = values.length < 2;
+}
+
+function computeStatusStats(pa = selectedPA()) {
+  const techs = INSTALLERS;
   const stats = {
     total: 0,
     complete: 0,
@@ -407,8 +771,11 @@ function computeStatusStats() {
   // The route/map grouping stays under the original route owner, but these
   // counts move when the Installer Name dropdown is changed.
   techs.forEach(t => {
-    stats.byTech[t] = {total: 0, complete: 0, pending: 0, technical: 0, other: 0, days: (ROUTES[t] || []).length};
-    stats.maxDays = Math.max(stats.maxDays, (ROUTES[t] || []).length);
+    const activeDays = (ROUTES[t] || []).filter(day => day.some(stop =>
+      matchesSelectedPA(stop, pa) && (getStopState(stop).status || 'Incomplete') !== 'Complete'
+    )).length;
+    stats.byTech[t] = {total: 0, complete: 0, pending: 0, technical: 0, other: 0, days: activeDays};
+    stats.maxDays = Math.max(stats.maxDays, activeDays);
   });
 
   // Walk every route stop once. Assign each stop to the editable installer_name
@@ -416,6 +783,7 @@ function computeStatusStats() {
   techs.forEach(routeOwner => {
     (ROUTES[routeOwner] || []).forEach(day => {
       day.forEach(s => {
+        if (!matchesSelectedPA(s, pa)) return;
         const state = getStopState(s);
         const assignedInstaller = techs.includes(state.installer_name) ? state.installer_name : routeOwner;
         const st = state.status || 'Incomplete';
@@ -443,29 +811,374 @@ function updateHeaderStats() {
   set('hOther', s.other);
   set('hDays', s.maxDays);
 
-  const hIds = {Murugan:'hM', Abubaker:'hA', Xak:'hX'};
-  const bIds = {Murugan:'badgeM', Abubaker:'badgeA', Xak:'badgeX'};
-  Object.keys(hIds).forEach(t => {
+  const header = document.getElementById('hInstallerStats');
+  header.innerHTML = '';
+  INSTALLERS.forEach((t, index) => {
     const bt = s.byTech[t];
-    set(hIds[t], `${bt.complete}/${bt.pending}`);
-    const badge = document.getElementById(bIds[t]);
-    if (badge) badge.textContent = `${bt.complete} done · ${bt.pending} pending · ${bt.technical} tech · ${bt.other} other`;
+    const item = document.createElement('div');
+    item.className = 'hs';
+    item.innerHTML = `<span class="hs-n" style="color:${installerColor(t)}">${bt.complete}/${bt.pending}</span><span class="hs-l"></span>`;
+    item.querySelector('.hs-l').textContent = `${t} Done/Upcoming`;
+    header.appendChild(item);
+    const badge = document.getElementById(`installer-badge-${index}`);
+    if (badge) badge.textContent = `${bt.complete} done · ${bt.pending} upcoming · ${bt.technical} tech · ${bt.other} other`;
   });
+  updateMetadataBreakdown();
+}
+
+function updateMetadataBreakdown() {
+  const panel = document.getElementById('metadataBreakdown');
+  if (!panel) return;
+  const pa = selectedPA();
+  const stops = allRouteStops().filter(stop => matchesSelectedPA(stop, pa));
+  const normalizedAddress = stop => [stop.addr, stop.city, stop.state, stop.zip]
+    .map(value => String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim())
+    .filter(Boolean)
+    .join('|') || `missing-address|${stop.id || ''}`;
+  const uniqueAddressCounts = rows => {
+    const addresses = {};
+    rows.forEach(stop => {
+      const key = normalizedAddress(stop);
+      addresses[key] ||= [];
+      addresses[key].push(getStopState(stop).status || 'Incomplete');
+    });
+    const result = {total: Object.keys(addresses).length, complete: 0, pending: 0};
+    Object.values(addresses).forEach(statuses => {
+      if (statuses.length && statuses.every(status => status === 'Complete')) result.complete++;
+      else result.pending++;
+    });
+    return result;
+  };
+  panel.innerHTML = '';
+
+  const addressCounts = uniqueAddressCounts(stops);
+  const addressBox = document.createElement('div');
+  addressBox.className = 'breakdown-group';
+  addressBox.innerHTML = `<div class="breakdown-title">Unique Address Status</div><div class="breakdown-items"><span class="breakdown-chip">${addressCounts.total} unique addresses · <strong>${addressCounts.complete} done</strong> / <em>${addressCounts.pending} upcoming</em></span></div>`;
+  panel.appendChild(addressBox);
+
+  const nested = {};
+  stops.forEach(stop => {
+    const dma = String(stop.dma || 'Not provided').trim() || 'Not provided';
+    const venueType = String(stop.venue_type || 'Not provided').trim() || 'Not provided';
+    const status = getStopState(stop).status || 'Incomplete';
+    nested[dma] ||= {total: 0, stops: [], venueTypes: {}};
+    nested[dma].total++;
+    nested[dma].stops.push(stop);
+    nested[dma].venueTypes[venueType] ||= {total: 0, complete: 0, pending: 0};
+    nested[dma].venueTypes[venueType].total++;
+    if (status === 'Complete') nested[dma].venueTypes[venueType].complete++;
+    else if (status === 'Incomplete') nested[dma].venueTypes[venueType].pending++;
+  });
+
+  const dmaBox = document.createElement('div');
+  dmaBox.className = 'breakdown-group';
+  dmaBox.innerHTML = '<div class="breakdown-title">DMA → Venue Type Breakdown</div>';
+  const grid = document.createElement('div');
+  grid.className = 'dma-grid';
+  Object.entries(nested).sort((a, b) => a[0].localeCompare(b[0])).forEach(([dma, dmaCounts]) => {
+    const card = document.createElement('div');
+    card.className = 'dma-card';
+    const name = document.createElement('div');
+    name.className = 'dma-name';
+    name.textContent = dma;
+    card.appendChild(name);
+    const summary = document.createElement('div');
+    summary.className = 'dma-summary';
+    const dmaAddresses = uniqueAddressCounts(dmaCounts.stops);
+    summary.innerHTML = `<b>${dmaCounts.total} total screens</b><br>${dmaAddresses.total} unique addresses · <strong>${dmaAddresses.complete} done</strong> / <em>${dmaAddresses.pending} upcoming</em>`;
+    card.appendChild(summary);
+    Object.entries(dmaCounts.venueTypes).sort((a, b) => a[0].localeCompare(b[0])).forEach(([venueType, counts]) => {
+      const row = document.createElement('div');
+      row.className = 'venue-row';
+      const nameSpan = document.createElement('span');
+      nameSpan.className = 'venue-name';
+      nameSpan.textContent = `${venueType} · ${counts.total} screens`;
+      const countsSpan = document.createElement('span');
+      countsSpan.className = 'venue-counts';
+      countsSpan.innerHTML = `<strong>${counts.complete} done</strong> / <em>${counts.pending} upcoming</em>`;
+      const filterBtn = document.createElement('button');
+      filterBtn.className = 'mini-btn venue-filter-btn' + (activeVenueType === venueType ? ' active' : '');
+      filterBtn.title = `Filter routes to ${venueType} only`;
+      filterBtn.textContent = activeVenueType === venueType ? '✕ Clear' : 'Filter';
+      filterBtn.onclick = () => {
+        const isActive = activeVenueType === venueType;
+        activeVenueType = isActive ? null : venueType;
+        document.querySelectorAll('.venue-filter-btn').forEach(b => {
+          b.classList.remove('active');
+          b.textContent = 'Filter';
+        });
+        if (!isActive) {
+          filterBtn.classList.add('active');
+          filterBtn.textContent = '✕ Clear';
+        }
+        applyFilters();
+      };
+      row.appendChild(nameSpan);
+      row.appendChild(countsSpan);
+      row.appendChild(filterBtn);
+      card.appendChild(row);
+    });
+    grid.appendChild(card);
+  });
+  dmaBox.appendChild(grid);
+  panel.appendChild(dmaBox);
+}
+
+function installerColor(name) {
+  return (INSTALLER_COLORS[name] || {}).color || COLOR_PALETTE[0];
+}
+
+function allRouteStops() {
+  return Object.values(ROUTES).flatMap(days => (days || []).flatMap(day => day || []));
+}
+
+function projectValueOptions(field) {
+  return [...new Set(allRouteStops().map(stop => String(stop[field] || '').trim()).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b));
+}
+
+function installerTerritoryTag(name) {
+  const hasCoordinates = stop => Number.isFinite(Number(stop.lat)) && Number.isFinite(Number(stop.lng));
+  const stops = (ROUTES[name] || []).flat().filter(hasCoordinates);
+  if (!stops.length) return 'Unassigned territory';
+
+  const cityCounts = {};
+  stops.forEach(stop => {
+    const city = String(stop.city || '').trim();
+    if (city) cityCounts[city] = (cityCounts[city] || 0) + 1;
+  });
+  const dominantCity = Object.entries(cityCounts).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0] || 'Route area';
+  const projectStops = allRouteStops().filter(hasCoordinates);
+  const cityStops = projectStops.filter(stop => String(stop.city || '').trim() === dominantCity);
+  const reference = cityStops.length ? cityStops : projectStops;
+  const centroid = rows => ({
+    lat: rows.reduce((sum, row) => sum + Number(row.lat), 0) / rows.length,
+    lng: rows.reduce((sum, row) => sum + Number(row.lng), 0) / rows.length
+  });
+  const own = centroid(stops);
+  const base = centroid(reference);
+  const northSouth = own.lat - base.lat;
+  const eastWest = own.lng - base.lng;
+  const threshold = 0.015;
+  let direction;
+  if (Math.abs(northSouth) < threshold && Math.abs(eastWest) < threshold) direction = 'Central';
+  else if (Math.abs(northSouth) > Math.abs(eastWest) * 1.5) direction = northSouth > 0 ? 'North' : 'South';
+  else if (Math.abs(eastWest) > Math.abs(northSouth) * 1.5) direction = eastWest > 0 ? 'East' : 'West';
+  else direction = `${northSouth > 0 ? 'North' : 'South'}${eastWest > 0 ? 'east' : 'west'}`;
+  return `${direction} ${dominantCity}`;
+}
+
+function refreshInstallerTags() {
+  INSTALLER_TAGS = {};
+  INSTALLERS.forEach(name => { INSTALLER_TAGS[name] = installerTerritoryTag(name); });
+}
+
+function configureInstallers(names) {
+  INSTALLERS = (names || []).filter(Boolean);
+  INSTALLER_NAME_OPTIONS = INSTALLERS.slice();
+  INSTALLER_COLORS = {};
+  INSTALLERS.forEach((name, index) => {
+    INSTALLER_COLORS[name] = {color: COLOR_PALETTE[index % COLOR_PALETTE.length]};
+  });
+  if (activeInstaller !== 'ALL' && !INSTALLERS.includes(activeInstaller)) activeInstaller = 'ALL';
+  refreshInstallerTags();
+  renderInstallerTabs();
+}
+
+function renderInstallerTabs() {
+  const tabs = document.getElementById('installerTabs');
+  tabs.innerHTML = '';
+  INSTALLERS.forEach((name, index) => {
+    const button = document.createElement('button');
+    button.className = `itab${activeInstaller === name ? ' on' : ''}`;
+    button.style.borderColor = installerColor(name);
+    button.onclick = () => selectInstaller(name, button);
+    button.appendChild(document.createTextNode(name + ' '));
+    const territory = document.createElement('span');
+    territory.className = 'territory-tag';
+    territory.textContent = INSTALLER_TAGS[name];
+    button.appendChild(territory);
+    const badge = document.createElement('span');
+    badge.className = 'installer-badge';
+    badge.id = `installer-badge-${index}`;
+    badge.textContent = '—';
+    button.appendChild(badge);
+    tabs.appendChild(button);
+    if (!PROJECT_READ_ONLY) {
+      const rename = document.createElement('button');
+      rename.type = 'button';
+      rename.className = 'installer-rename';
+      rename.textContent = 'Edit name';
+      rename.onclick = event => {
+        event.stopPropagation();
+        openInstallerRename(name);
+      };
+      tabs.appendChild(rename);
+    }
+  });
+  if (!PROJECT_READ_ONLY) {
+    const add = document.createElement('button');
+    add.type = 'button';
+    add.className = 'itab';
+    add.textContent = '+ Add Installer';
+    add.onclick = openInstallerAdd;
+    tabs.appendChild(add);
+  }
+  const all = document.createElement('button');
+  all.className = `itab${activeInstaller === 'ALL' ? ' on' : ''}`;
+  all.style.marginLeft = 'auto';
+  all.textContent = 'All Installers';
+  all.onclick = () => selectInstaller('ALL', all);
+  tabs.appendChild(all);
+}
+
+function openInstallerAdd() {
+  const modal = document.getElementById('renameInstallerModal');
+  const title = document.getElementById('renameInstallerTitle');
+  const input = document.getElementById('renameInstallerInput');
+  const error = document.getElementById('renameInstallerError');
+  const cancel = document.getElementById('renameInstallerCancel');
+  const accept = document.getElementById('renameInstallerAccept');
+  title.textContent = 'Add Installer';
+  document.getElementById('renameInstallerContext').textContent = 'Adding a technician redistributes upcoming locations by geography and upcoming workload. Completed, technical issue, and other locations stay assigned and do not consume route capacity.';
+  input.value = '';
+  error.style.display = 'none';
+  accept.textContent = 'Add Installer';
+  modal.classList.add('open');
+
+  const close = () => {
+    modal.classList.remove('open');
+    document.removeEventListener('keydown', onKeyDown);
+    title.textContent = 'Rename Installer';
+    accept.textContent = 'Save Name';
+  };
+  const onKeyDown = event => {
+    if (event.key === 'Escape') close();
+    if (event.key === 'Enter') accept.click();
+  };
+  cancel.onclick = close;
+  modal.onclick = event => { if (event.target === modal) close(); };
+  accept.onclick = async () => {
+    const name = input.value.trim();
+    if (!name || INSTALLERS.includes(name)) {
+      error.textContent = !name ? 'Installer name cannot be empty.' : 'That installer name already exists.';
+      error.style.display = 'block';
+      return;
+    }
+    accept.disabled = true;
+    accept.textContent = 'Adding…';
+    try {
+      const res = await fetch(API_BASE + '/projects/' + encodeURIComponent(PROJECT_ID) + '/installers', {
+        method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({name})
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.detail || 'HTTP ' + res.status);
+      }
+      const data = await res.json();
+      ROUTES = data.routes || ROUTES;
+      ROUTE_STATS = data.stats || ROUTE_STATS;
+      configureInstallers(data.installers || INSTALLERS);
+      await loadStateFromDB();
+      close();
+    } catch (err) {
+      error.textContent = err.message;
+      error.style.display = 'block';
+    } finally {
+      accept.disabled = false;
+      if (modal.classList.contains('open')) accept.textContent = 'Add Installer';
+    }
+  };
+  document.addEventListener('keydown', onKeyDown);
+  setTimeout(() => input.focus(), 0);
+}
+
+function openInstallerRename(oldName) {
+  const modal = document.getElementById('renameInstallerModal');
+  const input = document.getElementById('renameInstallerInput');
+  const error = document.getElementById('renameInstallerError');
+  const cancel = document.getElementById('renameInstallerCancel');
+  const accept = document.getElementById('renameInstallerAccept');
+  document.getElementById('renameInstallerTitle').textContent = 'Rename Installer';
+  document.getElementById('renameInstallerContext').textContent = `Territory: ${INSTALLER_TAGS[oldName] || 'Unassigned territory'}. The name updates across routes, saved stop records, summaries, and exports.`;
+  accept.textContent = 'Save Name';
+  input.value = oldName;
+  error.style.display = 'none';
+  modal.classList.add('open');
+
+  const close = () => {
+    modal.classList.remove('open');
+    document.removeEventListener('keydown', onKeyDown);
+  };
+  const onKeyDown = event => {
+    if (event.key === 'Escape') close();
+    if (event.key === 'Enter') accept.click();
+  };
+  cancel.onclick = close;
+  modal.onclick = event => { if (event.target === modal) close(); };
+  accept.onclick = async () => {
+    const newName = input.value.trim();
+    if (!newName) {
+      error.textContent = 'Installer name cannot be empty.';
+      error.style.display = 'block';
+      return;
+    }
+    if (newName !== oldName && INSTALLERS.includes(newName)) {
+      error.textContent = 'That installer name already exists.';
+      error.style.display = 'block';
+      return;
+    }
+    accept.disabled = true;
+    accept.textContent = 'Saving…';
+    try {
+      const res = await fetch(API_BASE + '/projects/' + encodeURIComponent(PROJECT_ID) + '/rename-installer', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({old_name: oldName, new_name: newName})
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.detail || 'HTTP ' + res.status);
+      }
+      const data = await res.json();
+      ROUTES = data.routes || ROUTES;
+      ROUTE_STATS = data.stats || ROUTE_STATS;
+      configureInstallers(data.installers || INSTALLERS);
+      await loadStateFromDB();
+      close();
+    } catch (err) {
+      error.textContent = err.message;
+      error.style.display = 'block';
+    } finally {
+      accept.disabled = false;
+      accept.textContent = 'Save Name';
+    }
+  };
+  document.addEventListener('keydown', onKeyDown);
+  setTimeout(() => { input.focus(); input.select(); }, 0);
 }
 
 // Load project + state from MongoDB on page open
 // ── PROJECT LOADER ────────────────────────────────────────────────────────
 const PROJECT_ID = (function(){
-  try { return new URLSearchParams(window.location.search).get('project') || 'atlanta-default'; }
-  catch(_) { return 'atlanta-default'; }
+  try { return new URLSearchParams(window.location.search).get('project') || ''; }
+  catch(_) { return ''; }
 })();
 async function loadProject() {
   try {
+    if (!PROJECT_ID) throw new Error('Missing project ID');
     const res = await fetch(API_BASE + '/projects/' + encodeURIComponent(PROJECT_ID));
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
     ROUTES = data.routes || {};
     ROUTE_STATS = data.stats || {};
+    PROJECT_READ_ONLY = !!data.read_only;
+    const rebalanceButton = document.getElementById('rebalanceBtn');
+    if (rebalanceButton) rebalanceButton.style.display = PROJECT_READ_ONLY ? 'none' : '';
+    PROJECT_PA = data.pa || '';
+    configureInstallers((data.installers || []).length ? data.installers : Object.keys(ROUTES));
+    configurePAFilter();
     // Update project name header if needed
     document.title = (data.name || 'Route Planner') + ' — Route Planner';
   } catch(err) {
@@ -473,8 +1186,47 @@ async function loadProject() {
   }
 }
 
+function openRebalanceConfirm() {
+  const modal = document.getElementById('rebalanceModal');
+  const cancel = document.getElementById('rebalanceCancel');
+  const accept = document.getElementById('rebalanceAccept');
+  modal.classList.add('open');
+
+  const close = () => {
+    modal.classList.remove('open');
+    document.removeEventListener('keydown', onKeyDown);
+  };
+  const onKeyDown = event => { if (event.key === 'Escape') close(); };
+  cancel.onclick = close;
+  modal.onclick = event => { if (event.target === modal) close(); };
+  accept.onclick = async () => {
+    accept.disabled = true;
+    accept.textContent = 'Optimizing…';
+    try {
+      const response = await fetch(API_BASE + '/projects/' + encodeURIComponent(PROJECT_ID) + '/rebalance-incomplete', {method: 'POST'});
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.detail || 'HTTP ' + response.status);
+      }
+      const data = await response.json();
+      ROUTES = data.routes || ROUTES;
+      ROUTE_STATS = data.stats || ROUTE_STATS;
+      configureInstallers(data.installers || INSTALLERS);
+      await loadStateFromDB();
+      close();
+    } catch (error) {
+      alert('Re-optimization failed: ' + error.message);
+    } finally {
+      accept.disabled = false;
+      accept.textContent = 'Confirm Re-optimization';
+    }
+  };
+  document.addEventListener('keydown', onKeyDown);
+}
+
 (async () => {
   await loadProject();
+  initProjectMap();
   updateHeaderStats();
   await loadStateFromDB();
 })();
@@ -483,11 +1235,9 @@ function selectInstaller(name, btn) {
   activeInstaller = name;
   document.querySelectorAll('.itab').forEach(b => {
     b.classList.remove('on');
-    ['Murugan','Abubaker','Xak'].forEach(i => b.classList.remove(i));
   });
   if (btn) {
     btn.classList.add('on');
-    if (name !== 'ALL') btn.classList.add(name);
   }
   applyFilters();
 }
@@ -514,6 +1264,10 @@ function mapsUrlForStops(stops) {
   return `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${dest}${waypts ? '&waypoints=' + waypts : ''}`;
 }
 
+function routableStops(stops) {
+  return stops.filter(stop => (getStopState(stop).status || 'Incomplete') !== 'Complete');
+}
+
 function routeChunks(stops) {
   if (stops.length <= MAP_MAX_STOPS) return [{start: 0, end: stops.length - 1, stops}];
   const chunks = [];
@@ -528,14 +1282,15 @@ function routeChunks(stops) {
 }
 
 function gmRouteUrl(stops) {
-  if (!stops.length) return '#';
-  return mapsUrlForStops(routeChunks(stops)[0].stops);
+  const activeStops = routableStops(stops);
+  if (!activeStops.length) return '#';
+  return mapsUrlForStops(routeChunks(activeStops)[0].stops);
 }
 
 function buildBatchUrl(stops, chunkIdx) {
-  const chunks = routeChunks(stops);
+  const chunks = routeChunks(routableStops(stops));
   const chunk = chunks[Math.min(chunkIdx, chunks.length - 1)] || chunks[0];
-  return mapsUrlForStops(chunk.stops);
+  return chunk ? mapsUrlForStops(chunk.stops) : '#';
 }
 
 function getUniqueCities(stops) {
@@ -550,28 +1305,31 @@ function getUniqueCities(stops) {
 function applyFilters() {
   const view    = document.getElementById('selView').value;
   const dayF    = document.getElementById('txtDay').value.trim();
+  const pa      = selectedPA();
   const q       = document.getElementById('txtQ').value.toLowerCase().trim();
   const content = document.getElementById('mainContent');
   content.innerHTML = '';
 
   const installers = activeInstaller === 'ALL'
-    ? ['Murugan', 'Abubaker', 'Xak']
+    ? INSTALLERS
     : [activeInstaller];
 
   if (view === 'summary') {
-    renderSummaryTable(installers, dayF, q, content);
+    renderSummaryTable(installers, dayF, pa, q, content);
   } else {
-    renderDayCards(installers, dayF, q, content);
+    renderDayCards(installers, dayF, pa, q, content);
   }
+  updateProjectMap();
 }
 
-function renderDayCards(installers, dayF, q, content) {
+function renderDayCards(installers, dayF, pa, q, content) {
   let showing = 0;
   installers.forEach(installer => {
     const days = ROUTES[installer] || [];
-    const col  = INSTALLER_COLORS[installer];
+    const col  = INSTALLER_COLORS[installer] || {color: COLOR_PALETTE[0]};
 
-    let filteredDays = days.map((d, i) => ({idx: i, stops: d}));
+    let filteredDays = days.map((d, i) => ({idx: i, stops: d.filter(stop => matchesSelectedPA(stop, pa))}))
+      .filter(({stops}) => stops.length > 0);
 
     if (dayF) {
       const nums = dayF.split(/[, ]+/).map(x => parseInt(x)).filter(x => !isNaN(x));
@@ -581,8 +1339,14 @@ function renderDayCards(installers, dayF, q, content) {
       filteredDays = filteredDays.map(({idx, stops}) => ({
         idx,
         stops: stops.filter(s =>
-          [s.addr, s.city, s.zip, getStopState(s).store_name, getStopState(s).brand, getStopState(s).installer_name, getStopState(s).status, getStopState(s).comment, s.id].join(' ').toLowerCase().includes(q)
+          [s.addr, s.city, s.zip, stopPA(s), s.dma, s.venue_type, getStopState(s).venue_code, getStopState(s).store_name, getStopState(s).brand, getStopState(s).installer_name, getStopState(s).status, getStopState(s).comment, s.id].join(' ').toLowerCase().includes(q)
         )
+      })).filter(({stops}) => stops.length > 0);
+    }
+    if (activeVenueType) {
+      filteredDays = filteredDays.map(({idx, stops}) => ({
+        idx,
+        stops: stops.filter(s => String(s.venue_type || 'Not provided').trim() === activeVenueType)
       })).filter(({stops}) => stops.length > 0);
     }
 
@@ -591,11 +1355,25 @@ function renderDayCards(installers, dayF, q, content) {
 
     const sh = document.createElement('div');
     sh.className = 'section-header';
-    const totalSites = days.reduce((a, d) => a + d.length, 0);
-    const rs = ROUTE_STATS[installer] || {};
+    const installerStops = days.flat().filter(stop => matchesSelectedPA(stop, pa));
+    const installerStats = {complete: 0, pending: 0, technical: 0, other: 0};
+    installerStops.forEach(stop => {
+      const status = getStopState(stop).status || 'Incomplete';
+      if (status === 'Complete') installerStats.complete++;
+      else if (status === 'Technical Issue') installerStats.technical++;
+      else if (status === 'Other') installerStats.other++;
+      else installerStats.pending++;
+    });
+    const totalSites = installerStops.length;
+    const activeStops = installerStats.pending + installerStats.technical + installerStats.other;
+    const activeDayCount = days.filter(day => day.some(stop =>
+      matchesSelectedPA(stop, pa) && (getStopState(stop).status || 'Incomplete') !== 'Complete'
+    )).length;
+    const average = activeDayCount ? (activeStops / activeDayCount).toFixed(1) : '0';
     sh.innerHTML = `
-      <span class="section-title ${installer}">${installer}</span>
-      <span class="section-meta">${totalSites} sites · ${days.length} days · ~${rs.avg_stops || '?'} stops/day</span>`;
+      <span class="section-title" style="color:${col.color}">${installer}</span>
+      <span class="territory-tag">${INSTALLER_TAGS[installer] || 'Unassigned territory'}</span>
+      <span class="section-meta">${totalSites} sites · ${activeDayCount} active days · ~${average} active stops/day · ${installerStats.complete} done · ${installerStats.pending} upcoming · ${installerStats.technical} tech · ${installerStats.other} other</span>`;
     content.appendChild(sh);
 
     const grid = document.createElement('div');
@@ -615,6 +1393,159 @@ function fieldDisplayValue(v, fallback) {
   return val || fallback || '—';
 }
 
+function makeReadonlyField(label, value) {
+  const box = document.createElement('div');
+  box.className = 'stop-field';
+  const lab = document.createElement('div');
+  lab.className = 'stop-field-label';
+  lab.textContent = label;
+  const display = document.createElement('div');
+  display.className = 'stop-readonly';
+  display.textContent = fieldDisplayValue(value, 'Not provided');
+  box.append(lab, display);
+  return box;
+}
+
+async function updateStopDetails(stop, key, patch) {
+  showDBStatus('loading', 'Saving stop details…');
+  try {
+    const res = await fetch(API_BASE + '/projects/' + encodeURIComponent(PROJECT_ID) + '/stops/details', {
+      method: 'PATCH',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(Object.assign({stop_id: String(stop.id), old_stop_key: key}, patch))
+    });
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({}));
+      const detail = error.detail;
+      if (detail && typeof detail === 'object') {
+        const suggestions = Array.isArray(detail.suggestions) && detail.suggestions.length
+          ? ' Suggestions: ' + detail.suggestions.slice(0, 3).join(' | ')
+          : '';
+        throw new Error((detail.message || 'Save failed') + suggestions);
+      }
+      throw new Error(detail || 'HTTP ' + res.status);
+    }
+    const data = await res.json();
+    ROUTES = data.routes || ROUTES;
+    ROUTE_STATS = data.stats || ROUTE_STATS;
+    if (data.new_stop_key && data.old_stop_key && data.new_stop_key !== data.old_stop_key && savedState[data.old_stop_key]) {
+      savedState[data.new_stop_key] = savedState[data.old_stop_key];
+      delete savedState[data.old_stop_key];
+      try { localStorage.setItem('atl_tracker_fallback', JSON.stringify(savedState)); } catch(_) {}
+    }
+    refreshInstallerTags();
+    renderInstallerTabs();
+    updateHeaderStats();
+    applyFilters();
+    showDBStatus('ok');
+    return true;
+  } catch (err) {
+    showDBStatus('error', 'Save failed: ' + err.message);
+    return false;
+  }
+}
+
+function makeStopSelectField(label, stop, key, field, options) {
+  const box = document.createElement('div');
+  box.className = 'stop-field';
+  const lab = document.createElement('div');
+  lab.className = 'stop-field-label';
+  lab.textContent = label;
+  box.appendChild(lab);
+
+  const select = document.createElement('select');
+  select.className = 'stop-select';
+  select.disabled = PROJECT_READ_ONLY;
+  const current = String(stop[field] || '').trim();
+  const opts = options.slice();
+  if (current && !opts.includes(current)) opts.unshift(current);
+  if (!opts.length) opts.push('Not provided');
+  opts.forEach(opt => {
+    const option = document.createElement('option');
+    option.value = opt === 'Not provided' ? '' : opt;
+    option.textContent = opt;
+    if (current === option.value) option.selected = true;
+    select.appendChild(option);
+  });
+  select.onchange = async () => {
+    select.disabled = true;
+    const ok = await updateStopDetails(stop, key, {[field]: select.value});
+    if (!ok) select.disabled = PROJECT_READ_ONLY;
+  };
+  box.appendChild(select);
+  return box;
+}
+
+function makeStopTextField(label, stop, key, field, value, placeholder) {
+  const box = document.createElement('div');
+  box.className = 'stop-field';
+  const lab = document.createElement('div');
+  lab.className = 'stop-field-label';
+  lab.textContent = label;
+  box.appendChild(lab);
+
+  let savedValue = String(value || '');
+  let editing = false;
+
+  function render() {
+    [...box.querySelectorAll('.field-dynamic')].forEach(el => el.remove());
+    if (editing && !PROJECT_READ_ONLY) {
+      const input = document.createElement('input');
+      input.className = 'stop-input field-dynamic';
+      input.value = savedValue;
+      input.placeholder = placeholder || label;
+      box.appendChild(input);
+
+      const actions = document.createElement('div');
+      actions.className = 'field-actions field-dynamic';
+      const saveBtn = document.createElement('button');
+      saveBtn.type = 'button';
+      saveBtn.className = 'mini-btn save';
+      saveBtn.textContent = 'Save';
+      saveBtn.onclick = async () => {
+        const next = input.value.trim();
+        if (field === 'addr' && !next) return;
+        saveBtn.disabled = true;
+        const ok = await updateStopDetails(stop, key, {[field]: next});
+        if (ok) {
+          savedValue = next;
+          editing = false;
+          render();
+        } else {
+          saveBtn.disabled = false;
+        }
+      };
+      const cancelBtn = document.createElement('button');
+      cancelBtn.type = 'button';
+      cancelBtn.className = 'mini-btn';
+      cancelBtn.textContent = 'Cancel';
+      cancelBtn.onclick = () => { editing = false; render(); };
+      actions.append(saveBtn, cancelBtn);
+      box.appendChild(actions);
+      input.focus();
+    } else {
+      const ro = document.createElement('div');
+      ro.className = 'stop-readonly field-dynamic';
+      ro.textContent = fieldDisplayValue(savedValue, placeholder);
+      box.appendChild(ro);
+      if (!PROJECT_READ_ONLY) {
+        const actions = document.createElement('div');
+        actions.className = 'field-actions field-dynamic';
+        const editBtn = document.createElement('button');
+        editBtn.type = 'button';
+        editBtn.className = 'mini-btn';
+        editBtn.textContent = 'Edit';
+        editBtn.onclick = () => { editing = true; render(); };
+        actions.appendChild(editBtn);
+        box.appendChild(actions);
+      }
+    }
+  }
+
+  render();
+  return box;
+}
+
 function makeEditableTextField(label, value, key, field, placeholder, isLong=false, startsEditable=false) {
   const box = document.createElement('div');
   box.className = 'stop-field';
@@ -625,7 +1556,7 @@ function makeEditableTextField(label, value, key, field, placeholder, isLong=fal
   box.appendChild(lab);
 
   let savedValue = value || '';
-  let editing = startsEditable || !String(savedValue || '').trim();
+  let editing = !PROJECT_READ_ONLY && (startsEditable || !String(savedValue || '').trim());
 
   function render() {
     [...box.querySelectorAll('.field-dynamic')].forEach(el => el.remove());
@@ -669,16 +1600,18 @@ function makeEditableTextField(label, value, key, field, placeholder, isLong=fal
       ro.title = savedValue || '';
       box.appendChild(ro);
 
-      const actions = document.createElement('div');
-      actions.className = 'field-actions field-dynamic';
-      const editBtn = document.createElement('button');
-      editBtn.type = 'button';
-      editBtn.className = isLong ? 'mini-btn dots' : 'mini-btn';
-      editBtn.textContent = isLong ? '⋯' : 'Edit';
-      editBtn.title = 'Edit ' + label;
-      editBtn.onclick = () => { editing = true; render(); };
-      actions.appendChild(editBtn);
-      box.appendChild(actions);
+      if (!PROJECT_READ_ONLY) {
+        const actions = document.createElement('div');
+        actions.className = 'field-actions field-dynamic';
+        const editBtn = document.createElement('button');
+        editBtn.type = 'button';
+        editBtn.className = isLong ? 'mini-btn dots' : 'mini-btn';
+        editBtn.textContent = isLong ? '⋯' : 'Edit';
+        editBtn.title = 'Edit ' + label;
+        editBtn.onclick = () => { editing = true; render(); };
+        actions.appendChild(editBtn);
+        box.appendChild(actions);
+      }
     }
   }
 
@@ -686,17 +1619,18 @@ function makeEditableTextField(label, value, key, field, placeholder, isLong=fal
   return box;
 }
 
-function makeModemField(key, st) {
+function makeAdditionalTaskField(key, st) {
   const box = document.createElement('div');
   box.className = 'modem-box';
 
   const lab = document.createElement('div');
   lab.className = 'stop-field-label';
-  lab.textContent = 'ARA Modem';
+  lab.textContent = PROJECT_READ_ONLY ? 'ARA Modem' : 'Additional Task';
   box.appendChild(lab);
 
-  let modemValue = !!st.modem;
-  let locked = modemValue;
+  const stateField = PROJECT_READ_ONLY ? 'modem' : 'additional_task';
+  let taskValue = !!st[stateField];
+  let locked = taskValue;
 
   function render() {
     [...box.querySelectorAll('.field-dynamic')].forEach(el => el.remove());
@@ -705,33 +1639,37 @@ function makeModemField(key, st) {
     label.className = 'modem-check field-dynamic';
     const cb = document.createElement('input');
     cb.type = 'checkbox';
-    cb.checked = modemValue;
-    cb.disabled = locked;
+    cb.checked = taskValue;
+    cb.disabled = locked || PROJECT_READ_ONLY;
     cb.onchange = () => {
-      modemValue = cb.checked;
-      updateStopStateByKey(key, {modem: modemValue});
-      if (modemValue) locked = true;
+      taskValue = cb.checked;
+      updateStopStateByKey(key, {[stateField]: taskValue});
+      if (taskValue) locked = true;
       render();
     };
     label.appendChild(cb);
-    label.appendChild(document.createTextNode(modemValue ? 'Collected' : 'Not collected'));
+    label.appendChild(document.createTextNode(
+      PROJECT_READ_ONLY
+        ? (taskValue ? 'Collected' : 'Not collected')
+        : (taskValue ? 'Completed' : 'Not completed')
+    ));
     box.appendChild(label);
 
     const actions = document.createElement('div');
     actions.className = 'field-actions field-dynamic';
-    if (locked) {
+    if (locked && !PROJECT_READ_ONLY) {
       const editBtn = document.createElement('button');
       editBtn.type = 'button';
       editBtn.className = 'mini-btn';
       editBtn.textContent = 'Edit';
       editBtn.onclick = () => { locked = false; render(); };
       actions.appendChild(editBtn);
-    } else if (modemValue) {
+    } else if (taskValue) {
       const saveBtn = document.createElement('button');
       saveBtn.type = 'button';
       saveBtn.className = 'mini-btn save';
       saveBtn.textContent = 'Save';
-      saveBtn.onclick = () => { locked = true; updateStopStateByKey(key, {modem: modemValue}); render(); };
+      saveBtn.onclick = () => { locked = true; updateStopStateByKey(key, {[stateField]: taskValue}); render(); };
       actions.appendChild(saveBtn);
     }
     box.appendChild(actions);
@@ -742,18 +1680,89 @@ function makeModemField(key, st) {
 }
 
 
-function makeInstallerNameField(key, st, routeInstaller) {
+function confirmRouteReassignment(location, previous, installer) {
+  return new Promise(resolve => {
+    const overlay = document.getElementById('reassignConfirm');
+    const cancel = document.getElementById('reassignCancel');
+    const accept = document.getElementById('reassignAccept');
+    document.getElementById('reassignLocation').textContent = location;
+    document.getElementById('reassignFrom').textContent = previous;
+    document.getElementById('reassignTo').textContent = installer;
+
+    const finish = confirmed => {
+      overlay.classList.remove('open');
+      document.removeEventListener('keydown', onKeyDown);
+      resolve(confirmed);
+    };
+    const onKeyDown = event => {
+      if (event.key === 'Escape') finish(false);
+    };
+    cancel.onclick = () => finish(false);
+    accept.onclick = () => finish(true);
+    overlay.onclick = event => {
+      if (event.target === overlay) finish(false);
+    };
+    document.addEventListener('keydown', onKeyDown);
+    overlay.classList.add('open');
+    cancel.focus();
+  });
+}
+
+async function reassignStop(stop, key, installer, select) {
+  const previous = stop.installer || '';
+  if (!installer || installer === previous) return;
+  const state = getStopState(stop);
+  const location = [state.store_name, stop.addr, stop.city, stop.state, stop.zip].filter(Boolean).join(', ');
+  const confirmed = await confirmRouteReassignment(location || String(stop.id), previous, installer);
+  if (!confirmed) {
+    select.value = previous;
+    return;
+  }
+  select.disabled = true;
+  showDBStatus('loading', 'Re-routing stop…');
+  try {
+    const res = await fetch(API_BASE + '/projects/' + encodeURIComponent(PROJECT_ID) + '/reassign-stop', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({stop_id: String(stop.id), installer, old_stop_key: key})
+    });
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({}));
+      throw new Error(error.detail || 'HTTP ' + res.status);
+    }
+    const data = await res.json();
+    ROUTES = data.routes || ROUTES;
+    ROUTE_STATS = data.stats || ROUTE_STATS;
+    if (data.new_stop_key && data.new_stop_key !== key) {
+      savedState[data.new_stop_key] = Object.assign({}, savedState[key] || {}, {installer_name: installer});
+      delete savedState[key];
+      try { localStorage.setItem('atl_tracker_fallback', JSON.stringify(savedState)); } catch(_) {}
+    }
+    refreshInstallerTags();
+    renderInstallerTabs();
+    showDBStatus('ok');
+    updateHeaderStats();
+    applyFilters();
+  } catch (err) {
+    select.value = previous;
+    select.disabled = false;
+    showDBStatus('error', 'Re-route failed: ' + err.message);
+  }
+}
+
+function makeInstallerNameField(stop, key, st, routeInstaller) {
   const box = document.createElement('div');
   box.className = 'stop-field';
 
   const lab = document.createElement('div');
   lab.className = 'stop-field-label';
-  lab.textContent = 'Installer Name';
+  lab.textContent = 'Route Installer';
   box.appendChild(lab);
 
   const select = document.createElement('select');
   select.className = 'stop-select';
-  const current = st.installer_name || routeInstaller || '';
+  select.disabled = PROJECT_READ_ONLY;
+  const current = routeInstaller || '';
   const opts = INSTALLER_NAME_OPTIONS.slice();
   if (current && !opts.includes(current)) opts.unshift(current);
   opts.forEach(opt => {
@@ -763,9 +1772,7 @@ function makeInstallerNameField(key, st, routeInstaller) {
     if (current === opt) o.selected = true;
     select.appendChild(o);
   });
-  select.onchange = () => {
-    updateStopStateByKey(key, {installer_name: select.value});
-  };
+  select.onchange = () => reassignStop(stop, key, select.value, select);
   box.appendChild(select);
 
   const note = document.createElement('div');
@@ -773,18 +1780,30 @@ function makeInstallerNameField(key, st, routeInstaller) {
   note.style.marginTop = '6px';
   note.style.textTransform = 'none';
   note.style.letterSpacing = '0';
-  note.textContent = 'Updates counts/CSV; map route stays unchanged';
+  note.textContent = PROJECT_READ_ONLY
+    ? 'Read-only project managed by another application'
+    : 'Moves this stop while preserving other day assignments and optimizing the affected routes';
   box.appendChild(note);
 
   return box;
 }
 
 function buildDayCard(installer, dayIdx, stops, totalDays, col) {
-  const chunks = routeChunks(stops);
+  const activeStops = routableStops(stops);
+  const chunks = routeChunks(activeStops);
   const cities = getUniqueCities(stops).slice(0, 4).join(' · ');
+  const dayStats = {complete: 0, pending: 0, technical: 0, other: 0};
+  stops.forEach(stop => {
+    const status = getStopState(stop).status || 'Incomplete';
+    if (status === 'Complete') dayStats.complete++;
+    else if (status === 'Technical Issue') dayStats.technical++;
+    else if (status === 'Other') dayStats.other++;
+    else dayStats.pending++;
+  });
 
   const card = document.createElement('div');
-  card.className = `day-card ${installer}`;
+  card.className = 'day-card';
+  card.style.borderTop = `4px solid ${col.color}`;
   card.id = `card-${installer}-${dayIdx + 1}`;
 
   // Header
@@ -792,14 +1811,32 @@ function buildDayCard(installer, dayIdx, stops, totalDays, col) {
   hdr.className = 'day-hdr';
   hdr.innerHTML = `
     <div>
-      <div class="day-title ${installer}">Day ${dayIdx + 1}
+      <div class="day-title" style="color:${col.color}">Day ${dayIdx + 1}
         <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:400;opacity:.6">of ${totalDays}</span>
       </div>
     </div>
     <div class="day-meta">
-      <span class="day-badge">${stops.length} stops</span>
-      <button class="toggle" onclick="togCard(this,event)">&#9650;</button>
+      <div class="day-statuses">
+        <span class="day-status complete">${dayStats.complete} done</span>
+        <span class="day-status">${dayStats.pending} upcoming</span>
+        ${dayStats.technical ? `<span class="day-status technical">${dayStats.technical} tech</span>` : ''}
+        ${dayStats.other ? `<span class="day-status other">${dayStats.other} other</span>` : ''}
+      </div>
+      <span class="day-badge">${activeStops.length} active · ${stops.length} records</span>
+      <button class="toggle" type="button" aria-expanded="true" title="Collapse day" onclick="togCard(this,event)">&#9650;</button>
     </div>`;
+  const infoButton = document.createElement('button');
+  infoButton.type = 'button';
+  infoButton.className = 'day-info';
+  infoButton.textContent = 'i';
+  infoButton.title = 'View address details';
+  infoButton.setAttribute('aria-label', `View addresses for ${installer}, day ${dayIdx + 1}`);
+  infoButton.addEventListener('click', event => showDayAddresses(installer, dayIdx + 1, stops, event));
+  const toggleButton = hdr.querySelector('.toggle');
+  toggleButton.before(infoButton);
+  hdr.addEventListener('click', event => {
+    if (!event.target.closest('button')) togCard(toggleButton, event);
+  });
   card.appendChild(hdr);
 
   // Cities strip
@@ -832,32 +1869,49 @@ function buildDayCard(installer, dayIdx, stops, totalDays, col) {
     fieldGrid.className = 'stop-field-grid';
     fieldGrid.appendChild(makeEditableTextField('Store Name', st.store_name || '', key, 'store_name', 'Store name', false, false));
     fieldGrid.appendChild(makeEditableTextField('Brand', st.brand || '', key, 'brand', 'Brand', false, false));
-    fieldGrid.appendChild(makeInstallerNameField(key, st, installer));
+    fieldGrid.appendChild(makeInstallerNameField(s, key, st, installer));
     body.appendChild(fieldGrid);
 
-    const addr = document.createElement('div');
-    addr.className = 'stop-addr';
-    addr.textContent = `${s.addr} · ${String(s.city || '').trim()}, ${s.state} ${s.zip}`;
-    body.appendChild(addr);
+    const metadataGrid = document.createElement('div');
+    metadataGrid.className = 'stop-field-grid';
+    metadataGrid.appendChild(makeStopSelectField('Venue Type', s, key, 'venue_type', projectValueOptions('venue_type')));
+    metadataGrid.appendChild(makeStopSelectField('DMA', s, key, 'dma', projectValueOptions('dma')));
+    metadataGrid.appendChild(makeStopTextField('Venue Code', s, key, 'venue_code', st.venue_code || s.venue_code || '', 'Venue code'));
+    body.appendChild(metadataGrid);
+
+    const pa = document.createElement('div');
+    pa.className = 'stop-pa';
+    pa.textContent = `PA · ${stopPA(s) || 'Not provided'}`;
+    body.appendChild(pa);
+
+    const addressGrid = document.createElement('div');
+    addressGrid.className = 'stop-field-grid';
+    addressGrid.style.gridTemplateColumns = 'minmax(220px,1fr) minmax(180px,1fr) 120px';
+    addressGrid.appendChild(makeStopTextField('Address', s, key, 'addr', s.addr || '', 'Street address'));
+    addressGrid.appendChild(makeReadonlyField('City / State', `${String(s.city || '').trim()}, ${s.state}`));
+    addressGrid.appendChild(makeReadonlyField('ZIP', s.zip));
+    body.appendChild(addressGrid);
 
     const installRow = document.createElement('div');
     installRow.className = 'install-row';
 
     const statusSelect = document.createElement('select');
     statusSelect.className = 'stop-select';
+    statusSelect.disabled = PROJECT_READ_ONLY;
     STATUS_OPTIONS.forEach(opt => {
       const o = document.createElement('option');
       o.value = opt;
-      o.textContent = opt;
+      o.textContent = statusLabel(opt);
       if ((st.status || 'Incomplete') === opt) o.selected = true;
       statusSelect.appendChild(o);
     });
     statusSelect.onchange = () => {
       updateStopStateByKey(key, {status: statusSelect.value});
       updateStatusPill(statusSelect);
+      applyFilters();
     };
     installRow.appendChild(statusSelect);
-    installRow.appendChild(makeModemField(key, st));
+    installRow.appendChild(makeAdditionalTaskField(key, st));
     body.appendChild(installRow);
 
     const commentStartsEditable = !String(st.comment || '').trim();
@@ -865,7 +1919,7 @@ function buildDayCard(installer, dayIdx, stops, totalDays, col) {
 
     const pill = document.createElement('span');
     pill.className = 'status-pill ' + statusClass(st.status || 'Incomplete');
-    pill.textContent = st.status || 'Incomplete';
+    pill.textContent = statusLabel(st.status || 'Incomplete');
     body.appendChild(pill);
 
     main.appendChild(body);
@@ -878,20 +1932,27 @@ function buildDayCard(installer, dayIdx, stops, totalDays, col) {
   const acts = document.createElement('div');
   acts.className = 'day-acts';
 
-  if (stops.length <= 10) {
+  if (!activeStops.length) {
+    const complete = document.createElement('span');
+    complete.className = 'rbtn route-complete';
+    complete.textContent = '✓ Route complete';
+    acts.appendChild(complete);
+  } else if (activeStops.length <= MAP_MAX_STOPS) {
     const a = document.createElement('a');
-    a.href = gmRouteUrl(stops);
+    a.href = mapsUrlForStops(activeStops);
     a.target = '_blank'; a.rel = 'noopener';
-    a.className = `rbtn ${col.cls}`;
-    a.innerHTML = `&#128506; Open Route (${stops.length} stops)`;
+    a.className = 'rbtn maps';
+    a.style.background = col.color;
+    a.innerHTML = `&#128506; Open Route (${activeStops.length} active ${activeStops.length === 1 ? 'stop' : 'stops'})`;
     acts.appendChild(a);
   } else {
     chunks.forEach((chunk, c) => {
       const a = document.createElement('a');
-      a.href = buildBatchUrl(stops, c);
+      a.href = mapsUrlForStops(chunk.stops);
       a.target = '_blank'; a.rel = 'noopener';
-      a.className = `rbtn ${col.cls}`;
-      a.innerHTML = `&#128506; Map ${c + 1} (stops ${chunk.start + 1}–${chunk.end + 1})`;
+      a.className = 'rbtn maps';
+      a.style.background = col.color;
+      a.innerHTML = `&#128506; Map ${c + 1} (active stops ${chunk.start + 1}–${chunk.end + 1})`;
       acts.appendChild(a);
     });
   }
@@ -922,36 +1983,53 @@ function buildDayCard(installer, dayIdx, stops, totalDays, col) {
   return card;
 }
 
-function renderSummaryTable(installers, dayF, q, content) {
+function renderSummaryTable(installers, dayF, pa, q, content) {
   const table = document.createElement('table');
   table.className = 'summary-table';
   table.innerHTML = `<thead><tr>
-    <th>Installer</th><th>Day</th><th>Stops</th><th>Cities Covered</th><th>Open Route</th>
+    <th>Installer</th><th>Day</th><th>Stops</th><th>Completed</th><th>Upcoming</th><th>Tech</th><th>Other</th><th>Cities Covered</th><th>Open Route</th>
   </tr></thead>`;
   const tbody = document.createElement('tbody');
 
   let rows = 0;
   installers.forEach(installer => {
     const days = ROUTES[installer] || [];
-    const col  = INSTALLER_COLORS[installer];
+    const col  = INSTALLER_COLORS[installer] || {color: COLOR_PALETTE[0]};
     days.forEach((stops, idx) => {
       if (dayF) {
         const nums = dayF.split(/[, ]+/).map(x => parseInt(x)).filter(x => !isNaN(x));
         if (!nums.includes(idx + 1)) return;
       }
-      let filtStops = stops;
+      let filtStops = stops.filter(stop => matchesSelectedPA(stop, pa));
+      if (!filtStops.length) return;
       if (q) filtStops = stops.filter(s =>
-        [s.addr, s.city, s.zip, getStopState(s).store_name, getStopState(s).brand, getStopState(s).installer_name, getStopState(s).status, getStopState(s).comment].join(' ').toLowerCase().includes(q));
+        matchesSelectedPA(s, pa) && [s.addr, s.city, s.zip, stopPA(s), s.dma, s.venue_type, getStopState(s).venue_code, getStopState(s).store_name, getStopState(s).brand, getStopState(s).installer_name, getStopState(s).status, getStopState(s).comment].join(' ').toLowerCase().includes(q));
       if (!filtStops.length && q) return;
+      if (activeVenueType) { filtStops = filtStops.filter(s => String(s.venue_type || 'Not provided').trim() === activeVenueType); if (!filtStops.length) return; }
 
       const cities = getUniqueCities(filtStops).slice(0, 5).join(', ');
+      const mapStops = routableStops(filtStops);
+      const dayStats = {complete: 0, pending: 0, technical: 0, other: 0};
+      filtStops.forEach(stop => {
+        const status = getStopState(stop).status || 'Incomplete';
+        if (status === 'Complete') dayStats.complete++;
+        else if (status === 'Technical Issue') dayStats.technical++;
+        else if (status === 'Other') dayStats.other++;
+        else dayStats.pending++;
+      });
       const tr = document.createElement('tr');
       tr.innerHTML = `
         <td style="color:${col.color};font-weight:600">${installer}</td>
         <td>Day ${idx + 1}</td>
         <td>${filtStops.length}</td>
+        <td style="color:var(--green);font-weight:700">${dayStats.complete}</td>
+        <td style="color:#a16207;font-weight:700">${dayStats.pending}</td>
+        <td style="color:var(--red);font-weight:700">${dayStats.technical}</td>
+        <td style="color:#7c3aed;font-weight:700">${dayStats.other}</td>
         <td style="color:var(--muted)">${cities}</td>
-        <td><a href="${gmRouteUrl(filtStops.slice(0, 10))}" target="_blank" rel="noopener" class="day-link">&#128506; Open</a></td>`;
+        <td>${mapStops.length
+          ? `<a href="${mapsUrlForStops(mapStops.slice(0, MAP_MAX_STOPS))}" target="_blank" rel="noopener" class="day-link">&#128506; Open (${mapStops.length})</a>`
+          : '<span class="day-link disabled">&#10003; Route complete</span>'}</td>`;
       tbody.appendChild(tr);
       rows++;
     });
@@ -961,6 +2039,72 @@ function renderSummaryTable(installers, dayF, q, content) {
   content.appendChild(table);
   document.getElementById('noRes').style.display = rows === 0 ? 'block' : 'none';
 }
+
+// ── DAY ADDRESS DETAILS ──
+let dayAddressKeyHandler = null;
+
+function closeDayAddresses() {
+  const modal = document.getElementById('dayAddressModal');
+  modal.classList.remove('open');
+  if (dayAddressKeyHandler) {
+    document.removeEventListener('keydown', dayAddressKeyHandler);
+    dayAddressKeyHandler = null;
+  }
+}
+
+function showDayAddresses(installer, dayNumber, stops, event) {
+  if (event) event.stopPropagation();
+  const modal = document.getElementById('dayAddressModal');
+  const title = document.getElementById('dayAddressTitle');
+  const subtitle = document.getElementById('dayAddressSubtitle');
+  const list = document.getElementById('dayAddressList');
+
+  title.textContent = `${installer} - Day ${dayNumber}`;
+  subtitle.textContent = `${stops.length} ${stops.length === 1 ? 'address' : 'addresses'} scheduled for this day.`;
+  list.replaceChildren();
+
+  stops.forEach((stop, index) => {
+    const state = getStopState(stop);
+    const row = document.createElement('div');
+    row.className = 'address-row';
+
+    const number = document.createElement('div');
+    number.className = 'address-number';
+    number.textContent = index + 1;
+
+    const details = document.createElement('div');
+    const store = document.createElement('div');
+    store.className = 'address-store';
+    store.textContent = state.store_name || `Stop ${index + 1}`;
+
+    const pa = document.createElement('div');
+    pa.className = 'address-pa';
+    pa.textContent = `PA · ${stopPA(stop) || 'Not provided'}`;
+
+    const address = document.createElement('div');
+    address.className = 'address-full';
+    address.textContent = [stop.addr, stop.city, stop.state, stop.zip]
+      .map(part => String(part || '').trim())
+      .filter(Boolean)
+      .join(', ') || 'Address not provided';
+
+    details.append(store, pa, address);
+    row.append(number, details);
+    list.appendChild(row);
+  });
+
+  modal.classList.add('open');
+  dayAddressKeyHandler = keyEvent => {
+    if (keyEvent.key === 'Escape') closeDayAddresses();
+  };
+  document.addEventListener('keydown', dayAddressKeyHandler);
+  document.getElementById('dayAddressClose').focus();
+}
+
+document.getElementById('dayAddressClose').addEventListener('click', closeDayAddresses);
+document.getElementById('dayAddressModal').addEventListener('click', event => {
+  if (event.target === event.currentTarget) closeDayAddresses();
+});
 
 // ── TOGGLE ──
 function togCard(btn, e) {
@@ -972,44 +2116,51 @@ function togCard(btn, e) {
   const hidden = list.style.display === 'none';
   [list, acts, strip].forEach(el => { if (el) el.style.display = hidden ? '' : 'none'; });
   btn.textContent = hidden ? '▲' : '▼';
+  btn.setAttribute('aria-expanded', String(hidden));
+  btn.title = hidden ? 'Collapse day' : 'Expand day';
 }
 function expandAll() {
   document.querySelectorAll('.stop-list,.day-acts,.day-cities').forEach(el => el.style.display = '');
-  document.querySelectorAll('.toggle').forEach(b => b.textContent = '▲');
+  document.querySelectorAll('.toggle').forEach(b => { b.textContent = '▲'; b.setAttribute('aria-expanded', 'true'); b.title = 'Collapse day'; });
 }
 function collapseAll() {
   document.querySelectorAll('.stop-list,.day-acts,.day-cities').forEach(el => el.style.display = 'none');
-  document.querySelectorAll('.toggle').forEach(b => b.textContent = '▼');
+  document.querySelectorAll('.toggle').forEach(b => { b.textContent = '▼'; b.setAttribute('aria-expanded', 'false'); b.title = 'Expand day'; });
 }
 
 // ── EXPORT ──
 function exportDayCSV(installer, dayNum, stops) {
-  const cols = ['Day','Stop #','ID','Store Name','Brand','Route Owner','Installer Name','Address','City','State','ZIP',
-                'Assigned Region','Status','Comment','ARA Modem Collected','Geocoded Address','Lat','Lng'];
+  const taskColumn = PROJECT_READ_ONLY ? 'ARA Modem Collected' : 'Additional Task';
+  const cols = ['Day','Stop #','ID','PA','Venue Type','DMA','Venue Code','Store Name','Brand','Route Owner','Installer Name','Address','City','State','ZIP',
+                'Assigned Region','Status','Comment',taskColumn,'Geocoded Address','Lat','Lng'];
   const rows = [cols, ...stops.map((s, i) => [
-    dayNum, i + 1, s.id, getStopState(s).store_name || '', getStopState(s).brand || '',
+    dayNum, i + 1, s.id, stopPA(s), s.venue_type || '', s.dma || '', getStopState(s).venue_code || s.venue_code || '', getStopState(s).store_name || '', getStopState(s).brand || '',
     installer, getStopState(s).installer_name || installer,
     s.addr, s.city.trim(), s.state, s.zip,
     s.assigned_region,
-    getStopState(s).status || 'Incomplete', getStopState(s).comment || '', getStopState(s).modem ? 'Yes' : 'No',
+    statusLabel(getStopState(s).status || 'Incomplete'), getStopState(s).comment || '',
+    (PROJECT_READ_ONLY ? getStopState(s).modem : getStopState(s).additional_task) ? 'Yes' : 'No',
     s.geocoded || '', s.lat || '', s.lng || ''
   ])];
   downloadCSV(rows, `${installer}_Day${dayNum}_route.csv`);
 }
 
 function exportAllCSV() {
-  const cols = ['Route Owner','Installer Name','Day','Stop #','ID','Store Name','Brand','Address','City','State',
-                'ZIP','Assigned Region','Status','Comment','ARA Modem Collected','Geocoded Address','Lat','Lng'];
+  const taskColumn = PROJECT_READ_ONLY ? 'ARA Modem Collected' : 'Additional Task';
+  const cols = ['Route Owner','Installer Name','Day','Stop #','ID','PA','Venue Type','DMA','Venue Code','Store Name','Brand','Address','City','State',
+                'ZIP','Assigned Region','Status','Comment',taskColumn,'Geocoded Address','Lat','Lng'];
   const rows = [cols];
-  ['Murugan','Abubaker','Xak'].forEach(installer => {
+  INSTALLERS.forEach(installer => {
     (ROUTES[installer] || []).forEach((day, dayIdx) => {
       day.forEach((s, stopIdx) => {
+        if (!matchesSelectedPA(s)) return;
         rows.push([
           installer, getStopState(s).installer_name || installer, dayIdx + 1, stopIdx + 1,
-          s.id, getStopState(s).store_name || '', getStopState(s).brand || '',
+          s.id, stopPA(s), s.venue_type || '', s.dma || '', getStopState(s).venue_code || s.venue_code || '', getStopState(s).store_name || '', getStopState(s).brand || '',
           s.addr, s.city.trim(), s.state, s.zip,
           s.assigned_region,
-          getStopState(s).status || 'Incomplete', getStopState(s).comment || '', getStopState(s).modem ? 'Yes' : 'No',
+          statusLabel(getStopState(s).status || 'Incomplete'), getStopState(s).comment || '',
+          (PROJECT_READ_ONLY ? getStopState(s).modem : getStopState(s).additional_task) ? 'Yes' : 'No',
           s.geocoded || '', s.lat || '', s.lng || ''
         ]);
       });

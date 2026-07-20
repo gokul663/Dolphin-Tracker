@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "engines": {
-    "node": "18.x"
+    "node": "24.x"
   },
   "dependencies": {
     "@hookform/resolvers": "5.0.1",
@@ -40,7 +40,7 @@
     "clsx": "2.1.1",
     "cmdk": "1.1.1",
     "cra-template": "1.2.0",
-    "date-fns": "4.1.0",
+    "date-fns": "3.6.0",
     "dayjs": "1.11.13",
     "embla-carousel-react": "8.6.0",
     "framer-motion": "11.18.0",
@@ -48,9 +48,9 @@
     "lodash": "4.18.1",
     "lucide-react": "0.516.0",
     "next-themes": "0.4.6",
-    "react": "19.0.0",
+    "react": "18.3.1",
     "react-day-picker": "8.10.1",
-    "react-dom": "19.0.0",
+    "react-dom": "18.3.1",
     "react-hook-form": "7.56.2",
     "react-resizable-panels": "3.0.1",
     "react-router-dom": "7.5.1",
@@ -83,7 +83,6 @@
   "devDependencies": {
     "@babel/plugin-proposal-private-property-in-object": "7.21.11",
     "@craco/craco": "7.1.0",
-    "@emergentbase/visual-edits": "https://assets.emergent.sh/npm/emergentbase-visual-edits-1.0.8.tgz",
     "@eslint/js": "9.23.0",
     "@types/lodash": "4.17.24",
     "autoprefixer": "10.4.20",
@@ -95,7 +94,8 @@
     "eslint-plugin-react-hooks": "5.2.0",
     "globals": "15.15.0",
     "postcss": "8.4.49",
-    "tailwindcss": "3.4.17"
+    "tailwindcss": "3.4.17",
+    "typescript": "4.9.5"
   },
   "overrides": {
     "schema-utils@2.7.0": {

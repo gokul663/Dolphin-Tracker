@@ -10,6 +10,7 @@ export default function Planner() {
   const navigate = useNavigate();
   const [projectName, setProjectName] = useState("");
   const [pa, setPa] = useState("");
+  const [projectType, setProjectType] = useState("");
   const src = `/route-planner.html?api=${encodeURIComponent(BACKEND_URL)}&project=${encodeURIComponent(id)}`;
 
   useEffect(() => {
@@ -28,6 +29,7 @@ export default function Planner() {
         if (!alive) return;
         setProjectName(data.name || "");
         setPa(data.pa || "");
+        setProjectType(data.project_type || "");
       } catch {
         if (alive) setProjectName("");
       }
@@ -89,18 +91,9 @@ export default function Planner() {
             >
               {projectName}
             </div>
-            {pa && (
-              <div
-                style={{
-                  fontFamily: "'IBM Plex Mono', monospace",
-                  fontSize: 9,
-                  color: "#64748b",
-                  marginTop: 2,
-                  textTransform: "uppercase",
-                  letterSpacing: 1,
-                }}
-              >
-                PA · {pa}
+            {projectType && (
+              <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 9, color: "#64748b", marginTop: 2, textTransform: "uppercase", letterSpacing: 1 }}>
+                TYPE · {projectType === "new_installation" ? "New Installation" : projectType === "offline" ? "Offline" : "New Installation + Offline"}
               </div>
             )}
           </div>

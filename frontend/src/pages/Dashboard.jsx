@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import axios from "axios";
 import {
   PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend, BarChart, Bar, XAxis, YAxis, CartesianGrid
@@ -8,9 +8,11 @@ import { Card } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
 import { Tabs, TabsList, TabsTrigger } from "../components/ui/tabs";
-import { Plus, Briefcase, Users, MapPin, CheckCircle2, Clock, AlertTriangle, ArrowRight, Trash2, Pencil, Database } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
+import { Input } from "../components/ui/input";
+import { Plus, Briefcase, Users, MapPin, CheckCircle2, Clock, AlertTriangle, ArrowRight, Trash2, Pencil, Database, SlidersHorizontal, Search, Check, Upload } from "lucide-react";
 import AddProjectDialog from "../components/AddProjectDialog";
-import { RenameProjectDialog, DeleteProjectDialog } from "../components/ProjectActions";
+import { RenameProjectDialog, DeleteProjectDialog, AppendProjectDataDialog } from "../components/ProjectActions";
 import { toast } from "sonner";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || "";
@@ -20,7 +22,7 @@ const ACCENT = "#0F5B7C"; // dark navy-teal accent
 const COLORS_INSTALLER = ["#0F5B7C", "#0891b2", "#7c3aed", "#dc2626", "#16a34a", "#ea580c", "#ca8a04"];
 const COLORS_STATUS = {
   Complete: "#16a34a",
-  Incomplete: "#ca8a04",
+  Upcoming: "#ca8a04",
   "Technical Issue": "#dc2626",
   Other: "#7c3aed",
 };
@@ -41,14 +43,18 @@ function KpiCard({ icon: Icon, label, value, color }) {
 
 export default function Dashboard() {
   const [projects, setProjects] = useState([]);
-  const [kpi, setKpi] = useState({});
   const [loading, setLoading] = useState(true);
   const [openDialog, setOpenDialog] = useState(false);
   const [tab, setTab] = useState("all");
   const [renameTarget, setRenameTarget] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [appendTarget, setAppendTarget] = useState(null);
   const [health, setHealth] = useState({ db: null, google: null });
+  const [selectedProjectIds, setSelectedProjectIds] = useState(null);
+  const [projectFilterOpen, setProjectFilterOpen] = useState(false);
+  const [projectSearch, setProjectSearch] = useState("");
   const navigate = useNavigate();
+  const location = useLocation();
 
   const fetchHealth = async () => {
     try {
@@ -69,7 +75,6 @@ export default function Dashboard() {
     try {
       const { data } = await axios.get(`${API}/projects`);
       setProjects(data.projects || []);
-      setKpi(data.kpi || {});
     } catch (e) {
       console.error(e);
       toast.error("Failed to load projects");
@@ -78,30 +83,90 @@ export default function Dashboard() {
     }
   };
 
-  useEffect(() => { fetchProjects(); }, []);
+  useEffect(() => {
+    setLoading(true);
+    fetchProjects();
+  }, [location.key]);
+
+  useEffect(() => {
+    const refresh = () => {
+      if (document.visibilityState === "visible") fetchProjects();
+    };
+    window.addEventListener("pageshow", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      window.removeEventListener("pageshow", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, []);
+
+  const filteredProjects = useMemo(() => {
+    if (selectedProjectIds === null) return projects;
+    return projects.filter(project => selectedProjectIds.includes(project.id));
+  }, [projects, selectedProjectIds]);
+
+  const filteredKpi = useMemo(() => {
+    const installers = new Set();
+    const totals = {total_projects: filteredProjects.length, total_sites: 0, total_installers: 0, complete: 0, pending: 0, technical: 0, other: 0};
+    filteredProjects.forEach(project => {
+      (project.installers || []).forEach(installer => installers.add(installer));
+      totals.total_sites += project.kpi?.total || 0;
+      totals.complete += project.kpi?.complete || 0;
+      totals.pending += project.kpi?.pending || 0;
+      totals.technical += project.kpi?.technical || 0;
+      totals.other += project.kpi?.other || 0;
+    });
+    totals.total_installers = installers.size;
+    return totals;
+  }, [filteredProjects]);
+
+  const toggleProjectFilter = (projectId) => {
+    setSelectedProjectIds(current => {
+      const selected = current === null ? projects.map(project => project.id) : current;
+      return selected.includes(projectId)
+        ? selected.filter(id => id !== projectId)
+        : [...selected, projectId];
+    });
+  };
+
+  const searchableProjects = useMemo(() => {
+    const query = projectSearch.trim().toLowerCase();
+    if (!query) return projects;
+    return projects.filter(project =>
+      [project.name, project.pa, project.project_type]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+        .includes(query)
+    );
+  }, [projects, projectSearch]);
+
+  const selectVisibleProjects = () => {
+    setSelectedProjectIds(searchableProjects.map(project => project.id));
+  };
 
   const installerData = useMemo(() => {
     const agg = {};
-    projects.forEach(p => {
+    filteredProjects.forEach(p => {
       Object.entries(p.kpi?.by_installer || {}).forEach(([k, v]) => {
         agg[k] = (agg[k] || 0) + v;
       });
     });
     return Object.entries(agg).map(([name, value]) => ({ name, value }));
-  }, [projects]);
+  }, [filteredProjects]);
 
   const statusData = useMemo(() => {
     return [
-      { name: "Complete", value: kpi.complete || 0 },
-      { name: "Incomplete", value: kpi.pending || 0 },
-      { name: "Technical Issue", value: kpi.technical || 0 },
-      { name: "Other", value: kpi.other || 0 },
+      { name: "Complete", value: filteredKpi.complete || 0 },
+      { name: "Upcoming", value: filteredKpi.pending || 0 },
+      { name: "Technical Issue", value: filteredKpi.technical || 0 },
+      { name: "Other", value: filteredKpi.other || 0 },
     ].filter(s => s.value > 0);
-  }, [kpi]);
+  }, [filteredKpi]);
 
   const sitesPerProject = useMemo(() => {
-    return projects.map(p => ({ name: p.name.length > 18 ? p.name.slice(0, 16) + "…" : p.name, sites: p.kpi?.total || 0 }));
-  }, [projects]);
+    return filteredProjects.map(p => ({ name: p.name.length > 18 ? p.name.slice(0, 16) + "…" : p.name, sites: p.kpi?.total || 0 }));
+  }, [filteredProjects]);
 
   const isCompleted = (p) => {
     const t = p.kpi?.total || 0;
@@ -154,14 +219,69 @@ export default function Dashboard() {
       <div className="max-w-[1900px] mx-auto px-6 py-8 space-y-8">
         {/* KPI Row */}
         <section>
-          <h2 className="text-xs uppercase tracking-[2px] font-mono text-slate-500 mb-3">Key Performance Indicators</h2>
+          <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
+            <h2 className="text-xs uppercase tracking-[2px] font-mono text-slate-500">Key Performance Indicators</h2>
+            <Popover open={projectFilterOpen} onOpenChange={setProjectFilterOpen}>
+              <PopoverTrigger asChild>
+                <Button variant="outline" className="border-slate-300 text-slate-700 bg-white font-mono text-xs">
+                  <SlidersHorizontal size={14} className="mr-2" />
+                  {selectedProjectIds === null ? "All projects" : `${selectedProjectIds.length} project${selectedProjectIds.length === 1 ? "" : "s"}`}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-96 bg-white border-slate-200 p-0">
+                <div className="p-3 border-b border-slate-200">
+                  <div className="text-xs font-mono uppercase tracking-wider text-slate-500 mb-2">KPI project filter</div>
+                  <div className="relative">
+                    <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <Input
+                      value={projectSearch}
+                      onChange={event => setProjectSearch(event.target.value)}
+                      placeholder="Search name, PA, or project type..."
+                      className="pl-9 bg-white border-slate-300"
+                      autoFocus
+                    />
+                  </div>
+                  <div className="flex gap-2 mt-3">
+                    <Button size="sm" onClick={selectVisibleProjects} disabled={!searchableProjects.length} className="bg-[#0F5B7C] hover:bg-[#0c4a64] text-white text-xs">
+                      Select visible ({searchableProjects.length})
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => setSelectedProjectIds(null)} className="border-slate-300 text-xs">All projects</Button>
+                    <Button size="sm" variant="outline" onClick={() => setSelectedProjectIds([])} className="border-slate-300 text-xs">Clear</Button>
+                  </div>
+                </div>
+                <div className="max-h-72 overflow-y-auto p-1">
+                  {searchableProjects.length === 0 ? (
+                    <div className="p-6 text-center text-sm text-slate-500">No matching projects</div>
+                  ) : searchableProjects.map(project => {
+                    const checked = selectedProjectIds === null || selectedProjectIds.includes(project.id);
+                    return (
+                      <button
+                        type="button"
+                        key={project.id}
+                        onClick={() => toggleProjectFilter(project.id)}
+                        className="w-full flex items-start gap-3 rounded-md px-3 py-2 text-left hover:bg-slate-100"
+                      >
+                        <span className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border ${checked ? "bg-[#0F5B7C] border-[#0F5B7C] text-white" : "border-slate-300 bg-white"}`}>
+                          {checked && <Check size={12} />}
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block truncate text-sm font-medium text-slate-800">{project.name}</span>
+                          <span className="block truncate text-[10px] font-mono text-slate-500">{project.pa ? `PA · ${project.pa}` : "No PA"}</span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </PopoverContent>
+            </Popover>
+          </div>
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-            <KpiCard icon={Briefcase} label="Total Projects" value={kpi.total_projects || 0} color="#0F5B7C" />
-            <KpiCard icon={MapPin} label="Total Sites" value={kpi.total_sites || 0} color="#0891b2" />
-            <KpiCard icon={Users} label="Total Installers" value={kpi.total_installers || 0} color="#7c3aed" />
-            <KpiCard icon={CheckCircle2} label="Completed" value={kpi.complete || 0} color="#16a34a" />
-            <KpiCard icon={Clock} label="Pending" value={kpi.pending || 0} color="#ca8a04" />
-            <KpiCard icon={AlertTriangle} label="Tech Issues" value={kpi.technical || 0} color="#dc2626" />
+            <KpiCard icon={Briefcase} label="Total Projects" value={filteredKpi.total_projects || 0} color="#0F5B7C" />
+            <KpiCard icon={MapPin} label="Total Sites" value={filteredKpi.total_sites || 0} color="#0891b2" />
+            <KpiCard icon={Users} label="Total Installers" value={filteredKpi.total_installers || 0} color="#7c3aed" />
+            <KpiCard icon={CheckCircle2} label="Completed" value={filteredKpi.complete || 0} color="#16a34a" />
+            <KpiCard icon={Clock} label="Upcoming" value={filteredKpi.pending || 0} color="#ca8a04" />
+            <KpiCard icon={AlertTriangle} label="Tech Issues" value={filteredKpi.technical || 0} color="#dc2626" />
           </div>
         </section>
 
@@ -273,8 +393,23 @@ export default function Dashboard() {
                             <span className="text-slate-400">PA:</span> {p.pa}
                           </div>
                         )}
+                        {p.project_type && (
+                          <div className="text-xs font-mono text-slate-500 mt-1">
+                            <span className="text-slate-400">Type:</span>{" "}
+                            {p.project_type === "new_installation" ? "New Installation" : p.project_type === "offline" ? "Offline" : "New Installation + Offline"}
+                          </div>
+                        )}
                       </div>
-                      <div className="flex gap-1 shrink-0">
+                      {!p.read_only && <div className="flex gap-1 shrink-0">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setAppendTarget(p); }}
+                          className="inline-flex items-center gap-1.5 text-[#0F5B7C] hover:text-[#0c4a64] px-2.5 py-1.5 rounded border border-[#0F5B7C]/25 bg-[#0F5B7C]/5 hover:bg-[#0F5B7C]/10 text-[11px] font-mono font-semibold uppercase tracking-wider"
+                          title="Append more CSV/XLSX data to this existing project"
+                          aria-label={`Append more CSV/XLSX data to ${p.name}`}
+                        >
+                          <Upload size={14} />
+                          <span>Append More</span>
+                        </button>
                         <button
                           onClick={(e) => { e.stopPropagation(); setRenameTarget(p); }}
                           className="text-slate-400 hover:text-[#0F5B7C] p-1.5 rounded hover:bg-slate-100"
@@ -289,7 +424,7 @@ export default function Dashboard() {
                         >
                           <Trash2 size={14} />
                         </button>
-                      </div>
+                      </div>}
                     </div>
 
                     <div className="flex flex-wrap gap-1.5 mb-3">
@@ -311,7 +446,7 @@ export default function Dashboard() {
                       </div>
                       <div className="bg-amber-50 border border-amber-200 rounded-lg p-2">
                         <div className="text-base font-bold font-mono text-amber-700">{p.kpi?.pending || 0}</div>
-                        <div className="text-[9px] uppercase tracking-wider text-slate-500">Pending</div>
+                        <div className="text-[9px] uppercase tracking-wider text-slate-500">Upcoming</div>
                       </div>
                       <div className="bg-rose-50 border border-rose-200 rounded-lg p-2">
                         <div className="text-base font-bold font-mono text-rose-700">{p.kpi?.technical || 0}</div>
@@ -356,6 +491,12 @@ export default function Dashboard() {
         onOpenChange={(o) => { if (!o) setDeleteTarget(null); }}
         project={deleteTarget}
         onDeleted={fetchProjects}
+      />
+      <AppendProjectDataDialog
+        open={!!appendTarget}
+        onOpenChange={(o) => { if (!o) setAppendTarget(null); }}
+        project={appendTarget}
+        onUpdated={fetchProjects}
       />
     </div>
   );

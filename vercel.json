@@ -1,6 +1,17 @@
 {
+  "$schema": "https://openapi.vercel.sh/vercel.json",
   "buildCommand": "cd frontend && CI=false yarn build",
   "outputDirectory": "frontend/build",
   "framework": "create-react-app",
-  "installCommand": "cd frontend && yarn install --ignore-engines"
+  "installCommand": "cd frontend && yarn install --frozen-lockfile",
+  "functions": {
+    "api/index.py": {
+      "maxDuration": 300,
+      "excludeFiles": "{tests/**,frontend/**,ara_tracker.py,backend/atlanta_seed.json,**/__pycache__/**}"
+    }
+  },
+  "rewrites": [
+    { "source": "/api/:path*", "destination": "/api/index.py" },
+    { "source": "/project/:path*", "destination": "/index.html" }
+  ]
 }

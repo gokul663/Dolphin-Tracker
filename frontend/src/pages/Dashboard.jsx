@@ -413,7 +413,8 @@ export default function Dashboard() {
                         <button
                           onClick={(e) => { e.stopPropagation(); setRenameTarget(p); }}
                           className="text-slate-400 hover:text-[#0F5B7C] p-1.5 rounded hover:bg-slate-100"
-                          title="Rename project"
+                          title="Edit project details"
+                          aria-label={`Edit details for ${p.name}`}
                         >
                           <Pencil size={14} />
                         </button>
@@ -452,6 +453,35 @@ export default function Dashboard() {
                         <div className="text-base font-bold font-mono text-rose-700">{p.kpi?.technical || 0}</div>
                         <div className="text-[9px] uppercase tracking-wider text-slate-500">Tech</div>
                       </div>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2 mb-3 text-center">
+                      <div className="bg-violet-50 border border-violet-200 rounded-lg p-2 min-w-0">
+                        <div className="text-xs font-semibold text-violet-700 truncate" title={p.pa || "—"}>{p.pa || "—"}</div>
+                        <div className="text-[9px] uppercase tracking-wider text-slate-500">PA</div>
+                      </div>
+                      <div className="bg-cyan-50 border border-cyan-200 rounded-lg p-2 min-w-0">
+                        <div className="text-xs font-semibold text-cyan-700 truncate" title={p.field_agent || "—"}>{p.field_agent || "—"}</div>
+                        <div className="text-[9px] uppercase tracking-wider text-slate-500">Field Agent</div>
+                      </div>
+                      <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-2 min-w-0">
+                        <div className="text-xs font-semibold text-indigo-700 truncate" title={p.partner_account || "—"}>{p.partner_account || "—"}</div>
+                        <div className="text-[9px] uppercase tracking-wider text-slate-500">Partner</div>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-4 gap-2 mb-3 text-center">
+                      {[
+                        ["PA %", p.pa_percentage, "text-violet-700", "bg-violet-50 border-violet-200"],
+                        ["Dolphin %", p.dolphin_percentage, "text-[#0F5B7C]", "bg-sky-50 border-sky-200"],
+                        ["Store %", p.store_percentage, "text-emerald-700", "bg-emerald-50 border-emerald-200"],
+                        ["FA %", p.fa_percentage, "text-cyan-700", "bg-cyan-50 border-cyan-200"],
+                      ].map(([label, value, color, background]) => (
+                        <div key={label} className={`${background} border rounded-lg p-2`}>
+                          <div className={`text-base font-bold font-mono ${color}`}>{value != null ? `${value}%` : "—"}</div>
+                          <div className="text-[9px] uppercase tracking-wider text-slate-500">{label}</div>
+                        </div>
+                      ))}
                     </div>
 
                     <div className="mb-2">

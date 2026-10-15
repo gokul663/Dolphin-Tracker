@@ -1,6 +1,11 @@
+import os
 import unittest
 
 from backend.file_parser import DMA_ALIASES, VENUE_CODE_ALIASES, VENUE_TYPE_ALIASES, clean_cell, normalize_column, normalize_status, read_csv_table
+
+os.environ.setdefault("MONGO_URL", "mongodb://localhost:27017")
+os.environ.setdefault("DB_NAME", "route_planner_test")
+from backend.server import apply_parsed_address, parse_us_formatted_address
 
 
 class CsvParserTests(unittest.TestCase):
@@ -75,6 +80,30 @@ class CsvParserTests(unittest.TestCase):
 
         self.assertEqual(table.iloc[0]["address"], "8181 W Sam Houston Pkwy S, Houston, TX 77072")
         self.assertEqual(table.iloc[1]["address"], "103 Davis Rd, League City, TX 77573")
+
+    def test_repairs_shifted_google_place_address(self):
+        stop = {
+            "store_name": "My Beer Store 12",
+            "addr": "My Beer Store",
+            "city": "12 3102 Harwood Rd Ste 100, Bedford",
+            "state": "",
+            "zip": "76021",
+            "geocoded": "My Beer Store, 12 3102 Harwood Rd Ste 100, Bedford, TX 76021, USA",
+        }
+
+        self.assertTrue(apply_parsed_address(stop))
+        self.assertEqual(stop["addr"], "12 3102 Harwood Rd Ste 100")
+        self.assertEqual(stop["city"], "Bedford")
+        self.assertEqual(stop["state"], "TX")
+        self.assertEqual(stop["zip"], "76021")
+
+    def test_parses_standard_google_formatted_address(self):
+        parsed = parse_us_formatted_address("3102 Harwood Rd Ste 100, Bedford, TX 76021, USA")
+
+        self.assertEqual(parsed["addr"], "3102 Harwood Rd Ste 100")
+        self.assertEqual(parsed["city"], "Bedford")
+        self.assertEqual(parsed["state"], "TX")
+        self.assertEqual(parsed["zip"], "76021")
 
 
 if __name__ == "__main__":

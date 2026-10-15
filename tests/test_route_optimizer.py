@@ -28,6 +28,22 @@ class RouteOptimizerTests(unittest.TestCase):
         self.assertTrue(all(len(day) <= 8 for days in routes.values() for day in days))
         self.assertEqual(sorted(len(days) for days in routes.values()), [2, 3])
 
+    def test_build_routes_do_not_mix_states_in_same_day(self):
+        texas = [
+            {"id": f"tx{i}", "state": "TX", "lat": 29.70 + i * 0.002, "lng": -95.40 + i * 0.002}
+            for i in range(6)
+        ]
+        illinois = [
+            {"id": f"il{i}", "state": "IL", "lat": 41.88 + i * 0.002, "lng": -87.63 + i * 0.002}
+            for i in range(4)
+        ]
+
+        routes = build_project_routes(texas + illinois, ["A"], per_day=8)
+
+        self.assertEqual(sum(len(day) for day in routes["A"]), 10)
+        self.assertTrue(all(len({stop["state"] for stop in day}) == 1 for day in routes["A"]))
+        self.assertEqual({frozenset(stop["state"] for stop in day) for day in routes["A"]}, {frozenset({"TX"}), frozenset({"IL"})})
+
     def test_natural_territories_do_not_force_equal_cross_region_counts(self):
         north = [
             {"id": f"n{i}", "lat": 33.0 + i * 0.003, "lng": -97.0 + i * 0.002}
@@ -153,6 +169,28 @@ class RouteOptimizerTests(unittest.TestCase):
             for day in updated["A"]
         ]
         self.assertEqual(city_groups, [{"Houston"}, {"Dallas"}])
+
+    def test_rebalance_does_not_mix_states_in_same_day(self):
+        texas = [
+            {"id": f"tx{i}", "state": "TX", "lat": 29.70 + i * 0.002, "lng": -95.40 + i * 0.002,
+             "installer": "A", "day": 1}
+            for i in range(5)
+        ]
+        illinois = [
+            {"id": f"il{i}", "state": "IL", "lat": 41.88 + i * 0.002, "lng": -87.63 + i * 0.002,
+             "installer": "A", "day": 1}
+            for i in range(5)
+        ]
+
+        updated = rebalance_incomplete_routes(
+            {"A": [texas + illinois]},
+            {stop["id"] for stop in texas + illinois},
+            ["A"],
+            per_day=8,
+            assignments_override={"A": texas + illinois},
+        )
+
+        self.assertTrue(all(len({stop["state"] for stop in day}) == 1 for day in updated["A"]))
 
     def test_new_installer_splits_busiest_existing_territory_without_dallas_outlier(self):
         dallas = [

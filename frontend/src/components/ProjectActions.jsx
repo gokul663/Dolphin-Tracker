@@ -14,17 +14,50 @@ const API = `${BACKEND_URL}/api`;
 
 export function RenameProjectDialog({ open, onOpenChange, project, onUpdated }) {
   const [name, setName] = useState("");
+  const [pa, setPa] = useState("");
+  const [fieldAgent, setFieldAgent] = useState("");
+  const [partnerAccount, setPartnerAccount] = useState("");
+  const [paPercentage, setPaPercentage] = useState("");
+  const [dolphinPercentage, setDolphinPercentage] = useState("");
+  const [storePercentage, setStorePercentage] = useState("");
+  const [faPercentage, setFaPercentage] = useState("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (project) setName(project.name || "");
+    if (project) {
+      setName(project.name || "");
+      setPa(project.pa || "");
+      setFieldAgent(project.field_agent || "");
+      setPartnerAccount(project.partner_account || "");
+      setPaPercentage(project.pa_percentage ?? "");
+      setDolphinPercentage(project.dolphin_percentage ?? "");
+      setStorePercentage(project.store_percentage ?? "");
+      setFaPercentage(project.fa_percentage ?? "");
+    }
   }, [project]);
 
   const submit = async () => {
     if (!name.trim()) { toast.error("Project name cannot be empty"); return; }
+    if (!pa.trim()) { toast.error("PA name is required"); return; }
+    if (paPercentage === "" || dolphinPercentage === "") { toast.error("PA and Dolphin percentages are required"); return; }
+    const percentages = [paPercentage, dolphinPercentage, storePercentage, faPercentage];
+    if (percentages.some(value => value !== "" && (!Number.isFinite(Number(value)) || Number(value) < 0 || Number(value) > 100))) {
+      toast.error("Percentages must be between 0 and 100");
+      return;
+    }
     setSaving(true);
     try {
-      await axios.patch(`${API}/projects/${project.id}`, { name: name.trim() });
+      const payload = {
+        name: name.trim(),
+        pa: pa.trim(),
+        field_agent: fieldAgent.trim(),
+        partner_account: partnerAccount.trim(),
+        pa_percentage: Number(paPercentage),
+        dolphin_percentage: Number(dolphinPercentage),
+      };
+      if (storePercentage !== "") payload.store_percentage = Number(storePercentage);
+      if (faPercentage !== "") payload.fa_percentage = Number(faPercentage);
+      await axios.patch(`${API}/projects/${project.id}`, payload);
       toast.success("Project updated");
       onUpdated?.();
       onOpenChange(false);
@@ -36,17 +69,47 @@ export function RenameProjectDialog({ open, onOpenChange, project, onUpdated }) 
   if (!project) return null;
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-white border-slate-200 text-slate-900 max-w-md">
+      <DialogContent className="bg-white border-slate-200 text-slate-900 max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="font-mono uppercase tracking-wider text-[#0F5B7C] flex items-center gap-2">
-            <Pencil size={16} /> Rename Project
+            <Pencil size={16} /> Edit Project Details
           </DialogTitle>
-          <DialogDescription className="text-slate-500">Update the project name. PA names come from the uploaded sheet.</DialogDescription>
+          <DialogDescription className="text-slate-500">Update project, partner, and revenue-share details.</DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-2">
           <div>
             <Label className="text-slate-700 font-mono text-xs uppercase tracking-wider">Project Name *</Label>
             <Input value={name} onChange={(e) => setName(e.target.value)} className="bg-white border-slate-300 text-slate-900 mt-2" />
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <Label className="text-slate-700 font-mono text-xs uppercase tracking-wider">PA Name *</Label>
+              <Input value={pa} onChange={(e) => setPa(e.target.value)} className="bg-white border-slate-300 mt-2" />
+            </div>
+            <div>
+              <Label className="text-slate-700 font-mono text-xs uppercase tracking-wider">Field Agent</Label>
+              <Input value={fieldAgent} onChange={(e) => setFieldAgent(e.target.value)} placeholder="If applicable" className="bg-white border-slate-300 mt-2" />
+            </div>
+            <div>
+              <Label className="text-slate-700 font-mono text-xs uppercase tracking-wider">Partner Account</Label>
+              <Input value={partnerAccount} onChange={(e) => setPartnerAccount(e.target.value)} placeholder="If applicable" className="bg-white border-slate-300 mt-2" />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {[
+              ["PA Percentage *", paPercentage, setPaPercentage],
+              ["Dolphin Percentage *", dolphinPercentage, setDolphinPercentage],
+              ["Store Percentage", storePercentage, setStorePercentage],
+              ["FA Percentage", faPercentage, setFaPercentage],
+            ].map(([label, value, setter]) => (
+              <div key={label}>
+                <Label className="text-slate-700 font-mono text-xs uppercase tracking-wider">{label}</Label>
+                <div className="relative mt-2">
+                  <Input type="number" min="0" max="100" step="0.01" value={value} onChange={(e) => setter(e.target.value)} className="bg-white border-slate-300 pr-8" />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">%</span>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
         <div className="flex justify-end gap-2 pt-2">
@@ -209,23 +272,23 @@ export function AppendProjectDataDialog({ open, onOpenChange, project, onUpdated
     setSaving(true);
     try {
       const stops = validRows.map(row => ({
-        addr: (row.formatted || row.address || "").split(",")[0],
-        city: ((row.formatted || "").split(",")[1] || "").trim(),
-        state: ((row.formatted || "").split(",")[2] || "").trim().split(" ")[0] || "",
-        zip: ((row.formatted || "").match(/\b\d{5}\b/) || [""])[0],
+        addr: row.addr || row.address || (row.formatted || "").split(",")[0],
+        city: row.city || "",
+        state: row.state || "",
+        zip: row.zip || ((row.formatted || "").match(/\b\d{5}\b/) || [""])[0],
         store_name: row.store_name || "",
         brand: "",
         lat: row.lat,
         lng: row.lng,
         geocoded: row.formatted || row.address,
-        pa: row.pa || "",
+        pa: row.pa || project.pa || "",
         venue_type: row.venue_type || "",
         dma: row.dma || "",
         venue_code: row.venue_code || "",
         initial_status: row.venue_status || "Incomplete",
       }));
       const { data } = await axios.post(`${API}/projects/${project.id}/append-stops`, {
-        pa: paNames.join(", "),
+        pa: paNames.join(", ") || project.pa || "",
         stops,
       });
       toast.success(`Appended ${data.appended} stops${data.skipped?.length ? ` · skipped ${data.skipped.length} duplicates` : ""}`);
@@ -260,7 +323,7 @@ export function AppendProjectDataDialog({ open, onOpenChange, project, onUpdated
           <div className="border-2 border-dashed border-slate-300 rounded-xl p-8 text-center hover:border-[#0F5B7C]/60 transition-colors">
             <Upload className="mx-auto text-slate-400 mb-3" size={38} />
             <p className="text-slate-700 mb-1 font-medium">Upload CSV or Excel file</p>
-            <p className="text-xs text-slate-500 font-mono mb-4">Same format as Add Project: address, store_name, PA. Optional: status, venue_type, dma, venue_code.</p>
+            <p className="text-xs text-slate-500 font-mono mb-4">Same format as Add Project: address and optional store_name. PA comes from the project. Optional: status, venue_type, dma, venue_code.</p>
             <input
               id="append-file-input"
               type="file"

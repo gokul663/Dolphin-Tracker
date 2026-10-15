@@ -120,6 +120,9 @@ select:focus,input:focus{border-color:var(--accent);}
 .map-info-title{font-weight:700;font-size:14px;margin-bottom:4px;}
 .map-info-line{font-size:12px;line-height:1.4;color:#475569;margin-top:3px;}
 .map-info-status{display:inline-block;margin-top:8px;padding:4px 7px;border-radius:999px;color:#fff;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;}
+.map-info-list{margin-top:8px;padding-top:8px;border-top:1px solid #e2e8f0;display:flex;flex-direction:column;gap:7px;}
+.map-info-stop{font-size:12px;line-height:1.35;color:#334155;}
+.map-info-stop b{display:block;color:#0f172a;font-size:12px;margin-bottom:1px;}
 @media(max-width:700px){#projectMap{height:360px;}.project-map-head{align-items:flex-start;}}
 
 
@@ -133,6 +136,7 @@ select:focus,input:focus{border-color:var(--accent);}
 .stop-readonly.comment-readonly{white-space:pre-wrap;overflow:visible;text-overflow:clip;color:var(--muted);line-height:1.5;font-weight:400;}
 .stop-input,.stop-select,.stop-comment{width:100%;background:#ffffff;border:1px solid #cbd5e1;color:var(--text);border-radius:8px;font-family:'IBM Plex Mono',monospace;font-size:12px;padding:8px 10px;outline:none;}
 .stop-input:focus,.stop-select:focus,.stop-comment:focus{border-color:var(--accent);}
+.duplicate-address-badge{display:inline-flex;align-items:center;width:max-content;margin-top:8px;padding:4px 8px;border-radius:999px;border:1px solid #f59e0b;background:#fffbeb;color:#92400e;font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.35px;}
 .stop-comment{min-height:64px;resize:vertical;line-height:1.45;}
 .field-actions{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;}
 .mini-btn{border:1px solid #cbd5e1;background:var(--card2);color:var(--muted);font-family:'IBM Plex Mono',monospace;font-size:10px;text-transform:uppercase;letter-spacing:.6px;border-radius:8px;padding:6px 9px;cursor:pointer;font-weight:800;}
@@ -252,6 +256,30 @@ select:focus,input:focus{border-color:var(--accent);}
       <label>Filter PA</label>
       <select id="selPA" onchange="applyFilters();updateHeaderStats()" style="min-width:150px">
         <option value="ALL">All PAs</option>
+      </select>
+    </div>
+    <div class="cg">
+      <label>State</label>
+      <select id="selState" onchange="applyFilters();updateHeaderStats()" style="min-width:130px">
+        <option value="ALL">All Project States</option>
+      </select>
+    </div>
+    <div class="cg">
+      <label>City</label>
+      <select id="selCity" onchange="applyFilters();updateHeaderStats()" style="min-width:170px">
+        <option value="ALL">All Cities</option>
+      </select>
+    </div>
+    <div class="cg">
+      <label>Filter DMA</label>
+      <select id="selDMA" onchange="applyFilters();updateHeaderStats()" style="min-width:170px">
+        <option value="ALL">All DMAs</option>
+      </select>
+    </div>
+    <div class="cg">
+      <label>Venue Type</label>
+      <select id="selVenueType" onchange="activeVenueType = this.value === 'ALL' ? null : this.value; applyFilters();updateHeaderStats()" style="min-width:170px">
+        <option value="ALL">All Venue Types</option>
       </select>
     </div>
     <div class="cg">
@@ -383,6 +411,7 @@ let activeInstaller = 'ALL';
 let activeVenueType = null;
 let PROJECT_READ_ONLY = false;
 let PROJECT_PA = '';
+let PROJECT_NAME = 'Route Planner';
 
 // ── MONGODB STATE ─────────────────────────────────────────────────────────
 // All stop statuses, comments, installer names, and task flags are stored
@@ -489,6 +518,10 @@ function renderProjectMapLegend() {
 function getMapFilteredStops() {
   const dayValue = document.getElementById('txtDay')?.value.trim() || '';
   const pa = selectedPA();
+  const dma = selectedDMA();
+  const venueType = selectedVenueType();
+  const stateFilter = selectedState();
+  const city = selectedCity();
   const q = (document.getElementById('txtQ')?.value || '').toLowerCase().trim();
   const selectedDays = dayValue
     ? dayValue.split(/[, ]+/).map(value => parseInt(value, 10)).filter(value => !Number.isNaN(value))
@@ -501,8 +534,7 @@ function getMapFilteredStops() {
       const dayNumber = index + 1;
       if (selectedDays && !selectedDays.includes(dayNumber)) return;
       (day || []).forEach(stop => {
-        if (!matchesSelectedPA(stop, pa)) return;
-        if (activeVenueType && String(stop.venue_type || 'Not provided').trim() !== activeVenueType) return;
+        if (!matchesProjectFilters(stop, pa, dma, venueType, stateFilter, city)) return;
         const state = getStopState(stop);
         const status = state.status || 'Incomplete';
         if (!activeMapStatuses.has(STATUS_MAP[status] ? status : 'Other')) return;
@@ -521,13 +553,36 @@ function getMapFilteredStops() {
   return rows;
 }
 
-function projectMarkerIcon(status) {
+function addressIdentity(stop) {
+  return [stop.addr, stop.city, stop.state, stop.zip]
+    .map(value => String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim())
+    .filter(Boolean)
+    .join('|') || `missing-address|${stop.id || ''}`;
+}
+
+function locationIdentity(row) {
+  const lat = Number(row.lat).toFixed(6);
+  const lng = Number(row.lng).toFixed(6);
+  return `${lat}|${lng}|${addressIdentity(row.stop)}`;
+}
+
+function duplicateAddressCounts(stops) {
+  const counts = {};
+  stops.forEach(stop => {
+    const key = addressIdentity(stop);
+    counts[key] = (counts[key] || 0) + 1;
+  });
+  return counts;
+}
+
+function projectMarkerIcon(status, count = 1) {
   const meta = STATUS_MAP[status] || STATUS_MAP.Other;
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="34" height="46" viewBox="0 0 34 46"><path fill="${meta.color}" stroke="#ffffff" stroke-width="3" d="M17 2C8.7 2 2 8.7 2 17c0 11.1 15 27 15 27s15-15.9 15-27C32 8.7 25.3 2 17 2z"/><circle cx="17" cy="17" r="6" fill="#ffffff"/></svg>`;
+  const label = count > 1 ? String(count > 99 ? '99+' : count) : '';
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="50" viewBox="0 0 40 50"><path fill="${meta.color}" stroke="#ffffff" stroke-width="3" d="M20 3C11.2 3 4 10.2 4 19c0 11.8 16 28 16 28s16-16.2 16-28C36 10.2 28.8 3 20 3z"/><circle cx="20" cy="19" r="${count > 1 ? 10 : 6}" fill="#ffffff"/><text x="20" y="${count > 99 ? 22 : 23}" text-anchor="middle" font-family="Arial, sans-serif" font-size="${count > 99 ? 8 : 12}" font-weight="800" fill="${meta.color}">${label}</text></svg>`;
   return {
     url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
-    scaledSize: new google.maps.Size(34, 46),
-    anchor: new google.maps.Point(17, 44)
+    scaledSize: new google.maps.Size(40, 50),
+    anchor: new google.maps.Point(20, 47)
   };
 }
 
@@ -583,12 +638,21 @@ function updateProjectMap() {
   const metaEl = document.getElementById('projectMapMeta');
   if (!metaEl) return;
   const rows = getMapFilteredStops();
+  const groupsByLocation = {};
+  rows.forEach(row => {
+    const key = locationIdentity(row);
+    groupsByLocation[key] ||= [];
+    groupsByLocation[key].push(row);
+  });
+  const locationGroups = Object.values(groupsByLocation);
+  const stackedGroups = locationGroups.filter(group => group.length > 1).length;
+  const stackedRecords = locationGroups.reduce((sum, group) => sum + (group.length > 1 ? group.length : 0), 0);
   const counts = {Complete: 0, Incomplete: 0, 'Technical Issue': 0, Other: 0};
   rows.forEach(({state}) => {
     const status = state.status || 'Incomplete';
     counts[STATUS_MAP[status] ? status : 'Other']++;
   });
-  metaEl.textContent = `${rows.length} mapped locations · ${counts.Complete} complete · ${counts.Incomplete} upcoming · ${counts['Technical Issue']} technical · ${counts.Other} other`;
+  metaEl.textContent = `${rows.length} records · ${locationGroups.length} map pins · ${stackedGroups ? `${stackedRecords} records at ${stackedGroups} same-address pins · ` : ''}${counts.Complete} complete · ${counts.Incomplete} upcoming · ${counts['Technical Issue']} technical · ${counts.Other} other`;
 
   if (!projectMap) {
     setProjectMapMessage(rows.length ? 'Loading Google Map…' : 'No mapped locations match the current filters.');
@@ -604,25 +668,41 @@ function updateProjectMap() {
   }
 
   const bounds = new google.maps.LatLngBounds();
-  rows.forEach(({stop, state, installer, dayNumber, lat, lng}) => {
-    const status = state.status || 'Incomplete';
+  locationGroups.forEach(group => {
+    const {stop, state, installer, dayNumber, lat, lng} = group[0];
+    const statuses = [...new Set(group.map(row => STATUS_MAP[row.state.status || 'Incomplete'] ? (row.state.status || 'Incomplete') : 'Other'))];
+    const status = statuses.length === 1 ? statuses[0] : 'Other';
     const meta = STATUS_MAP[status] || STATUS_MAP.Other;
+    const count = group.length;
     const marker = new google.maps.Marker({
       map: projectMap,
       position: {lat, lng},
-      title: `${state.store_name || stop.store_name || stop.addr} · ${status}`,
-      icon: projectMarkerIcon(status)
+      title: `${count > 1 ? `${count} locations` : (state.store_name || stop.store_name || stop.addr)} · ${meta.label}`,
+      icon: projectMarkerIcon(status, count),
+      zIndex: count > 1 ? 1000 + count : 1
     });
     marker.addListener('click', () => {
       const address = [stop.addr, stop.city, stop.state, stop.zip].filter(Boolean).join(', ');
+      const list = count > 1 ? `
+        <div class="map-info-list">
+          ${group.map((row, index) => {
+            const rowStatus = row.state.status || 'Incomplete';
+            const rowMeta = STATUS_MAP[rowStatus] || STATUS_MAP.Other;
+            return `<div class="map-info-stop">
+              <b>${index + 1}. ${escapeHtml(row.state.store_name || row.stop.store_name || 'Location')}</b>
+              ${escapeHtml(row.state.installer_name || row.installer || 'Not assigned')} · Day ${escapeHtml(row.dayNumber)} · <span style="color:${rowMeta.color};font-weight:700">${escapeHtml(rowMeta.label)}</span>
+            </div>`;
+          }).join('')}
+        </div>` : '';
       projectMapInfo.setContent(`
         <div class="map-info">
-          <div class="map-info-title">${escapeHtml(state.store_name || stop.store_name || 'Location')}</div>
+          <div class="map-info-title">${count > 1 ? `${count} locations at this address` : escapeHtml(state.store_name || stop.store_name || 'Location')}</div>
           <div class="map-info-line">${escapeHtml(address)}</div>
           <div class="map-info-line">Installer: ${escapeHtml(state.installer_name || installer || 'Not assigned')}</div>
           <div class="map-info-line">Route day: ${escapeHtml(dayNumber)}</div>
           ${stop.dma ? `<div class="map-info-line">DMA: ${escapeHtml(stop.dma)}</div>` : ''}
           <span class="map-info-status" style="background:${meta.color}">${escapeHtml(meta.label)}</span>
+          ${list}
         </div>
       `);
       projectMapInfo.open(projectMap, marker);
@@ -744,6 +824,98 @@ function matchesSelectedPA(stop, pa = selectedPA()) {
   return pa === 'ALL' || stopPA(stop) === pa;
 }
 
+function stopDMA(stop) {
+  return String(stop.dma || 'Not provided').trim() || 'Not provided';
+}
+
+function selectedDMA() {
+  return document.getElementById('selDMA')?.value || 'ALL';
+}
+
+function matchesSelectedDMA(stop, dma = selectedDMA()) {
+  return dma === 'ALL' || stopDMA(stop) === dma;
+}
+
+const US_STATE_NAMES = {
+  AL: 'Alabama', AK: 'Alaska', AZ: 'Arizona', AR: 'Arkansas', CA: 'California',
+  CO: 'Colorado', CT: 'Connecticut', DE: 'Delaware', FL: 'Florida', GA: 'Georgia',
+  HI: 'Hawaii', ID: 'Idaho', IL: 'Illinois', IN: 'Indiana', IA: 'Iowa',
+  KS: 'Kansas', KY: 'Kentucky', LA: 'Louisiana', ME: 'Maine', MD: 'Maryland',
+  MA: 'Massachusetts', MI: 'Michigan', MN: 'Minnesota', MS: 'Mississippi',
+  MO: 'Missouri', MT: 'Montana', NE: 'Nebraska', NV: 'Nevada', NH: 'New Hampshire',
+  NJ: 'New Jersey', NM: 'New Mexico', NY: 'New York', NC: 'North Carolina',
+  ND: 'North Dakota', OH: 'Ohio', OK: 'Oklahoma', OR: 'Oregon', PA: 'Pennsylvania',
+  RI: 'Rhode Island', SC: 'South Carolina', SD: 'South Dakota', TN: 'Tennessee',
+  TX: 'Texas', UT: 'Utah', VT: 'Vermont', VA: 'Virginia', WA: 'Washington',
+  WV: 'West Virginia', WI: 'Wisconsin', WY: 'Wyoming', DC: 'District of Columbia'
+};
+
+const US_STATE_CODES_BY_NAME = Object.fromEntries(
+  Object.entries(US_STATE_NAMES).map(([code, name]) => [name.toLowerCase(), code])
+);
+
+function canonicalUSStateCode(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  const upper = raw.toUpperCase().replace(/\./g, '').match(/\b[A-Z]{2}\b/)?.[0] || '';
+  if (US_STATE_NAMES[upper]) return upper;
+  const normalized = raw.toLowerCase().replace(/[^a-z ]+/g, ' ').replace(/\s+/g, ' ').trim();
+  return US_STATE_CODES_BY_NAME[normalized] || '';
+}
+
+function titleCaseCity(value) {
+  return String(value || '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase()
+    .replace(/\b([a-z])/g, char => char.toUpperCase());
+}
+
+function stopStateValue(stop) {
+  return canonicalUSStateCode(stop.state);
+}
+
+function selectedState() {
+  return document.getElementById('selState')?.value || 'ALL';
+}
+
+function matchesSelectedState(stop, state = selectedState()) {
+  return state === 'ALL' || stopStateValue(stop) === state;
+}
+
+function stopCityValue(stop) {
+  return titleCaseCity(stop.city);
+}
+
+function selectedCity() {
+  return document.getElementById('selCity')?.value || 'ALL';
+}
+
+function matchesSelectedCity(stop, city = selectedCity()) {
+  return city === 'ALL' || stopCityValue(stop) === city;
+}
+
+function stopVenueType(stop) {
+  return String(stop.venue_type || 'Not provided').trim() || 'Not provided';
+}
+
+function selectedVenueType() {
+  const value = document.getElementById('selVenueType')?.value || 'ALL';
+  return value === 'ALL' ? null : value;
+}
+
+function matchesSelectedVenueType(stop, venueType = selectedVenueType()) {
+  return !venueType || stopVenueType(stop) === venueType;
+}
+
+function matchesProjectFilters(stop, pa = selectedPA(), dma = selectedDMA(), venueType = selectedVenueType(), state = selectedState(), city = selectedCity()) {
+  return matchesSelectedPA(stop, pa)
+    && matchesSelectedDMA(stop, dma)
+    && matchesSelectedVenueType(stop, venueType)
+    && matchesSelectedState(stop, state)
+    && matchesSelectedCity(stop, city);
+}
+
 function configurePAFilter() {
   const select = document.getElementById('selPA');
   if (!select) return;
@@ -752,10 +924,82 @@ function configurePAFilter() {
   select.replaceChildren(new Option('All PAs', 'ALL'));
   values.forEach(value => select.appendChild(new Option(value, value)));
   select.value = values.includes(previous) ? previous : 'ALL';
-  select.disabled = values.length < 2;
+  select.disabled = false;
+}
+
+function configureDMAFilter() {
+  const select = document.getElementById('selDMA');
+  if (!select) return;
+  const previous = select.value;
+  const values = [...new Set(allRouteStops()
+    .map(stopDMA)
+    .filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b));
+  select.replaceChildren(new Option('All DMAs', 'ALL'));
+  values.forEach(value => select.appendChild(new Option(value, value)));
+  select.value = values.includes(previous) ? previous : 'ALL';
+  select.disabled = false;
+}
+
+function configureStateFilter() {
+  const select = document.getElementById('selState');
+  if (!select) return;
+  const previous = select.value;
+  const values = [...new Set(allRouteStops()
+    .map(stopStateValue)
+    .filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b));
+  select.replaceChildren(new Option('All Project States', 'ALL'));
+  values.forEach(value => select.appendChild(new Option(US_STATE_NAMES[value] || value, value)));
+  select.value = values.includes(previous) ? previous : 'ALL';
+  select.disabled = false;
+}
+
+function configureCityFilter() {
+  const select = document.getElementById('selCity');
+  if (!select) return;
+  const previous = select.value;
+  const state = selectedState();
+  const values = [...new Set(allRouteStops()
+    .filter(stop => stopStateValue(stop))
+    .filter(stop => matchesSelectedState(stop, state))
+    .map(stopCityValue)
+    .filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b));
+  select.replaceChildren(new Option('All Cities', 'ALL'));
+  values.forEach(value => select.appendChild(new Option(value, value)));
+  select.value = values.includes(previous) ? previous : 'ALL';
+  select.disabled = false;
+}
+
+function configureVenueTypeFilter() {
+  const select = document.getElementById('selVenueType');
+  if (!select) return;
+  const previous = activeVenueType || select.value;
+  const values = [...new Set(allRouteStops()
+    .map(stopVenueType)
+    .filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b));
+  select.replaceChildren(new Option('All Venue Types', 'ALL'));
+  values.forEach(value => select.appendChild(new Option(value, value)));
+  const next = values.includes(previous) ? previous : 'ALL';
+  select.value = next;
+  activeVenueType = next === 'ALL' ? null : next;
+  select.disabled = false;
+}
+
+function syncMetadataFilters() {
+  configureStateFilter();
+  configureCityFilter();
+  configureDMAFilter();
+  configureVenueTypeFilter();
 }
 
 function computeStatusStats(pa = selectedPA()) {
+  const dma = selectedDMA();
+  const venueType = selectedVenueType();
+  const stateFilter = selectedState();
+  const city = selectedCity();
   const techs = INSTALLERS;
   const stats = {
     total: 0,
@@ -772,7 +1016,7 @@ function computeStatusStats(pa = selectedPA()) {
   // counts move when the Installer Name dropdown is changed.
   techs.forEach(t => {
     const activeDays = (ROUTES[t] || []).filter(day => day.some(stop =>
-      matchesSelectedPA(stop, pa) && (getStopState(stop).status || 'Incomplete') !== 'Complete'
+      matchesProjectFilters(stop, pa, dma, venueType, stateFilter, city) && (getStopState(stop).status || 'Incomplete') !== 'Complete'
     )).length;
     stats.byTech[t] = {total: 0, complete: 0, pending: 0, technical: 0, other: 0, days: activeDays};
     stats.maxDays = Math.max(stats.maxDays, activeDays);
@@ -783,7 +1027,7 @@ function computeStatusStats(pa = selectedPA()) {
   techs.forEach(routeOwner => {
     (ROUTES[routeOwner] || []).forEach(day => {
       day.forEach(s => {
-        if (!matchesSelectedPA(s, pa)) return;
+        if (!matchesProjectFilters(s, pa, dma, venueType, stateFilter, city)) return;
         const state = getStopState(s);
         const assignedInstaller = techs.includes(state.installer_name) ? state.installer_name : routeOwner;
         const st = state.status || 'Incomplete';
@@ -830,7 +1074,11 @@ function updateMetadataBreakdown() {
   const panel = document.getElementById('metadataBreakdown');
   if (!panel) return;
   const pa = selectedPA();
-  const stops = allRouteStops().filter(stop => matchesSelectedPA(stop, pa));
+  const dmaFilter = selectedDMA();
+  const venueTypeFilter = selectedVenueType();
+  const stateFilter = selectedState();
+  const cityFilter = selectedCity();
+  const stops = allRouteStops().filter(stop => matchesProjectFilters(stop, pa, dmaFilter, venueTypeFilter, stateFilter, cityFilter));
   const normalizedAddress = stop => [stop.addr, stop.city, stop.state, stop.zip]
     .map(value => String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim())
     .filter(Boolean)
@@ -888,6 +1136,18 @@ function updateMetadataBreakdown() {
     const dmaAddresses = uniqueAddressCounts(dmaCounts.stops);
     summary.innerHTML = `<b>${dmaCounts.total} total screens</b><br>${dmaAddresses.total} unique addresses · <strong>${dmaAddresses.complete} done</strong> / <em>${dmaAddresses.pending} upcoming</em>`;
     card.appendChild(summary);
+    const dmaFilterBtn = document.createElement('button');
+    dmaFilterBtn.className = 'mini-btn dma-filter-btn' + (selectedDMA() === dma ? ' active' : '');
+    dmaFilterBtn.title = `Filter routes and map to ${dma} DMA`;
+    dmaFilterBtn.textContent = selectedDMA() === dma ? '✕ Clear DMA' : 'Filter DMA';
+    dmaFilterBtn.onclick = () => {
+      const select = document.getElementById('selDMA');
+      if (!select) return;
+      select.value = selectedDMA() === dma ? 'ALL' : dma;
+      applyFilters();
+      updateHeaderStats();
+    };
+    card.appendChild(dmaFilterBtn);
     Object.entries(dmaCounts.venueTypes).sort((a, b) => a[0].localeCompare(b[0])).forEach(([venueType, counts]) => {
       const row = document.createElement('div');
       row.className = 'venue-row';
@@ -904,6 +1164,8 @@ function updateMetadataBreakdown() {
       filterBtn.onclick = () => {
         const isActive = activeVenueType === venueType;
         activeVenueType = isActive ? null : venueType;
+        const select = document.getElementById('selVenueType');
+        if (select) select.value = activeVenueType || 'ALL';
         document.querySelectorAll('.venue-filter-btn').forEach(b => {
           b.classList.remove('active');
           b.textContent = 'Filter';
@@ -1177,10 +1439,12 @@ async function loadProject() {
     const rebalanceButton = document.getElementById('rebalanceBtn');
     if (rebalanceButton) rebalanceButton.style.display = PROJECT_READ_ONLY ? 'none' : '';
     PROJECT_PA = data.pa || '';
+    PROJECT_NAME = data.name || 'Route Planner';
     configureInstallers((data.installers || []).length ? data.installers : Object.keys(ROUTES));
     configurePAFilter();
+    syncMetadataFilters();
     // Update project name header if needed
-    document.title = (data.name || 'Route Planner') + ' — Route Planner';
+    document.title = PROJECT_NAME + ' — Route Planner';
   } catch(err) {
     console.error('Project load failed', err);
   }
@@ -1306,6 +1570,11 @@ function applyFilters() {
   const view    = document.getElementById('selView').value;
   const dayF    = document.getElementById('txtDay').value.trim();
   const pa      = selectedPA();
+  syncMetadataFilters();
+  const dma     = selectedDMA();
+  const venueType = selectedVenueType();
+  const state = selectedState();
+  const city = selectedCity();
   const q       = document.getElementById('txtQ').value.toLowerCase().trim();
   const content = document.getElementById('mainContent');
   content.innerHTML = '';
@@ -1315,20 +1584,20 @@ function applyFilters() {
     : [activeInstaller];
 
   if (view === 'summary') {
-    renderSummaryTable(installers, dayF, pa, q, content);
+    renderSummaryTable(installers, dayF, pa, dma, venueType, state, city, q, content);
   } else {
-    renderDayCards(installers, dayF, pa, q, content);
+    renderDayCards(installers, dayF, pa, dma, venueType, state, city, q, content);
   }
   updateProjectMap();
 }
 
-function renderDayCards(installers, dayF, pa, q, content) {
+function renderDayCards(installers, dayF, pa, dma, venueType, state, city, q, content) {
   let showing = 0;
   installers.forEach(installer => {
     const days = ROUTES[installer] || [];
     const col  = INSTALLER_COLORS[installer] || {color: COLOR_PALETTE[0]};
 
-    let filteredDays = days.map((d, i) => ({idx: i, stops: d.filter(stop => matchesSelectedPA(stop, pa))}))
+    let filteredDays = days.map((d, i) => ({idx: i, stops: d.filter(stop => matchesProjectFilters(stop, pa, dma, venueType, state, city))}))
       .filter(({stops}) => stops.length > 0);
 
     if (dayF) {
@@ -1343,19 +1612,13 @@ function renderDayCards(installers, dayF, pa, q, content) {
         )
       })).filter(({stops}) => stops.length > 0);
     }
-    if (activeVenueType) {
-      filteredDays = filteredDays.map(({idx, stops}) => ({
-        idx,
-        stops: stops.filter(s => String(s.venue_type || 'Not provided').trim() === activeVenueType)
-      })).filter(({stops}) => stops.length > 0);
-    }
 
     if (!filteredDays.length) return;
     showing++;
 
     const sh = document.createElement('div');
     sh.className = 'section-header';
-    const installerStops = days.flat().filter(stop => matchesSelectedPA(stop, pa));
+    const installerStops = days.flat().filter(stop => matchesProjectFilters(stop, pa, dma, venueType, state, city));
     const installerStats = {complete: 0, pending: 0, technical: 0, other: 0};
     installerStops.forEach(stop => {
       const status = getStopState(stop).status || 'Incomplete';
@@ -1367,7 +1630,7 @@ function renderDayCards(installers, dayF, pa, q, content) {
     const totalSites = installerStops.length;
     const activeStops = installerStats.pending + installerStats.technical + installerStats.other;
     const activeDayCount = days.filter(day => day.some(stop =>
-      matchesSelectedPA(stop, pa) && (getStopState(stop).status || 'Incomplete') !== 'Complete'
+      matchesProjectFilters(stop, pa, dma, venueType, state, city) && (getStopState(stop).status || 'Incomplete') !== 'Complete'
     )).length;
     const average = activeDayCount ? (activeStops / activeDayCount).toFixed(1) : '0';
     sh.innerHTML = `
@@ -1792,6 +2055,10 @@ function buildDayCard(installer, dayIdx, stops, totalDays, col) {
   const activeStops = routableStops(stops);
   const chunks = routeChunks(activeStops);
   const cities = getUniqueCities(stops).slice(0, 4).join(' · ');
+  const dayStates = [...new Set(stops.map(stopStateValue).filter(Boolean))];
+  const dayStateLabel = dayStates.length === 1 ? (US_STATE_NAMES[dayStates[0]] || dayStates[0]) : `${dayStates.length} states`;
+  const sameAddressCounts = duplicateAddressCounts(stops);
+  const duplicateRecords = Object.values(sameAddressCounts).reduce((sum, count) => sum + (count > 1 ? count : 0), 0);
   const dayStats = {complete: 0, pending: 0, technical: 0, other: 0};
   stops.forEach(stop => {
     const status = getStopState(stop).status || 'Incomplete';
@@ -1814,6 +2081,7 @@ function buildDayCard(installer, dayIdx, stops, totalDays, col) {
       <div class="day-title" style="color:${col.color}">Day ${dayIdx + 1}
         <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:400;opacity:.6">of ${totalDays}</span>
       </div>
+      <span class="territory-tag">${dayStateLabel}</span>
     </div>
     <div class="day-meta">
       <div class="day-statuses">
@@ -1823,6 +2091,7 @@ function buildDayCard(installer, dayIdx, stops, totalDays, col) {
         ${dayStats.other ? `<span class="day-status other">${dayStats.other} other</span>` : ''}
       </div>
       <span class="day-badge">${activeStops.length} active · ${stops.length} records</span>
+      ${duplicateRecords ? `<span class="day-badge" title="Locations that share the exact same address">${duplicateRecords} same-address records</span>` : ''}
       <button class="toggle" type="button" aria-expanded="true" title="Collapse day" onclick="togCard(this,event)">&#9650;</button>
     </div>`;
   const infoButton = document.createElement('button');
@@ -1883,6 +2152,23 @@ function buildDayCard(installer, dayIdx, stops, totalDays, col) {
     pa.className = 'stop-pa';
     pa.textContent = `PA · ${stopPA(s) || 'Not provided'}`;
     body.appendChild(pa);
+
+    const ownerGrid = document.createElement('div');
+    ownerGrid.className = 'stop-field-grid';
+    ownerGrid.appendChild(makeStopTextField('Owner Name *', s, key, 'owner_name', s.owner_name || '', 'Owner name'));
+    ownerGrid.appendChild(makeStopTextField('Owner Phone *', s, key, 'owner_phone', s.owner_phone || '', 'Phone number'));
+    ownerGrid.appendChild(makeStopTextField('Owner Email *', s, key, 'owner_email', s.owner_email || '', 'Email ID'));
+    ownerGrid.appendChild(makeStopTextField('Payee Name', s, key, 'payee_name', s.payee_name || '', 'Only if paying directly'));
+    body.appendChild(ownerGrid);
+
+    const sameAddressTotal = sameAddressCounts[addressIdentity(s)] || 0;
+    if (sameAddressTotal > 1) {
+      const duplicateBadge = document.createElement('div');
+      duplicateBadge.className = 'duplicate-address-badge';
+      duplicateBadge.textContent = `Same Address x${sameAddressTotal}`;
+      duplicateBadge.title = `${sameAddressTotal} records share this address in this route day`;
+      body.appendChild(duplicateBadge);
+    }
 
     const addressGrid = document.createElement('div');
     addressGrid.className = 'stop-field-grid';
@@ -1983,7 +2269,7 @@ function buildDayCard(installer, dayIdx, stops, totalDays, col) {
   return card;
 }
 
-function renderSummaryTable(installers, dayF, pa, q, content) {
+function renderSummaryTable(installers, dayF, pa, dma, venueType, state, city, q, content) {
   const table = document.createElement('table');
   table.className = 'summary-table';
   table.innerHTML = `<thead><tr>
@@ -2000,12 +2286,11 @@ function renderSummaryTable(installers, dayF, pa, q, content) {
         const nums = dayF.split(/[, ]+/).map(x => parseInt(x)).filter(x => !isNaN(x));
         if (!nums.includes(idx + 1)) return;
       }
-      let filtStops = stops.filter(stop => matchesSelectedPA(stop, pa));
+      let filtStops = stops.filter(stop => matchesProjectFilters(stop, pa, dma, venueType, state, city));
       if (!filtStops.length) return;
       if (q) filtStops = stops.filter(s =>
-        matchesSelectedPA(s, pa) && [s.addr, s.city, s.zip, stopPA(s), s.dma, s.venue_type, getStopState(s).venue_code, getStopState(s).store_name, getStopState(s).brand, getStopState(s).installer_name, getStopState(s).status, getStopState(s).comment].join(' ').toLowerCase().includes(q));
+        matchesProjectFilters(s, pa, dma, venueType, state, city) && [s.addr, s.city, s.zip, stopPA(s), s.dma, s.venue_type, getStopState(s).venue_code, getStopState(s).store_name, getStopState(s).brand, getStopState(s).installer_name, getStopState(s).status, getStopState(s).comment].join(' ').toLowerCase().includes(q));
       if (!filtStops.length && q) return;
-      if (activeVenueType) { filtStops = filtStops.filter(s => String(s.venue_type || 'Not provided').trim() === activeVenueType); if (!filtStops.length) return; }
 
       const cities = getUniqueCities(filtStops).slice(0, 5).join(', ');
       const mapStops = routableStops(filtStops);
@@ -2150,10 +2435,15 @@ function exportAllCSV() {
   const cols = ['Route Owner','Installer Name','Day','Stop #','ID','PA','Venue Type','DMA','Venue Code','Store Name','Brand','Address','City','State',
                 'ZIP','Assigned Region','Status','Comment',taskColumn,'Geocoded Address','Lat','Lng'];
   const rows = [cols];
+  const pa = selectedPA();
+  const dma = selectedDMA();
+  const venueType = selectedVenueType();
+  const state = selectedState();
+  const city = selectedCity();
   INSTALLERS.forEach(installer => {
     (ROUTES[installer] || []).forEach((day, dayIdx) => {
       day.forEach((s, stopIdx) => {
-        if (!matchesSelectedPA(s)) return;
+        if (!matchesProjectFilters(s, pa, dma, venueType, state, city)) return;
         rows.push([
           installer, getStopState(s).installer_name || installer, dayIdx + 1, stopIdx + 1,
           s.id, stopPA(s), s.venue_type || '', s.dma || '', getStopState(s).venue_code || s.venue_code || '', getStopState(s).store_name || '', getStopState(s).brand || '',
@@ -2166,7 +2456,15 @@ function exportAllCSV() {
       });
     });
   });
-  downloadCSV(rows, 'atlanta_all_routes_' + new Date().toISOString().slice(0, 10) + '.csv');
+  downloadCSV(rows, `${filenameSlug(PROJECT_NAME)}_all_routes_${new Date().toISOString().slice(0, 10)}.csv`);
+}
+
+function filenameSlug(value) {
+  return String(value || 'route_planner')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '') || 'route_planner';
 }
 
 function downloadCSV(rows, filename) {

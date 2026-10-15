@@ -27,6 +27,16 @@ def route_miles(route: List[dict]) -> float:
     return sum(distance(route[i - 1], route[i]) for i in range(1, len(route)))
 
 
+def state_key(stop: dict) -> str:
+    value = str(stop.get("state") or "").strip().upper().replace(".", "")
+    parts = value.split()
+    if len(value) == 2:
+        return value
+    if parts and len(parts[0]) == 2:
+        return parts[0]
+    return value or "UNKNOWN"
+
+
 def nearest_neighbor(rows: List[dict], anchor: dict = None) -> List[dict]:
     if len(rows) <= 1:
         return rows[:]
@@ -250,6 +260,18 @@ def make_day_batches(rows: List[dict], per_day: int = 9) -> List[List[dict]]:
     return orient_day_directions(order_clusters_for_continuity(improve_day_boundaries(days)))
 
 
+def make_state_day_batches(rows: List[dict], per_day: int = 9) -> List[List[dict]]:
+    """Build daily routes state-by-state so one route day does not span states."""
+    by_state: Dict[str, List[dict]] = {}
+    for row in rows:
+        by_state.setdefault(state_key(row), []).append(row)
+
+    days: List[List[dict]] = []
+    for _, state_rows in sorted(by_state.items(), key=lambda item: item[0]):
+        days.extend(make_day_batches(state_rows, per_day))
+    return days
+
+
 def optimize_existing_day(rows: List[dict]) -> List[dict]:
     """Optimize stop order without changing which day each stop belongs to."""
     located = [row for row in rows if row.get("lat") is not None and row.get("lng") is not None]
@@ -291,7 +313,11 @@ def reassign_stop_preserving_days(
     moved["installer"] = target_installer
 
     target_days = copied[target_installer]
-    available = [index for index, day in enumerate(target_days) if len(day) < per_day]
+    moved_state = state_key(moved)
+    available = [
+        index for index, day in enumerate(target_days)
+        if len(day) < per_day and all(state_key(stop) == moved_state for stop in day)
+    ]
     if available:
         if moved.get("lat") is not None and moved.get("lng") is not None:
             def proximity(day_index):
@@ -353,7 +379,7 @@ def rebalance_incomplete_routes(
         day_count = max(fixed_days, default=0)
         days = [fixed_days.get(index, [])[:] for index in range(1, day_count + 1)]
         located = [stop for stop in assigned if stop.get("lat") is not None and stop.get("lng") is not None]
-        pending_days = make_day_batches(located, per_day)
+        pending_days = make_state_day_batches(located, per_day)
         missing = [stop for stop in assigned if stop not in located]
         for stop in missing:
             if not pending_days or len(pending_days[-1]) >= per_day:
@@ -364,7 +390,13 @@ def rebalance_incomplete_routes(
         # but only pending stops consume the daily route capacity.
         used_days = set()
         for cluster in pending_days:
-            available = [index for index in range(len(days)) if index not in used_days]
+            cluster_state = state_key(cluster[0]) if cluster else "UNKNOWN"
+            available = [
+                index for index in range(len(days))
+                if index not in used_days and (
+                    not days[index] or all(state_key(stop) == cluster_state for stop in days[index])
+                )
+            ]
             if not available:
                 days.append([])
                 target = len(days) - 1
@@ -515,12 +547,19 @@ def build_project_routes(stops: List[dict], installers: List[str], per_day: int 
     for installer in installers:
         assigned = assignments.get(installer, [])
         located = [stop for stop in assigned if stop.get("lat") is not None and stop.get("lng") is not None]
-        days = make_day_batches(located, per_day)
+        days = make_state_day_batches(located, per_day)
         missing = [stop for stop in assigned if stop not in located]
         if missing:
-            if not days:
-                days = [[]]
-            days[-1].extend(missing)
+            for stop in missing:
+                stop_state = state_key(stop)
+                target = next(
+                    (day for day in days if len(day) < per_day and all(state_key(row) == stop_state for row in day)),
+                    None,
+                )
+                if target is None:
+                    target = []
+                    days.append(target)
+                target.append(stop)
         for day_number, day in enumerate(days, start=1):
             for stop in day:
                 stop["installer"] = installer

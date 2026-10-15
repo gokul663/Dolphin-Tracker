@@ -11,10 +11,10 @@ import pandas as pd
 import requests
 try:
     from .file_parser import ADDRESS_ALIASES, DMA_ALIASES, PA_ALIASES, STATUS_ALIASES, STORE_ALIASES, VENUE_CODE_ALIASES, VENUE_TYPE_ALIASES, clean_cell, normalize_column, normalize_status, read_csv_table
-    from .route_optimizer import build_project_routes, clean_territory_outliers, rebalance_incomplete_routes, reassign_stop_preserving_days, route_miles, split_territory_for_new_installer
+    from .route_optimizer import build_project_routes, clean_territory_outliers, rebalance_incomplete_routes, reassign_stop_preserving_days, route_miles, split_territory_for_new_installer, state_key
 except ImportError:
     from file_parser import ADDRESS_ALIASES, DMA_ALIASES, PA_ALIASES, STATUS_ALIASES, STORE_ALIASES, VENUE_CODE_ALIASES, VENUE_TYPE_ALIASES, clean_cell, normalize_column, normalize_status, read_csv_table
-    from route_optimizer import build_project_routes, clean_territory_outliers, rebalance_incomplete_routes, reassign_stop_preserving_days, route_miles, split_territory_for_new_installer
+    from route_optimizer import build_project_routes, clean_territory_outliers, rebalance_incomplete_routes, reassign_stop_preserving_days, route_miles, split_territory_for_new_installer, state_key
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
@@ -62,6 +62,10 @@ class Stop(BaseModel):
     venue_type: str = ""
     dma: str = ""
     venue_code: str = ""
+    owner_name: str = ""
+    owner_phone: str = ""
+    owner_email: str = ""
+    payee_name: str = ""
 
 
 class ProjectCreate(BaseModel):
@@ -69,6 +73,12 @@ class ProjectCreate(BaseModel):
     pa: str
     project_type: str
     installers: List[str] = Field(default_factory=list)
+    field_agent: str = ""
+    partner_account: str = ""
+    pa_percentage: float
+    dolphin_percentage: float
+    store_percentage: Optional[float] = None
+    fa_percentage: Optional[float] = None
     stops: List[Dict[str, Any]] = Field(default_factory=list)
 
 
@@ -77,6 +87,12 @@ class ProjectUpdate(BaseModel):
     pa: Optional[str] = None
     project_type: Optional[str] = None
     installers: Optional[List[str]] = None
+    field_agent: Optional[str] = None
+    partner_account: Optional[str] = None
+    pa_percentage: Optional[float] = None
+    dolphin_percentage: Optional[float] = None
+    store_percentage: Optional[float] = None
+    fa_percentage: Optional[float] = None
     confirm_name: Optional[str] = None  # For 2-step destructive ops
 
 
@@ -106,6 +122,10 @@ class StopDetailsUpdate(BaseModel):
     venue_type: Optional[str] = None
     dma: Optional[str] = None
     venue_code: Optional[str] = None
+    owner_name: Optional[str] = None
+    owner_phone: Optional[str] = None
+    owner_email: Optional[str] = None
+    payee_name: Optional[str] = None
 
 
 class InstallerRename(BaseModel):
@@ -171,6 +191,76 @@ def duplicate_key(stop: dict) -> str:
         return f"venue|{venue_code}"
     address = normalized_address_key(stop)
     return f"addr|{address}" if address else ""
+
+
+def parse_us_formatted_address(formatted: str, store_name: str = "") -> dict:
+    parts = [part.strip() for part in clean_cell(formatted).split(",") if part.strip()]
+    if parts and parts[-1].upper() in {"USA", "UNITED STATES"}:
+        parts = parts[:-1]
+    if len(parts) < 3:
+        return {}
+
+    state_zip = parts[-1]
+    match = re.search(r"\b([A-Z]{2})\b(?:\s+(\d{5})(?:-\d{4})?)?", state_zip.upper())
+    if not match:
+        return {}
+
+    state = match.group(1)
+    zip_code = match.group(2) or ""
+    city = parts[-2]
+    street_parts = parts[:-2]
+    store = clean_cell(store_name).lower()
+    if len(street_parts) > 1:
+        first = street_parts[0].lower()
+        if (store and first == store) or not re.search(r"\d", street_parts[0]):
+            street_parts = street_parts[1:]
+    street = ", ".join(street_parts).strip()
+    if not street or not city:
+        return {}
+    return {"addr": street, "city": city, "state": state, "zip": zip_code}
+
+
+def apply_parsed_address(stop: dict) -> bool:
+    parsed = parse_us_formatted_address(stop.get("geocoded", ""), stop.get("store_name", ""))
+    if not parsed:
+        return False
+    current_addr = clean_cell(stop.get("addr", ""))
+    current_city = clean_cell(stop.get("city", ""))
+    store = clean_cell(stop.get("store_name", ""))
+    shifted = (
+        current_addr
+        and store
+        and current_addr.lower() == store.lower()
+    ) or bool(re.search(r"\d", current_city) and "," in current_city)
+    missing = not current_addr or not current_city or not clean_cell(stop.get("state", "")) or not clean_cell(stop.get("zip", ""))
+    if not shifted and not missing:
+        return False
+    stop.update(parsed)
+    return True
+
+
+def repair_project_stop_addresses(project: dict) -> bool:
+    repaired = False
+    for stop in project.get("stops", []):
+        if apply_parsed_address(stop):
+            repaired = True
+    return repaired
+
+
+def google_address_parts(result: dict) -> dict:
+    parts = {kind: "" for kind in ("street_number", "route", "locality", "administrative_area_level_1", "postal_code")}
+    for component in result.get("address_components", []):
+        types = component.get("types", [])
+        for kind in parts:
+            if kind in types:
+                parts[kind] = component.get("short_name" if kind == "administrative_area_level_1" else "long_name", "")
+    street = " ".join(filter(None, [parts["street_number"], parts["route"]])).strip()
+    return {
+        "addr": street,
+        "city": parts["locality"],
+        "state": parts["administrative_area_level_1"],
+        "zip": parts["postal_code"],
+    }
 
 
 async def rebalance_project_incomplete(project: dict, installers: List[str], new_installer: str = None) -> tuple:
@@ -385,11 +475,18 @@ def google_geocode(address: str) -> dict:
     if status == "OK" and results:
         top = results[0]
         loc = top["geometry"]["location"]
+        parsed = google_address_parts(top)
+        if not parsed.get("addr"):
+            parsed = parse_us_formatted_address(top.get("formatted_address", ""))
         return {
             "ok": True,
             "status": status,
             "formatted": top.get("formatted_address", ""),
             "lat": loc["lat"], "lng": loc["lng"],
+            "addr": parsed.get("addr", ""),
+            "city": parsed.get("city", ""),
+            "state": parsed.get("state", ""),
+            "zip": parsed.get("zip", ""),
             "partial": bool(top.get("partial_match")),
             "suggestions": [r.get("formatted_address", "") for r in results[:5]],
         }
@@ -501,6 +598,12 @@ async def list_projects():
             "name": p.get("name"),
             "pa": p.get("pa", ""),
             "project_type": p.get("project_type", ""),
+            "field_agent": p.get("field_agent", ""),
+            "partner_account": p.get("partner_account", ""),
+            "pa_percentage": p.get("pa_percentage"),
+            "dolphin_percentage": p.get("dolphin_percentage"),
+            "store_percentage": p.get("store_percentage"),
+            "fa_percentage": p.get("fa_percentage"),
             "installers": p.get("installers", []),
             "created_at": p.get("created_at"),
             "read_only": pid in EXTERNAL_PROJECT_IDS,
@@ -523,6 +626,11 @@ async def get_project(project_id: str):
     p = await projects_col.find_one({"id": project_id}, {"_id": 0})
     if not p:
         raise HTTPException(404, "Project not found")
+    if project_id not in EXTERNAL_PROJECT_IDS and repair_project_stop_addresses(p):
+        await projects_col.update_one(
+            {"id": project_id},
+            {"$set": {"stops": p.get("stops", []), "updated_at": _now()}},
+        )
     bundle = project_to_routes(p)
     return {
         "ok": True,
@@ -530,6 +638,12 @@ async def get_project(project_id: str):
         "name": p.get("name"),
         "pa": p.get("pa", ""),
         "project_type": p.get("project_type", ""),
+        "field_agent": p.get("field_agent", ""),
+        "partner_account": p.get("partner_account", ""),
+        "pa_percentage": p.get("pa_percentage"),
+        "dolphin_percentage": p.get("dolphin_percentage"),
+        "store_percentage": p.get("store_percentage"),
+        "fa_percentage": p.get("fa_percentage"),
         "read_only": project_id in EXTERNAL_PROJECT_IDS,
         "installers": p.get("installers", []),
         "routes": bundle["routes"],
@@ -543,6 +657,15 @@ async def create_project(payload: ProjectCreate):
         raise HTTPException(422, "Project name required")
     if not payload.pa.strip():
         raise HTTPException(422, "PA name is required in the uploaded sheet")
+    percentages = {
+        "PA percentage": payload.pa_percentage,
+        "Dolphin percentage": payload.dolphin_percentage,
+        "Store percentage": payload.store_percentage,
+        "FA percentage": payload.fa_percentage,
+    }
+    for label, value in percentages.items():
+        if value is not None and (not math.isfinite(value) or value < 0 or value > 100):
+            raise HTTPException(422, f"{label} must be between 0 and 100")
     allowed_project_types = {"new_installation", "offline", "new_installation_and_offline"}
     if payload.project_type not in allowed_project_types:
         raise HTTPException(422, "Select a valid project type")
@@ -568,6 +691,12 @@ async def create_project(payload: ProjectCreate):
         "name": payload.name.strip(),
         "pa": payload.pa.strip(),
         "project_type": payload.project_type,
+        "field_agent": payload.field_agent.strip(),
+        "partner_account": payload.partner_account.strip(),
+        "pa_percentage": payload.pa_percentage,
+        "dolphin_percentage": payload.dolphin_percentage,
+        "store_percentage": payload.store_percentage,
+        "fa_percentage": payload.fa_percentage,
         "installers": payload.installers,
         "stops": stops,
         "routing_version": 2,
@@ -651,15 +780,23 @@ async def append_project_stops(project_id: str, payload: ProjectAppend):
             raise HTTPException(422, f"Invalid status '{initial_status}'")
 
         installer = min(installers, key=lambda name: len(by_installer.get(name, [])))
-        existing_days = [
-            int(row.get("day", 1))
-            for row in by_installer.get(installer, [])
-            if str(row.get("day", "")).isdigit()
+        stop_state = state_key(stop)
+        installer_stops = by_installer.get(installer, [])
+        day_groups: Dict[int, List[dict]] = {}
+        for row in installer_stops:
+            try:
+                row_day = max(1, int(row.get("day", 1)))
+            except (TypeError, ValueError):
+                row_day = 1
+            day_groups.setdefault(row_day, []).append(row)
+        same_state_days = [
+            day_number for day_number, rows in day_groups.items()
+            if len(rows) < STOPS_PER_DAY and all(state_key(row) == stop_state for row in rows)
         ]
-        day = max(existing_days or [1])
-        current_day_count = sum(1 for row in by_installer.get(installer, []) if int(row.get("day", 1) or 1) == day)
-        if current_day_count >= STOPS_PER_DAY:
-            day += 1
+        if same_state_days:
+            day = min(same_state_days, key=lambda day_number: (len(day_groups[day_number]), day_number))
+        else:
+            day = max(day_groups.keys(), default=0) + 1
 
         stop["id"] = f"S{max_id + offset}"
         stop["installer"] = installer
@@ -738,6 +875,16 @@ async def update_project(project_id: str, payload: ProjectUpdate):
         update["project_type"] = payload.project_type
     if payload.installers is not None:
         update["installers"] = payload.installers
+    for field in ("field_agent", "partner_account"):
+        value = getattr(payload, field)
+        if value is not None:
+            update[field] = value.strip()
+    for field in ("pa_percentage", "dolphin_percentage", "store_percentage", "fa_percentage"):
+        value = getattr(payload, field)
+        if value is not None:
+            if not math.isfinite(value) or value < 0 or value > 100:
+                raise HTTPException(422, f"{field.replace('_', ' ').title()} must be between 0 and 100")
+            update[field] = value
     if not update:
         raise HTTPException(422, "No fields to update")
     update["updated_at"] = _now()
@@ -977,6 +1124,23 @@ async def update_stop_details(project_id: str, payload: StopDetailsUpdate):
         stop["dma"] = payload.dma.strip()
     if payload.venue_code is not None:
         stop["venue_code"] = payload.venue_code.strip()
+    if payload.owner_name is not None:
+        owner_name = payload.owner_name.strip()
+        if not owner_name:
+            raise HTTPException(422, "Owner name cannot be blank")
+        stop["owner_name"] = owner_name
+    if payload.owner_phone is not None:
+        owner_phone = payload.owner_phone.strip()
+        if not re.fullmatch(r"[+()\d\s.-]{7,20}", owner_phone):
+            raise HTTPException(422, "Enter a valid owner phone number")
+        stop["owner_phone"] = owner_phone
+    if payload.owner_email is not None:
+        owner_email = payload.owner_email.strip()
+        if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", owner_email):
+            raise HTTPException(422, "Enter a valid owner email")
+        stop["owner_email"] = owner_email
+    if payload.payee_name is not None:
+        stop["payee_name"] = payload.payee_name.strip()
 
     new_key = f"atl-route-v2|{stop.get('installer','')}|{stop.get('id','')}|{stop.get('addr','')}|{stop.get('lat','')}|{stop.get('lng','')}"
     now = _now()
@@ -1032,7 +1196,7 @@ def _norm_col(c: str) -> str:
 
 @api_router.post("/projects/parse-file")
 async def parse_file(file: UploadFile = File(...)):
-    """Parse CSV/Excel file containing address, store_name, and PA columns.
+    """Parse a CSV/Excel file containing an address column.
     For each row, geocode the address and return suggestions if uncertain."""
     if not file.filename:
         raise HTTPException(422, "No file")
@@ -1059,13 +1223,11 @@ async def parse_file(file: UploadFile = File(...)):
     venue_code_col = next((c for c in df.columns if c in VENUE_CODE_ALIASES), None)
     if not addr_col:
         raise HTTPException(422, "Missing 'address' column")
-    if not pa_col:
-        raise HTTPException(422, "Missing required 'PA' column")
     rows = []
     for row_number, (_, r) in enumerate(df.iterrows()):
         addr = clean_cell(r.get(addr_col, ""))
         store = clean_cell(r.get(store_col, "")) if store_col else ""
-        pa_name = clean_cell(r.get(pa_col, ""))
+        pa_name = clean_cell(r.get(pa_col, "")) if pa_col else ""
         venue_status, venue_status_valid = normalize_status(r.get(status_col, "")) if status_col else ("Incomplete", True)
         venue_fields = {
             "venue_status": venue_status,
@@ -1075,10 +1237,6 @@ async def parse_file(file: UploadFile = File(...)):
             "dma": clean_cell(r.get(dma_col, "")) if dma_col else "",
             "venue_code": clean_cell(r.get(venue_code_col, "")) if venue_code_col else "",
         }
-        if not pa_name:
-            rows.append({"index": row_number, "address": addr, "store_name": store, "pa": "", "status": "invalid", "error": "Missing PA name", **venue_fields,
-                         "verified_by": [], "place_name": "", "confidence": 0})
-            continue
         if not addr:
             rows.append({"index": row_number, "address": "", "store_name": store, "pa": pa_name, "status": "invalid", "error": "Missing address", **venue_fields,
                          "verified_by": [], "place_name": "", "confidence": 0})
@@ -1108,6 +1266,10 @@ async def parse_file(file: UploadFile = File(...)):
                 # address. A Places lookup using the store name may match a
                 # different branch of the same business.
                 "formatted": geo["formatted"],
+                "addr": geo.get("addr") or addr,
+                "city": geo.get("city", ""),
+                "state": geo.get("state", ""),
+                "zip": geo.get("zip", ""),
                 "lat": geo["lat"], "lng": geo["lng"],
                 "place_name": place.get("name", ""),
                 "place_id": place.get("place_id"),
@@ -1126,6 +1288,10 @@ async def parse_file(file: UploadFile = File(...)):
                 "pa": pa_name,
                 "status": "valid",
                 "formatted": geo["formatted"],
+                "addr": geo.get("addr") or addr,
+                "city": geo.get("city", ""),
+                "state": geo.get("state", ""),
+                "zip": geo.get("zip", ""),
                 "lat": geo["lat"], "lng": geo["lng"],
                 "place_name": "",
                 "suggestions": geo.get("suggestions", []),
@@ -1141,6 +1307,10 @@ async def parse_file(file: UploadFile = File(...)):
                 "pa": pa_name,
                 "status": "needs_review",
                 "formatted": geo["formatted"],
+                "addr": geo.get("addr") or addr,
+                "city": geo.get("city", ""),
+                "state": geo.get("state", ""),
+                "zip": geo.get("zip", ""),
                 "lat": geo["lat"], "lng": geo["lng"],
                 "place_name": place.get("name", "") if place.get("ok") else "",
                 "suggestions": geo.get("suggestions", []),

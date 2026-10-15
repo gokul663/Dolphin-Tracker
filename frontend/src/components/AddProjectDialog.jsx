@@ -17,7 +17,13 @@ export default function AddProjectDialog({ open, onOpenChange, onCreated }) {
   const [step, setStep] = useState(1);
   const [name, setName] = useState("");
   const [projectType, setProjectType] = useState("");
-  const [paNames, setPaNames] = useState([]);
+  const [fieldAgent, setFieldAgent] = useState("");
+  const [partnerAccount, setPartnerAccount] = useState("");
+  const [paPercentage, setPaPercentage] = useState("");
+  const [dolphinPercentage, setDolphinPercentage] = useState("");
+  const [storePercentage, setStorePercentage] = useState("");
+  const [faPercentage, setFaPercentage] = useState("");
+  const [paName, setPaName] = useState("");
   const [installers, setInstallers] = useState([]);
   const [installerInput, setInstallerInput] = useState("");
   const [file, setFile] = useState(null);
@@ -30,7 +36,9 @@ export default function AddProjectDialog({ open, onOpenChange, onCreated }) {
   const [saveProgress, setSaveProgress] = useState(0);
 
   const reset = () => {
-    setStep(1); setName(""); setProjectType(""); setPaNames([]); setInstallers([]);
+    setStep(1); setName(""); setProjectType(""); setPaName(""); setInstallers([]);
+    setFieldAgent(""); setPartnerAccount(""); setPaPercentage(""); setDolphinPercentage("");
+    setStorePercentage(""); setFaPercentage("");
     setInstallerInput(""); setFile(null); setRows([]); setRowFilter("all");
     setParsing(false); setUploadProgress(0); setUploadPhase("");
     setSaving(false); setSaveProgress(0);
@@ -51,6 +59,17 @@ export default function AddProjectDialog({ open, onOpenChange, onCreated }) {
   const nextFromStep1 = () => {
     if (!name.trim()) { toast.error("Project name is required"); return; }
     if (!projectType) { toast.error("Project type is required"); return; }
+    if (!paName.trim()) { toast.error("PA name is required"); return; }
+    if (paPercentage === "") { toast.error("PA percentage is required"); return; }
+    if (dolphinPercentage === "") { toast.error("Dolphin percentage is required"); return; }
+    const percentages = [
+      ["PA percentage", paPercentage],
+      ["Dolphin percentage", dolphinPercentage],
+      ["Store percentage", storePercentage],
+      ["FA percentage", faPercentage],
+    ];
+    const invalidPercentage = percentages.find(([, value]) => value !== "" && (!Number.isFinite(Number(value)) || Number(value) < 0 || Number(value) > 100));
+    if (invalidPercentage) { toast.error(`${invalidPercentage[0]} must be between 0 and 100`); return; }
     if (installers.length === 0) { toast.error("Add at least one installer"); return; }
     setStep(2);
   };
@@ -80,7 +99,6 @@ export default function AddProjectDialog({ open, onOpenChange, onCreated }) {
       setUploadPhase("Validation complete");
       setRows(data.rows || []);
       setRowFilter(data.needs_review > 0 ? "needs_review" : "all");
-      setPaNames(data.pa_names || []);
       toast.success(`Parsed ${data.total} rows · ${data.valid} valid · ${data.needs_review} need review`);
       setStep(3);
     } catch (e) {
@@ -103,6 +121,10 @@ export default function AddProjectDialog({ open, onOpenChange, onCreated }) {
         updateRow(idx, {
           address: data.formatted || suggestion,
           formatted: data.formatted,
+          addr: data.addr || "",
+          city: data.city || "",
+          state: data.state || "",
+          zip: data.zip || "",
           lat: data.lat, lng: data.lng,
           status: data.partial ? "needs_review" : "valid",
           suggestions: data.suggestions || [],
@@ -124,6 +146,10 @@ export default function AddProjectDialog({ open, onOpenChange, onCreated }) {
       if (data.ok) {
         updateRow(idx, {
           formatted: data.formatted,
+          addr: data.addr || "",
+          city: data.city || "",
+          state: data.state || "",
+          zip: data.zip || "",
           lat: data.lat, lng: data.lng,
           status: data.partial ? "needs_review" : "valid",
           suggestions: data.suggestions || [],
@@ -139,7 +165,6 @@ export default function AddProjectDialog({ open, onOpenChange, onCreated }) {
   const finalizeProject = async () => {
     const validRows = rows.filter(r => r.status === "valid" && r.lat != null);
     if (validRows.length === 0) { toast.error("No valid stops to save"); return; }
-    if (paNames.length === 0) { toast.error("A PA name is required in the uploaded sheet"); return; }
     setSaving(true);
     setSaveProgress(5);
     const saveTimer = window.setInterval(() => {
@@ -148,22 +173,32 @@ export default function AddProjectDialog({ open, onOpenChange, onCreated }) {
     try {
       const stops = validRows.map((r, i) => ({
         id: `S${i + 1}`,
-        addr: (r.formatted || r.address || "").split(",")[0],
-        city: ((r.formatted || "").split(",")[1] || "").trim(),
-        state: ((r.formatted || "").split(",")[2] || "").trim().split(" ")[0] || "",
-        zip: ((r.formatted || "").match(/\b\d{5}\b/) || [""])[0],
+        addr: r.addr || r.address || (r.formatted || "").split(",")[0],
+        city: r.city || "",
+        state: r.state || "",
+        zip: r.zip || ((r.formatted || "").match(/\b\d{5}\b/) || [""])[0],
         store_name: r.store_name || "",
         brand: "",
         lat: r.lat, lng: r.lng,
         geocoded: r.formatted || r.address,
-        pa: r.pa || "",
+        pa: paName.trim(),
         venue_type: r.venue_type || "",
         dma: r.dma || "",
         venue_code: r.venue_code || "",
         initial_status: r.venue_status || "Incomplete",
       }));
       const { data } = await axios.post(`${API}/projects`, {
-        name: name.trim(), pa: paNames.join(", "), project_type: projectType, installers, stops,
+        name: name.trim(),
+        pa: paName.trim(),
+        project_type: projectType,
+        installers,
+        field_agent: fieldAgent.trim(),
+        partner_account: partnerAccount.trim(),
+        pa_percentage: Number(paPercentage),
+        dolphin_percentage: Number(dolphinPercentage),
+        store_percentage: storePercentage === "" ? null : Number(storePercentage),
+        fa_percentage: faPercentage === "" ? null : Number(faPercentage),
+        stops,
       });
       setSaveProgress(100);
       toast.success(`Project created with ${data.stop_count} stops`);
@@ -228,6 +263,42 @@ export default function AddProjectDialog({ open, onOpenChange, onCreated }) {
                 </SelectContent>
               </Select>
             </div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-4">
+              <h3 className="font-mono text-xs font-semibold uppercase tracking-wider text-[#0F5B7C]">Project partner details</h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <Label className="text-slate-700 font-mono text-xs uppercase tracking-wider">PA Name *</Label>
+                  <Input value={paName} onChange={(e) => setPaName(e.target.value)} placeholder="Principal agent name" className="bg-white border-slate-300 mt-2" />
+                </div>
+                <div>
+                  <Label className="text-slate-700 font-mono text-xs uppercase tracking-wider">Field Agent</Label>
+                  <Input value={fieldAgent} onChange={(e) => setFieldAgent(e.target.value)} placeholder="If applicable" className="bg-white border-slate-300 mt-2" />
+                </div>
+                <div>
+                  <Label className="text-slate-700 font-mono text-xs uppercase tracking-wider">Partner Account</Label>
+                  <Input value={partnerAccount} onChange={(e) => setPartnerAccount(e.target.value)} placeholder="For PA ad playback, if any" className="bg-white border-slate-300 mt-2" />
+                </div>
+              </div>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-4">
+              <h3 className="font-mono text-xs font-semibold uppercase tracking-wider text-[#0F5B7C]">Revenue percentages</h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {[
+                  ["PA Percentage *", paPercentage, setPaPercentage],
+                  ["Dolphin Percentage *", dolphinPercentage, setDolphinPercentage],
+                  ["Store Percentage", storePercentage, setStorePercentage],
+                  ["FA Percentage", faPercentage, setFaPercentage],
+                ].map(([label, value, setter]) => (
+                  <div key={label}>
+                    <Label className="text-slate-700 font-mono text-xs uppercase tracking-wider">{label}</Label>
+                    <div className="relative mt-2">
+                      <Input type="number" min="0" max="100" step="0.01" value={value} onChange={(e) => setter(e.target.value)} placeholder="0" className="bg-white border-slate-300 pr-8" />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-slate-400">%</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
             <div>
               <Label className="text-slate-700 font-mono text-xs uppercase tracking-wider">Installers *</Label>
               <div className="flex gap-2 mt-2">
@@ -268,7 +339,7 @@ export default function AddProjectDialog({ open, onOpenChange, onCreated }) {
             <div className="border-2 border-dashed border-slate-300 rounded-xl p-10 text-center hover:border-[#0F5B7C]/60 transition-colors">
               <Upload className="mx-auto text-slate-400 mb-3" size={42} />
               <p className="text-slate-700 mb-1 font-medium">Upload CSV or Excel file</p>
-              <p className="text-xs text-slate-500 font-mono mb-2">Required columns: <span className="text-[#0F5B7C]">address</span>, <span className="text-[#0F5B7C]">store_name</span>, <span className="text-[#0F5B7C]">PA</span></p>
+              <p className="text-xs text-slate-500 font-mono mb-2">Required column: <span className="text-[#0F5B7C]">address</span> · Recommended: <span className="text-[#0F5B7C]">store_name</span></p>
               <p className="text-[11px] text-slate-400 font-mono mb-4">Optional columns: status, venue_type, dma, venue_code</p>
               <input
                 id="fileinput" type="file" accept=".csv,.xlsx,.xls"
@@ -301,11 +372,9 @@ export default function AddProjectDialog({ open, onOpenChange, onCreated }) {
         {step === 3 && (
           <div className="space-y-4 py-2">
             <div className="flex gap-3 flex-wrap">
-              {paNames.map(paName => (
-                <Badge key={paName} className="bg-sky-50 border-sky-300 text-sky-700 font-mono whitespace-normal break-words max-w-full h-auto py-1.5 leading-4">
-                  PA · {paName}
-                </Badge>
-              ))}
+              <Badge className="bg-sky-50 border-sky-300 text-sky-700 font-mono whitespace-normal break-words max-w-full h-auto py-1.5 leading-4">
+                PA · {paName}
+              </Badge>
               <button
                 type="button"
                 onClick={() => setRowFilter("all")}
@@ -382,7 +451,7 @@ export default function AddProjectDialog({ open, onOpenChange, onCreated }) {
                           className="bg-slate-50 border-slate-200 text-slate-900 h-8 text-xs"
                         />
                       </td>
-                      <td className="p-2 text-xs text-slate-700 font-mono align-top">{r.pa || "Missing"}</td>
+                      <td className="p-2 text-xs text-slate-700 font-mono align-top">{paName}</td>
                       <td className="p-2 text-xs text-slate-700 font-mono align-top">{r.venue_type || "—"}</td>
                       <td className="p-2 text-xs text-slate-700 font-mono align-top">{r.dma || "—"}</td>
                       <td className="p-2 align-top">
@@ -486,7 +555,7 @@ export default function AddProjectDialog({ open, onOpenChange, onCreated }) {
               <Button variant="outline" onClick={() => setStep(2)} className="border-slate-300 text-slate-700 hover:bg-slate-100 hover:text-slate-900">← Back</Button>
               <div className="flex gap-2">
                 <Button variant="outline" onClick={closeAll} className="border-slate-300 text-slate-700 hover:bg-slate-100 hover:text-slate-900">Cancel</Button>
-                <Button onClick={finalizeProject} disabled={saving || validCount === 0 || paNames.length === 0} className="bg-[#0F5B7C] hover:bg-[#0c4a64] text-white font-semibold">
+                <Button onClick={finalizeProject} disabled={saving || validCount === 0} className="bg-[#0F5B7C] hover:bg-[#0c4a64] text-white font-semibold">
                   {saving ? <><Loader2 className="animate-spin mr-2" size={16} />Creating · {saveProgress}%</> : `Done · Save ${validCount} stops`}
                 </Button>
               </div>

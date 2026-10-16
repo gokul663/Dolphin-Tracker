@@ -688,3 +688,44 @@ job, so I have not changed `v2-ci.yml`.
 **Deviations**
 - "Upcoming" uses the planner's `#d97706`, not the v1 dashboard's `#ca8a04`, so the dashboard and map agree.
 - No read-only cards: the legacy external project is out of scope (§8).
+
+## F5 · Project shell + Settings
+
+**Changed**
+- `features/projects/ProjectPage.tsx`:
+  - Header: name, type, PA, store/installer counts, stops per day.
+  - Tabs as before.
+  - Loading state, and a clear "This project does not exist" for 404.
+  - The project goes to tabs via outlet context (`useProjectContext`), so they don't refetch it.
+- `features/projects/RoutingBanner.tsx`:
+  - **Building:** info banner. `useProject` (F1) polls every 2 s while `building`, so the banner clears itself.
+  - **Failed:** alert with a **Rebuild routes** action (recluster job).
+- `features/settings/`:
+  - `DetailsSection`: shared metadata fields plus `stops_per_day` (1–50, zod), saved with `expected_version`.
+  - `InstallersSection`: add (a routing job; duplicate/blank blocked client-side) and inline rename (sync). Both
+    are disabled while a build runs, matching the backend's 409.
+  - `SchemaEditor`: add/remove/reorder fields; label, type, required, and options for select. **Keys of saved
+    fields are locked**, since renaming would orphan stored values. A new field's key derives from its label,
+    unique, never a reserved core name. Removing a saved field warns that its values become hidden, not deleted.
+    Save is disabled while invalid or unchanged.
+- `lib/validation/fields.ts`: client mirror of B1 (`fieldError`, `coreError`, `schemaErrors` = `validate_schema`,
+  `keyFromLabel`, `moveItem`). It shares the same regexes and messages as `domain/schema.py`; F7 reuses it.
+- `ProjectMetaFields` is now generic over the form type, so Settings can extend it without casts. Forms use
+  `noValidate`, so the zod messages are the only validation messages (native `max=` was silently blocking
+  submit).
+- `app/router.tsx`: Stores/Routes/Settings are **lazy-loaded chunks**.
+- Tests: `fields.test.ts` (5: every B1 rule, schema rules, key derivation, move) and `SettingsTab.test.tsx` (7:
+  building banner, failed→rebuild posts recluster, 404, cap validation + PATCH body, installer add/duplicate/
+  rename, paused while building, a full schema-editor round trip including derived key, select-needs-options,
+  required, remove warning, reorder, and the exact PATCH payload).
+
+**Verified:** `make backend-lint backend-test frontend-typecheck frontend-test` (35 frontend tests) and `make
+frontend-build`. The visual browser check was skipped (Chrome extension not connected).
+
+**Deviations**
+- The generated `FieldDef-Input` type marks `type` and `required` as required, so the client always sends both;
+  the backend accepts it either way.
+
+**Open questions**
+- The main bundle is ~1.07 MB (≈323 kB gzip), mostly Recharts on the landing dashboard. Lazy-loading the chart
+  row would roughly halve first load. Worth doing now, or at cutover?

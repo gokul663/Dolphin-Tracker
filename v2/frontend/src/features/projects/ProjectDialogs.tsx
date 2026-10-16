@@ -53,7 +53,7 @@ function EditProjectForm({ project, onClose }: { project: Project; onClose: () =
     }
   });
   return (
-    <form onSubmit={submit} className="space-y-4">
+    <form onSubmit={submit} noValidate className="space-y-4">
       <ProjectMetaFields form={form} />
       <DialogFooter>
         <Button type="button" variant="outline" onClick={onClose}>

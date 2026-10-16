@@ -48,16 +48,16 @@ Tracks delivery against [PLAN.md](./PLAN.md). Tick items as they land; add sub-i
 - [x] TanStack Query setup, Zustand UI store, auth provider no-op
 - [x] Dashboard page (KPIs, charts, project cards, filters)
 - [ ] Import wizard: presigned upload, live job progress, review table, column-to-field mapping
-- [ ] Project shell with Stores / Routes / Settings tabs and `routing_status` banner
+- [x] Project shell with Stores / Routes / Settings tabs and `routing_status` banner
 - [ ] Stores tab: virtualized editable table, required name + address, drawer editor, CSV export
 - [ ] Shared `MapView`: status pins, same-address stacking, legend toggles, clustering, table sync
-- [ ] Settings tab: metadata, installers, `stops_per_day`, field schema editor
+- [x] Settings tab: metadata, installers, `stops_per_day`, field schema editor
 - Tasks (AGENT-HANDOFF §5):
   - [x] F1 typed API client
   - [x] F2 shadcn/ui primitives
   - [x] F3 dashboard
   - [ ] F4 import wizard + append flow
-  - [ ] F5 project shell + settings
+  - [x] F5 project shell + settings
   - [ ] F6 MapView
   - [ ] F7 stores tab
 

@@ -1,7 +1,17 @@
+import { useProjectContext } from "@/features/projects/ProjectPage";
+import { DetailsSection } from "@/features/settings/DetailsSection";
+import { InstallersSection } from "@/features/settings/InstallersSection";
+import { SchemaEditor } from "@/features/settings/SchemaEditor";
+
 export function SettingsTab() {
+  const project = useProjectContext();
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-600">
-      Project metadata, installers, stops-per-day cap, field schema editor — Phase 3.
+    <div className="grid gap-4 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+      <div className="space-y-4">
+        <DetailsSection project={project} />
+        <SchemaEditor project={project} />
+      </div>
+      <InstallersSection project={project} />
     </div>
   );
 }

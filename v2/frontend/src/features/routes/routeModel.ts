@@ -1,4 +1,4 @@
-/** Pure logic ported from the legacy planner (frontend/public/route-planner.html), keyed by stop uid. */
+/** Pure logic ported from the v1 legacy route planner page (removed at cutover), keyed by stop uid. */
 import type { FieldDef, RoutesBundle, Stop, StopStatus } from "@/lib/api/types";
 import { STATUS_META } from "@/lib/status";
 

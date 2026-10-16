@@ -1,6 +1,6 @@
 import type { StopStatus } from "@/lib/api/types";
 
-/** v1 STATUS_MAP (route-planner.html): one palette for chips, charts and map pins. "Incomplete" reads "Upcoming". */
+/** The v1 legacy planner's STATUS_MAP: one palette for chips, charts and map pins. "Incomplete" reads "Upcoming". */
 export const STATUS_META: Record<StopStatus, { label: string; color: string; chip: string }> = {
   Complete: { label: "Complete", color: "#16a34a", chip: "bg-emerald-50 text-emerald-700 border-emerald-200" },
   Incomplete: { label: "Upcoming", color: "#d97706", chip: "bg-amber-50 text-amber-700 border-amber-200" },

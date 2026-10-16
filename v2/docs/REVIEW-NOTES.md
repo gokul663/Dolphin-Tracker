@@ -938,3 +938,64 @@ browser** (Chrome extension unavailable).
   through one validated form.
 
 **Open questions:** none.
+
+## R2 · Remove the iframe path
+
+**Changed**
+- Confirmed nothing in v2 loads the legacy page. There is no `<iframe>`, no route to it, and nothing under
+  `frontend/public` besides the favicon.
+- Three source comments that named `route-planner.html` as the port's origin now say "the v1 legacy route
+  planner", so they don't dangle once the v1 file is deleted at cutover.
+- `src/legacy-guard.test.ts`: fails if any frontend source references `route-planner.html` or renders an
+  `<iframe>`, so the path can't return quietly.
+- Docs left as they are, on purpose:
+  - PLAN.md's context paragraph (describes v1);
+  - AGENT-HANDOFF's R1/R2 task text (the work order);
+  - REVIEW-NOTES, which cite the file as the source of ported behaviour.
+- CHECKLIST: "Legacy planner page and iframe removed" is ticked for v2. "Contract tests cover every endpoint"
+  is ticked after checking all 25 OpenAPI paths against the `TestClient` tests.
+
+**Verified:** `make backend-lint backend-test frontend-typecheck frontend-test` (211 backend, 77 frontend passing).
+
+---
+
+## Summary for the reviewer
+
+**Commits (on `tech-stack-migration`):**
+- Baseline `35f48b3`.
+- Phase 2: B1, B2, B3, B11, B4, B5, B6, B7, B9, B10, B8, B12. **B13 skipped** (no AWS credentials).
+- Phase 3: F2, F1, F3, F5, F6, F4, F7.
+- Phase 4: R1, R2.
+
+**Tests:** backend 49 → **211**, frontend 1 → **77**, all passing at every commit.
+
+**Bugs found and fixed outside a task's own scope**
+
+| Where | Bug | Fix |
+|-------|-----|-----|
+| `config.py` (B11) | `resolve_google_server_key` was `lru_cache`'d on an unhashable `Settings` → `TypeError` | Cache moved onto the SSM fetch, keyed on strings |
+| `files.py` (B4) | S3 presigned URLs came out as **SigV2**; buckets created since 2020 reject them, so browser uploads would fail in AWS | Client forced to SigV4 with virtual-hosted addressing; test asserts it |
+| v1 data (B12) | The v1 dashboard joined progress on the Python-format key while the page saved JS-format keys, so progress for stops with integral or null coordinates never counted | The migration joins on both; the parity report flags the differences |
+| Review step (F4) | Under an active filter, a row unmounted mid-typing once it became valid | Filters are snapshots |
+
+**Questions to decide (collected from the sections above)**
+
+1. **B11 / B13:** how to give `ApiStack` the Google **browser** key (`DT_GOOGLE_BROWSER_KEY`): plain env var
+   from context, or a second SSM parameter? Also: S3 CORS falls back to `*` when `cors_origins` is empty.
+2. **B3:** keep `LambdaInvoker` (boto3) in `services/`, as the handoff placed it, or move it to `repositories/`
+   or `adapters/`?
+3. **B5:** Google cost: skip the Places call when geocoding fails or is partial? And should an import fail fast
+   when no server key is configured, instead of succeeding with every row in review?
+4. **B6:** `stop_count` is maintained on create/append only (there is no stop delete). Is that fine as an
+   informational field?
+5. **B7:** without a Google key locally, no address can be edited (always 422). Is that fine for dev?
+6. **B9:** schema edits don't rewrite stored data. Removed fields' values are hidden, not deleted, and a newly
+   required field doesn't re-validate existing stops. Accept, or require confirmation?
+7. **B12:** the real parity run needs a prod Mongo dump (Phase 5).
+8. **F1:** add a CI drift check, `make gen-api && git diff --exit-code`?
+9. **F5:** lazy-load the dashboard charts to shrink the ~1.1 MB main bundle?
+10. **F6:** is a Google Map ID available (`AdvancedMarkerElement`)? Is clustering at zoom ≤ 11 right?
+
+**Not verified here:** anything needing AWS (B13), a Google key (real geocoding, the live map), or a browser (the
+Chrome extension was not connected). Those paths are covered by unit and component tests with fakes and mocks,
+and the backend flows were exercised end to end on DynamoDB Local.

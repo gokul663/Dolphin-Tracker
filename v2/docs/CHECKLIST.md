@@ -26,7 +26,7 @@ Tracks delivery against [PLAN.md](./PLAN.md). Tick items as they land; add sub-i
 - [x] Optimizer ported unchanged behind `RoutingService`; `stops_per_day` per project
 - [x] Field schema stored on project; import maps columns to schema
 - [x] Migration script Mongo → DynamoDB with parity report
-- [ ] Contract tests cover every endpoint
+- [x] Contract tests cover every endpoint
 - Tasks (AGENT-HANDOFF §5):
   - [x] B1 field schema + validation
   - [x] B2 store repository
@@ -66,10 +66,10 @@ Tracks delivery against [PLAN.md](./PLAN.md). Tick items as they land; add sub-i
 - [x] Stop editing parity with the legacy page (progress, additional task, comment, installer name)
 - [x] Reassign with confirmation; rebalance and recluster as jobs with progress
 - [x] Google Maps route links, copy addresses, per-day and full CSV export
-- [ ] Legacy planner page and iframe removed
+- [x] Legacy planner page and iframe removed (nothing in v2 references it; the v1 file itself goes at cutover)
 - Tasks (AGENT-HANDOFF §5):
   - [x] R1 routes tab port
-  - [ ] R2 remove the iframe path
+  - [x] R2 remove the iframe path
 
 **Phase 5 — Cutover**
 - [ ] Prod stacks deployed; Google keys restricted by referrer and API

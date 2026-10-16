@@ -10,7 +10,7 @@
   --font-mono: "IBM Plex Mono", ui-monospace, monospace;
   --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
 
-  /* Status colours shared by chips, charts and map pins: v1 STATUS_MAP in route-planner.html. */
+  /* Status colours shared by chips, charts and map pins: the v1 legacy planner's STATUS_MAP. */
   --color-status-complete: #16a34a;
   --color-status-incomplete: #d97706;
   --color-status-technical: #dc2626;

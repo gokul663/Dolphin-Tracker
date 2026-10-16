@@ -1,0 +1,18 @@
+@import "tailwindcss";
+
+/* Brand tokens carried over from v1. shadcn/ui adds its own CSS variables here on init. */
+@theme {
+  --color-brand: #0f5b7c;
+  --color-brand-strong: #0c4a64;
+  --color-brand-accent: #0891b2;
+  --font-display: "Bebas Neue", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+}
+
+:root {
+  color-scheme: light;
+}
+
+body {
+  @apply bg-slate-50 text-slate-900 antialiased;
+}

@@ -1,0 +1,18 @@
+# v2 workspace
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+build/
+dist/
+cdk.out/
+node_modules/
+.env
+.env.*
+!.env.example
+coverage/
+*.log
+.DS_Store
+*.tsbuildinfo

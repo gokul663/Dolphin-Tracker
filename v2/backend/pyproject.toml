@@ -1,0 +1,47 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "dolphin-tracker"
+version = "2.0.0a0"
+description = "Dolphin Tracker v2 backend: FastAPI on Lambda with DynamoDB"
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi>=0.115,<1",
+  "mangum>=0.19,<1",
+  "pydantic>=2.9,<3",
+  "pydantic-settings>=2.6,<3",
+  "openpyxl>=3.1,<4",
+  "httpx>=0.27,<1",
+  "aws-lambda-powertools>=3.0,<4",
+  "boto3>=1.35",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8",
+  "moto[dynamodb,s3,server]>=5",
+  "ruff>=0.6",
+  "uvicorn>=0.30",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/dolphin_tracker"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+addopts = "-ra"
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+src = ["src", "tests"]
+# Kept byte-identical to v1 until the optimizer algorithm is revisited.
+extend-exclude = ["src/dolphin_tracker/domain/route_optimizer.py", "tests/test_route_optimizer.py"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+# Pydantic generics stay on typing.Generic for now.
+ignore = ["UP046", "UP047"]

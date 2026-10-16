@@ -441,3 +441,55 @@ dev?
 - No `read_only` flag: the legacy external project is out of scope (§8).
 
 **Open questions:** none.
+
+## B8 · Installers + routing operations
+
+**Changed**
+- `services/routing.py`:
+  - **Modes `rebalance` and `add_installer`:** `rebalance_assignments` is a port of v1 `rebalance_project_incomplete`
+    keyed by uid. It builds the optimizer's route dicts from stops (`optimizer_routes`, ordered by seq), then the
+    Incomplete set, then `split_territory_for_new_installer` (add) or `clean_territory_outliers` (rebalance), then
+    `rebalance_incomplete_routes` with `project.stops_per_day`. Only Incomplete stops are re-planned.
+  - `add_installer(name)`: 422 blank, 409 duplicate. **The new name is written in the same conditional
+    `begin_routing` update that claims the slot** (`begin_routing(..., installers=)`). Otherwise the inline worker
+    could start before the list is saved, or a 409 could leave an installer added with no routing.
+  - `rebalance`, `recluster`: 422 without installers, 409 while a build runs.
+  - **Synchronous ops hold the slot too.** `_sync_slot` claims it with a `sync-<uuid>` token for the few hundred
+    ms of the edit, so a build can't start (or be running) underneath. Afterwards it **restores the previous
+    status**, so a `failed` build stays visible.
+  - `rename_installer`: 404 unknown, 422 blank, 409 taken, same name is a no-op. META installers, then a routing
+    write of `installer` on that installer's stops, then a **separate** progress write of `installer_name` where it
+    equalled the old name (rule 5).
+  - `reassign(uid, installer)`: `reassign_stop_preserving_days` over the seq-ordered layout. Unassigned stops ride
+    along under `""` so they can be moved too. Writes only the diff and returns `{old_installer, installer,
+    changed}`.
+- Routers (`projects.py`): `POST /installers` (202), `POST /installers/rename` (Project), `POST
+  /routing/rebalance` and `/routing/recluster` (202 `{job_id}`; 503 if the worker can't be invoked), `POST
+  /stops/{uid}/reassign`.
+- `tests/test_installer_ops.py`, 13 tests through the API and the inline worker:
+  - each mode (completed stops keep installer and day-mates; pending caps hold);
+  - progress kept on recluster;
+  - **409 for every routing/sync operation while a job runs**, and a failed add leaves no installer;
+  - rename write groups (a spy proves no write mixes `installer` and `installer_name`);
+  - rename validation;
+  - reassign moves exactly one stop between installers, `changed` equals the real diff, and the slot is
+    released; a same-installer reassign is a no-op;
+  - errors release the slot;
+  - a `failed` status survives a rename;
+  - unassigned stops are untouched by rebalance.
+
+**Verified**
+- `make backend-lint backend-test frontend-typecheck frontend-test`, 198 backend passing.
+- Manual, local stack, on the 60-stop smoke project: add "Dee" → job "43 of 60 stops moved". Rebalance (202)
+  with a concurrent recluster → **409**, then "38 of 60 moved", giving 15/15/15/15. Reassign Ann → Dee (200).
+  Rename Dee → Dana (200, `ready`). Totals afterwards were 14/15/15/16.
+
+**Deviations / v1 behaviours worth knowing**
+- **Rebalance renumbers days.** v1 drops empty days and renumbers, so a completed stop keeps its installer and
+  its day-mates, but its day *number* can change. Completed stops don't count toward the cap. That is v1's
+  optimizer and unchanged. The tests assert these real invariants.
+- **Reassign reports many `changed` uids** (27 in the manual run). v1 re-optimizes the order of both affected
+  days, so `seq` shifts on two days; installers and days elsewhere stay put.
+- **Add-installer** returns 202 `{job_id}` only (handoff contract). v1 returned the whole bundle synchronously.
+
+**Open questions:** none.

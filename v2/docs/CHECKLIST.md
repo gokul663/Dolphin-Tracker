@@ -20,8 +20,8 @@ Tracks delivery against [PLAN.md](./PLAN.md). Tick items as they land; add sub-i
 - [x] Decimal/float serializer and cursor pagination helpers
 - [x] Projects: list (paginated), get, create (routing as job), patch, delete
 - [x] Stores: list (paginated, filter, search), get, update details with geocode verify, progress update, map pins endpoint
-- [ ] Installers: add, rename; routing: reassign (sync), rebalance, recluster (jobs)
-- [ ] Jobs: create import, poll status, results from S3; worker handler for import and routing
+- [x] Installers: add, rename; routing: reassign (sync), rebalance, recluster (jobs)
+- [x] Jobs: create import, poll status, results from S3; worker handler for import and routing
 - [x] Pandas removed; CSV via `csv`, Excel via `openpyxl`; parser tests updated
 - [x] Optimizer ported unchanged behind `RoutingService`; `stops_per_day` per project
 - [ ] Field schema stored on project; import maps columns to schema
@@ -35,7 +35,7 @@ Tracks delivery against [PLAN.md](./PLAN.md). Tick items as they land; add sub-i
   - [x] B5 import job end to end
   - [x] B6 project create + routing job + routes bundle
   - [x] B7 store endpoints
-  - [ ] B8 installers + routing operations
+  - [x] B8 installers + routing operations
   - [x] B9 append stops, delete, patch
   - [x] B10 project list KPI
   - [x] B11 places + config endpoints

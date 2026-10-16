@@ -9,12 +9,14 @@ from __future__ import annotations
 
 import uuid
 from collections import defaultdict
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from aws_lambda_powertools import Logger
 
-from dolphin_tracker.domain.errors import NotFoundError
+from dolphin_tracker.domain.errors import ConflictError, NotFoundError, ValidationFailed
 from dolphin_tracker.domain.models import (
     InstallerStats,
     Job,
@@ -24,8 +26,16 @@ from dolphin_tracker.domain.models import (
     RoutesBundle,
     RoutingStatus,
     Stop,
+    StopStatus,
 )
-from dolphin_tracker.domain.route_optimizer import build_project_routes, route_miles
+from dolphin_tracker.domain.route_optimizer import (
+    build_project_routes,
+    clean_territory_outliers,
+    reassign_stop_preserving_days,
+    rebalance_incomplete_routes,
+    route_miles,
+    split_territory_for_new_installer,
+)
 from dolphin_tracker.repositories.jobs import JobRepository
 from dolphin_tracker.repositories.projects import ProjectRepository
 from dolphin_tracker.repositories.stores import StoreRepository
@@ -51,6 +61,21 @@ def group_routes(stops: list[Stop], installers: list[str]) -> dict[str, list[lis
         if stop.installer in by_installer:
             by_installer[stop.installer][stop.day].append(stop)
     return {installer: [days[day] for day in sorted(days)] for installer, days in by_installer.items()}
+
+
+def optimizer_routes(stops: list[Stop], installers: list[str]) -> dict[str, list[list[dict[str, Any]]]]:
+    """Current layout in the optimizer's shape (installer -> days -> row dicts), keyed by uid in `id`."""
+    return {
+        installer: [
+            [
+                {"id": stop.uid, "lat": stop.lat, "lng": stop.lng, "state": stop.state, "installer": installer,
+                 "day": stop.day}
+                for stop in day
+            ]
+            for day in days
+        ]
+        for installer, days in group_routes(stops, installers).items()
+    }
 
 
 def day_miles(day: list[Stop]) -> float:
@@ -144,14 +169,21 @@ class RoutingService:
             payload={"mode": mode, **payload},
         )
 
-    def enqueue(self, project_id: str, mode: str, **payload: Any) -> Job:
-        """Claim the project's routing slot and start a build. ConflictError (409) while one is running."""
+    @staticmethod
+    def _stale_before() -> str:
+        return (datetime.now(UTC) - STALE_BUILD).isoformat()
+
+    def enqueue(self, project_id: str, mode: str, *, installers: list[str] | None = None, **payload: Any) -> Job:
+        """Claim the project's routing slot and start a build. ConflictError (409) while one is running.
+
+        `installers`, when given, replaces the project's installer list in the same conditional write."""
         assert self._projects is not None and self._jobs is not None
         job = self.new_job(project_id, mode, **payload)
         self._jobs.put(job)
-        stale_before = (datetime.now(UTC) - STALE_BUILD).isoformat()
         try:
-            self._projects.begin_routing(project_id, job.id, stale_before=stale_before)
+            self._projects.begin_routing(
+                project_id, job.id, stale_before=self._stale_before(), installers=installers
+            )
         except Exception as exc:
             self._jobs.set_status(job.id, JobStatus.FAILED, message=str(exc))
             raise
@@ -184,9 +216,120 @@ class RoutingService:
     # ---- build (worker side) ------------------------------------------------------------------------------
 
     def _assignments(self, mode: str, project: Project, stops: list[Stop], payload: dict[str, Any]):
+        """(stops that were re-planned, uid -> assignment) for one build mode."""
         if mode in ("create", "recluster"):
             return stops, self.build_assignments(stops, project.installers, project.stops_per_day)
+        if mode in ("rebalance", "add_installer"):
+            new_installer = payload.get("new_installer") if mode == "add_installer" else None
+            return self.rebalance_assignments(project, stops, new_installer)
         raise ValueError(f"Unsupported routing mode {mode!r}")
+
+    @classmethod
+    def rebalance_assignments(
+        cls, project: Project, stops: list[Stop], new_installer: str | None = None
+    ) -> tuple[list[Stop], dict[str, Assignment]]:
+        """Port of v1 `rebalance_project_incomplete`, keyed by uid: only Incomplete stops move; completed and other
+        stops keep their installer and day. With `new_installer`, the busiest territory is split to give it one
+        coherent cluster first."""
+        installers = project.installers
+        current = optimizer_routes(stops, installers)
+        incomplete = {stop.uid for stop in stops if stop.status == StopStatus.INCOMPLETE}
+        if new_installer:
+            existing = [name for name in installers if name != new_installer]
+            override = split_territory_for_new_installer(current, incomplete, existing, new_installer)
+        else:
+            override = clean_territory_outliers(current, incomplete, installers)
+        rerouted = rebalance_incomplete_routes(current, incomplete, installers, project.stops_per_day, override)
+        return [stop for stop in stops if stop.uid in incomplete], cls.assignments_from_routes(rerouted)
+
+    # ---- synchronous operations (API side) ----------------------------------------------------------------
+
+    @contextmanager
+    def _sync_slot(self, project: Project) -> Iterator[None]:
+        """Hold the routing slot for a short synchronous edit, so no build starts (or runs) underneath it.
+        The previous status comes back afterwards (a `failed` build stays visible as failed)."""
+        assert self._projects is not None
+        token = f"sync-{uuid.uuid4().hex}"
+        previous = RoutingStatus.READY if project.routing_status == RoutingStatus.BUILDING else project.routing_status
+        self._projects.begin_routing(project.id, token, stale_before=self._stale_before())
+        try:
+            yield
+        finally:
+            self._projects.finish_routing(project.id, token, previous)
+
+    def add_installer(self, project_id: str, name: str) -> Job:
+        project = self._project(project_id)
+        name = name.strip()
+        if not name:
+            raise ValidationFailed("Installer name cannot be empty")
+        if name in project.installers:
+            raise ConflictError("Installer name already exists")
+        return self.enqueue(
+            project_id, "add_installer", installers=[*project.installers, name], new_installer=name
+        )
+
+    def rebalance(self, project_id: str) -> Job:
+        project = self._project(project_id)
+        if not project.installers:
+            raise ValidationFailed("At least one installer is required")
+        return self.enqueue(project_id, "rebalance")
+
+    def recluster(self, project_id: str) -> Job:
+        project = self._project(project_id)
+        if not project.installers:
+            raise ValidationFailed("At least one installer is required")
+        return self.enqueue(project_id, "recluster")
+
+    def rename_installer(self, project_id: str, old_name: str, new_name: str) -> Project:
+        """Rewrite the name on META and on every stop. `installer` (routing group) and `installer_name` (progress
+        group, only where it equalled the old name) go out as separate writes (rule 5)."""
+        assert self._projects is not None and self._stores is not None
+        project = self._project(project_id)
+        old_name, new_name = old_name.strip(), new_name.strip()
+        if old_name not in project.installers:
+            raise NotFoundError("Installer not found")
+        if not new_name:
+            raise ValidationFailed("Installer name cannot be empty")
+        if new_name == old_name:
+            return project
+        if new_name in project.installers:
+            raise ConflictError("Installer name already exists")
+        with self._sync_slot(project):
+            renamed = [new_name if name == old_name else name for name in project.installers]
+            self._projects.update(project_id, {"installers": renamed})
+            stops = self._stores.list_all(project_id)
+            self._stores.update_routing_many(
+                project_id, [(stop.uid, {"installer": new_name}) for stop in stops if stop.installer == old_name]
+            )
+            for stop in stops:
+                if stop.installer_name == old_name:
+                    self._stores.update_fields(project_id, stop.uid, {"installer_name": new_name})
+        return self._project(project_id)
+
+    def reassign(self, project_id: str, stop_uid: str, installer: str) -> dict[str, Any]:
+        """Move one stop to another installer, keeping every unrelated stop on its day (v1, synchronous)."""
+        assert self._stores is not None
+        project = self._project(project_id)
+        if installer not in project.installers:
+            raise ValidationFailed("Installer is not assigned to this project")
+        with self._sync_slot(project):
+            stops = self._stores.list_all(project_id)
+            stop = next((item for item in stops if item.uid == stop_uid), None)
+            if stop is None:
+                raise NotFoundError(f"Stop {stop_uid} not found")
+            # Unassigned stops ride along under "" so they can be moved too; that bucket's layout is ignored.
+            routes = optimizer_routes(stops, [*project.installers, ""])
+            rerouted, _, old_installer = reassign_stop_preserving_days(
+                routes, stop_uid, installer, project.stops_per_day
+            )
+            assignments = {
+                uid: assignment
+                for uid, assignment in self.assignments_from_routes(rerouted).items()
+                if assignment[0] != ""
+            }
+            changes = self.diff(stops, assignments)
+            self._stores.update_routing_many(project_id, changes)
+        return {"old_installer": old_installer, "installer": installer, "changed": [uid for uid, _ in changes]}
 
     def run_build(self, job_id: str) -> None:
         """Worker entry point for a routing_build job. Never raises: the outcome is on the job and project."""

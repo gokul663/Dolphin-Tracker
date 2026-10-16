@@ -5,7 +5,15 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
 from dolphin_tracker.api.deps import get_project_service, get_routing_service
-from dolphin_tracker.api.schemas import ProjectCreated, ProjectUpdate
+from dolphin_tracker.api.schemas import (
+    InstallerAdd,
+    InstallerRename,
+    JobAccepted,
+    ProjectCreated,
+    ProjectUpdate,
+    ReassignResult,
+    StopReassign,
+)
 from dolphin_tracker.domain.models import Page, Project, ProjectCreate, ProjectSummary, RoutesBundle
 from dolphin_tracker.services.projects import ProjectService
 from dolphin_tracker.services.routing import RoutingService
@@ -73,3 +81,35 @@ def get_routes(project_id: str, routing: RoutingDep) -> RoutesBundle:
 # Phase 2 (see docs/CHECKLIST.md): POST "" (202 + job), PATCH /{id}, DELETE /{id},
 # POST /{id}/installers, POST /{id}/installers/rename, POST /{id}/routing/{rebalance|recluster} (jobs),
 # POST /{id}/stops/{uid}/reassign (sync), GET /{id}/routes (bundle), POST /{id}/stops/append.
+
+
+def _accepted(start) -> JobAccepted:
+    try:
+        return JobAccepted(job_id=start().id)
+    except RuntimeError as exc:  # the worker could not be invoked; the job and project are marked failed
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.post("/{project_id}/installers", response_model=JobAccepted, status_code=202)
+def add_installer(project_id: str, body: InstallerAdd, routing: RoutingDep) -> JobAccepted:
+    return _accepted(lambda: routing.add_installer(project_id, body.name))
+
+
+@router.post("/{project_id}/installers/rename", response_model=Project)
+def rename_installer(project_id: str, body: InstallerRename, routing: RoutingDep) -> Project:
+    return routing.rename_installer(project_id, body.old_name, body.new_name)
+
+
+@router.post("/{project_id}/routing/rebalance", response_model=JobAccepted, status_code=202)
+def rebalance(project_id: str, routing: RoutingDep) -> JobAccepted:
+    return _accepted(lambda: routing.rebalance(project_id))
+
+
+@router.post("/{project_id}/routing/recluster", response_model=JobAccepted, status_code=202)
+def recluster(project_id: str, routing: RoutingDep) -> JobAccepted:
+    return _accepted(lambda: routing.recluster(project_id))
+
+
+@router.post("/{project_id}/stops/{stop_uid}/reassign", response_model=ReassignResult)
+def reassign_stop(project_id: str, stop_uid: str, body: StopReassign, routing: RoutingDep) -> dict:
+    return routing.reassign(project_id, stop_uid, body.installer)

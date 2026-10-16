@@ -50,15 +50,20 @@ class InMemoryProjectRepository:
     def delete(self, project_id: str) -> None:
         self._items.pop(project_id, None)
 
-    def begin_routing(self, project_id: str, job_id: str, *, stale_before: str) -> Project:
+    def begin_routing(
+        self, project_id: str, job_id: str, *, stale_before: str, installers: list[str] | None = None
+    ) -> Project:
         current = self._items.get(project_id)
         if current is None:
             raise NotFoundError(f"Project {project_id} not found")
         if current.routing_status == RoutingStatus.BUILDING and current.updated_at >= stale_before:
             raise ConflictError("Routing is already in progress for this project")
-        updated = current.model_copy(
-            update={"routing_status": RoutingStatus.BUILDING, "routing_job_id": job_id, "updated_at": now_iso()}
-        )
+        changes: dict[str, Any] = {
+            "routing_status": RoutingStatus.BUILDING, "routing_job_id": job_id, "updated_at": now_iso()
+        }
+        if installers is not None:
+            changes["installers"] = list(installers)
+        updated = current.model_copy(update=changes)
         self._items[project_id] = updated
         return updated.model_copy(deep=True)
 

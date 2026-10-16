@@ -27,9 +27,12 @@ class ProjectRepository(Protocol):
     def list(self, *, limit: int = 50, cursor: str | None = None) -> Page[Project]: ...
     def update(self, project_id: str, changes: dict[str, Any], *, expected_version: int | None = None) -> Project: ...
     def delete(self, project_id: str) -> None: ...
-    def begin_routing(self, project_id: str, job_id: str, *, stale_before: str) -> Project:
+    def begin_routing(
+        self, project_id: str, job_id: str, *, stale_before: str, installers: list[str] | None = None
+    ) -> Project:
         """Claim the routing slot for `job_id` (§3.2). ConflictError while another build is in progress, unless
-        that build's META has not been touched since `stale_before`."""
+        that build's META has not been touched since `stale_before`. `installers`, when given, is set in the same
+        conditional write (adding an installer)."""
         ...
     def finish_routing(self, project_id: str, job_id: str, status: RoutingStatus) -> bool:
         """Release the slot if `job_id` still holds it. False means a newer job superseded this one."""
@@ -106,18 +109,25 @@ class DynamoProjectRepository:
             raise ConflictError(f"Project {project_id} was modified concurrently") from exc
         return self._from_item(response["Attributes"])
 
-    def begin_routing(self, project_id: str, job_id: str, *, stale_before: str) -> Project:
+    def begin_routing(
+        self, project_id: str, job_id: str, *, stale_before: str, installers: list[str] | None = None
+    ) -> Project:
+        expression = "SET routing_status = :building, routing_job_id = :job, updated_at = :now"
+        values: dict[str, Any] = {
+            ":building": RoutingStatus.BUILDING.value,
+            ":job": job_id,
+            ":now": now_iso(),
+            ":stale": stale_before,
+        }
+        if installers is not None:
+            expression += ", installers = :installers"
+            values[":installers"] = installers
         try:
             response = self._table.update_item(
                 Key=Keys.project(project_id),
-                UpdateExpression="SET routing_status = :building, routing_job_id = :job, updated_at = :now",
+                UpdateExpression=expression,
                 ConditionExpression="attribute_exists(PK) AND (routing_status <> :building OR updated_at < :stale)",
-                ExpressionAttributeValues={
-                    ":building": RoutingStatus.BUILDING.value,
-                    ":job": job_id,
-                    ":now": now_iso(),
-                    ":stale": stale_before,
-                },
+                ExpressionAttributeValues=values,
                 ReturnValues="ALL_NEW",
             )
         except ClientError as exc:

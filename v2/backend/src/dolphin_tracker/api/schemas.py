@@ -115,3 +115,22 @@ class AppendResult(BaseModel):
     appended: int
     skipped: list[SkippedStop]
     total: int
+
+
+class InstallerAdd(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+
+
+class InstallerRename(BaseModel):
+    old_name: str = Field(min_length=1, max_length=200)
+    new_name: str = Field(max_length=200)
+
+
+class StopReassign(BaseModel):
+    installer: str = Field(min_length=1, max_length=200)
+
+
+class ReassignResult(BaseModel):
+    old_installer: str
+    installer: str
+    changed: list[str]  # uids whose installer/day/seq changed

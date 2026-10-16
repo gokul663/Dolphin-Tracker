@@ -36,7 +36,7 @@ Tracks delivery against [PLAN.md](./PLAN.md). Tick items as they land; add sub-i
   - [x] B6 project create + routing job + routes bundle
   - [x] B7 store endpoints
   - [ ] B8 installers + routing operations
-  - [ ] B9 append stops, delete, patch
+  - [x] B9 append stops, delete, patch
   - [ ] B10 project list KPI
   - [x] B11 places + config endpoints
   - [ ] B12 migration script

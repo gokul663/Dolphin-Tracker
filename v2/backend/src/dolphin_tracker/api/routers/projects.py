@@ -5,7 +5,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
 from dolphin_tracker.api.deps import get_project_service, get_routing_service
-from dolphin_tracker.api.schemas import ProjectCreated
+from dolphin_tracker.api.schemas import ProjectCreated, ProjectUpdate
 from dolphin_tracker.domain.models import Page, Project, ProjectCreate, RoutesBundle
 from dolphin_tracker.services.projects import ProjectService
 from dolphin_tracker.services.routing import RoutingService
@@ -43,6 +43,26 @@ def create_project(body: ProjectCreate, service: ServiceDep, response: Response)
 @router.get("/{project_id}", response_model=Project)
 def get_project(project_id: str, service: ServiceDep) -> Project:
     return service.get(project_id)
+
+
+@router.patch("/{project_id}", response_model=Project)
+def update_project(project_id: str, body: ProjectUpdate, service: ServiceDep) -> Project:
+    changes = body.model_dump(mode="json", exclude_unset=True, exclude={"expected_version"})
+    try:
+        return service.update(project_id, changes, expected_version=body.expected_version)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.delete("/{project_id}", status_code=204, response_class=Response)
+def delete_project(
+    project_id: str, service: ServiceDep, confirm: Annotated[str, Query(max_length=200)] = ""
+) -> Response:
+    try:
+        service.delete(project_id, confirm=confirm)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return Response(status_code=204)
 
 
 @router.get("/{project_id}/routes", response_model=RoutesBundle)

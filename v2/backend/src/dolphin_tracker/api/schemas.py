@@ -3,9 +3,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
-from dolphin_tracker.domain.models import Project, StopStatus
+from dolphin_tracker.domain.models import FieldDef, Project, ProjectType, StopInput, StopStatus
 
 
 class MapsConfig(BaseModel):
@@ -79,3 +79,39 @@ class ProgressUpdate(BaseModel):
     additional_task: bool | None = None
     installer_name: str | None = Field(default=None, max_length=200)
     updated_by: str | None = Field(default=None, max_length=200)
+
+
+class ProjectUpdate(BaseModel):
+    """Metadata edit. Installers change only through the installer endpoints; routing state only through jobs."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str | None = Field(default=None, max_length=200)
+    pa: str | None = Field(default=None, max_length=500)
+    project_type: ProjectType | None = None
+    field_agent: str | None = Field(default=None, max_length=200)
+    partner_account: str | None = Field(default=None, max_length=200)
+    pa_percentage: float | None = Field(default=None, ge=0, le=100)
+    dolphin_percentage: float | None = Field(default=None, ge=0, le=100)
+    store_percentage: float | None = Field(default=None, ge=0, le=100)
+    fa_percentage: float | None = Field(default=None, ge=0, le=100)
+    stops_per_day: int | None = Field(default=None, ge=1, le=50)
+    field_schema: list[FieldDef] | None = None
+    expected_version: int | None = Field(default=None, description="409 if the project has moved past this version")
+
+
+class AppendStops(BaseModel):
+    stops: list[StopInput] = Field(min_length=1, max_length=5000)
+    pa: str = Field(default="", max_length=500)
+
+
+class SkippedStop(BaseModel):
+    addr: str
+    venue_code: str
+    reason: str
+
+
+class AppendResult(BaseModel):
+    appended: int
+    skipped: list[SkippedStop]
+    total: int

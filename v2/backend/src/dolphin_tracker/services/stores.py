@@ -10,12 +10,17 @@ from __future__ import annotations
 import csv
 import io
 import re
+import uuid
+from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Any
 
-from dolphin_tracker.domain.errors import NotFoundError, ValidationFailed
-from dolphin_tracker.domain.models import PROGRESS_FIELDS, Page, Project, Stop, StopStatus
-from dolphin_tracker.domain.schema import coerce_fields, validate_fields
+from dolphin_tracker.domain.addresses import duplicate_key
+from dolphin_tracker.domain.errors import ConflictError, NotFoundError, ValidationFailed
+from dolphin_tracker.domain.models import PROGRESS_FIELDS, Page, Project, RoutingStatus, Stop, StopInput, StopStatus
+from dolphin_tracker.domain.parsing import clean_cell
+from dolphin_tracker.domain.route_optimizer import state_key
+from dolphin_tracker.domain.schema import coerce_fields, validate_fields, validate_stop_inputs
 from dolphin_tracker.repositories.dynamo import decode_cursor, encode_cursor
 from dolphin_tracker.repositories.projects import ProjectRepository
 from dolphin_tracker.repositories.stores import StoreRepository
@@ -238,3 +243,102 @@ class StoreService:
         if isinstance(update.get("status"), StopStatus):
             update["status"] = update["status"].value
         return self._stores.update_fields(project_id, stop_uid, update)
+
+    # ---- append -------------------------------------------------------------------------------------------
+
+    @staticmethod
+    def _identity(stop: Stop | StopInput) -> str:
+        return duplicate_key(
+            {
+                "venue_code": stop.fields.get("venue_code", ""),
+                "addr": stop.addr,
+                "city": stop.city,
+                "state": stop.state,
+                "zip": stop.zip,
+            }
+        )
+
+    def append(self, project_id: str, stops: list[StopInput], pa: str = "") -> dict[str, Any]:
+        """Add stops without re-routing (v1 `append_project_stops`): skip duplicates by venue code or normalised
+        address, then place each new stop greedily on the installer with the fewest stops, on a same-state day
+        with room, else on a new day. Synchronous: no optimizer run."""
+        project = self._project(project_id)
+        if project.routing_status == RoutingStatus.BUILDING:
+            raise ConflictError("Routing is in progress; append once it finishes")
+        installers = [name for name in project.installers if name]
+        if not installers:
+            raise ValidationFailed("Project needs at least one installer before appending stops")
+        bad = validate_stop_inputs(project.field_schema, stops)
+        if bad:
+            raise ValidationFailed(f"{len(bad)} stop(s) need fixing", errors=[], stops=bad)
+
+        existing = self._stores.list_all(project_id)
+        known = {key for key in (self._identity(stop) for stop in existing) if key}
+        skipped: list[dict[str, str]] = []
+        candidates: list[StopInput] = []
+        for stop in stops:
+            key = self._identity(stop)
+            if key and key in known:
+                skipped.append(
+                    {"addr": stop.addr, "venue_code": str(stop.fields.get("venue_code", "")), "reason": "duplicate"}
+                )
+                continue
+            if key:
+                known.add(key)
+            candidates.append(stop)
+
+        max_number = max(
+            (int(match.group(1)) for stop in existing if (match := re.fullmatch(r"S(\d+)", stop.display_id))),
+            default=0,
+        )
+        per_day = project.stops_per_day
+        # installer -> day -> stops, for the greedy placement
+        days: dict[str, dict[int, list[Stop]]] = {name: defaultdict(list) for name in installers}
+        for stop in existing:
+            if stop.installer in days:
+                days[stop.installer][stop.day].append(stop)
+
+        appended: list[Stop] = []
+        for offset, stop in enumerate(candidates, start=1):
+            installer = min(installers, key=lambda name: sum(len(day) for day in days[name].values()))
+            stop_state = state_key({"state": stop.state})
+            open_days = [
+                number
+                for number, rows in days[installer].items()
+                if rows and len(rows) < per_day and all(state_key({"state": row.state}) == stop_state for row in rows)
+            ]
+            if open_days:
+                day = min(open_days, key=lambda number: (len(days[installer][number]), number))
+            else:
+                day = max((number for number, rows in days[installer].items() if rows), default=0) + 1
+            new = Stop(
+                uid=uuid.uuid4().hex,
+                display_id=f"S{max_number + offset}",
+                store_name=stop.store_name.strip(),
+                addr=stop.addr.strip(),
+                city=stop.city.strip(),
+                state=stop.state.strip(),
+                zip=stop.zip.strip(),
+                lat=stop.lat,
+                lng=stop.lng,
+                geocoded=stop.geocoded.strip(),
+                installer=installer,
+                day=day,
+                seq=len(days[installer][day]),  # end of that day's route
+                fields=coerce_fields(project.field_schema, stop.fields),
+                status=stop.initial_status or StopStatus.INCOMPLETE,
+            )
+            days[installer][day].append(new)
+            appended.append(new)
+
+        if appended:
+            self._stores.put_many(project_id, appended)
+            pa_values = {clean_cell(part) for part in project.pa.split(",") if clean_cell(part)}
+            pa_values |= {clean_cell(part) for part in pa.split(",") if clean_cell(part)}
+            pa_values |= {value for stop in appended if (value := clean_cell(stop.fields.get("pa")))}
+            assert self._projects is not None
+            self._projects.update(
+                project_id,
+                {"stop_count": len(existing) + len(appended), "pa": ", ".join(sorted(pa_values)) or project.pa},
+            )
+        return {"appended": len(appended), "skipped": skipped, "total": len(existing) + len(appended)}

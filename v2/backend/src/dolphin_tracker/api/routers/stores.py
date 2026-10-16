@@ -5,7 +5,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
 from dolphin_tracker.api.deps import get_store_service
-from dolphin_tracker.api.schemas import Pin, ProgressUpdate, StoreDetailsUpdate
+from dolphin_tracker.api.schemas import AppendResult, AppendStops, Pin, ProgressUpdate, StoreDetailsUpdate
 from dolphin_tracker.domain.models import Page, Stop, StopStatus
 from dolphin_tracker.services.stores import StoreQuery, StoreService
 
@@ -65,6 +65,11 @@ def export_csv(project_id: str, service: ServiceDep, query: QueryDep) -> Respons
         media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": f'attachment; filename="stores-{project_id}.csv"'},
     )
+
+
+@router.post("/append", response_model=AppendResult)
+def append_stores(project_id: str, body: AppendStops, service: ServiceDep) -> dict:
+    return service.append(project_id, body.stops, body.pa)
 
 
 @router.get("/{stop_uid}", response_model=Stop)

@@ -133,6 +133,25 @@ def coerce_fields(schema: Iterable[FieldDef], fields: Mapping[str, Any]) -> dict
     return coerced
 
 
+def validate_stop_inputs(schema: Iterable[FieldDef], stops: Iterable[Any]) -> list[dict[str, Any]]:
+    """Per-row problems for submitted stops (create, append): required name and address, schema fields.
+
+    Returns `[{"index": i, "errors": [...]}]` for the bad rows only.
+    """
+    schema = list(schema)
+    bad = []
+    for index, stop in enumerate(stops):
+        problems = []
+        if not stop.store_name.strip():
+            problems.append("Store name is required")
+        if not stop.addr.strip():
+            problems.append("Address is required")
+        problems.extend(validate_fields(schema, stop.fields))
+        if problems:
+            bad.append({"index": index, "errors": problems})
+    return bad
+
+
 def validate_schema(schema: Iterable[FieldDef]) -> list[str]:
     """Problems with a schema definition itself: key format, duplicates, clashes with core attributes."""
     errors: list[str] = []

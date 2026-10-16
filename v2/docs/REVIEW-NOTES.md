@@ -362,3 +362,48 @@ gave to `POST /jobs/imports`.
 
 **Open questions:** without a Google key locally, no address can be edited (always 422), the same as v1. Fine for
 dev?
+
+## B9 · Append stops + delete + patch
+
+**Changed**
+- `services/stores.py`, `StoreService.append(project_id, stops, pa)`: a port of v1 `append_project_stops`, keyed
+  by uid.
+  - Dedupes with `duplicate_key`: venue code (`fields.venue_code`, case-insensitive), else the normalised
+    address. Duplicates are checked against existing stops and within the batch, and reported in `skipped` as
+    `{addr, venue_code, reason: "duplicate"}`.
+  - Greedy placement: the installer with the fewest stops, then that installer's same-state day with room under
+    `project.stops_per_day` (fewest stops, then lowest day), else a new day after their last. `seq` = end of
+    that day.
+  - `display_id` continues from the max `S<n>`; non-matching legacy ids are ignored.
+  - Merges PA from the project, the payload and each stop's `fields.pa`, and updates `stop_count`.
+  - 409 while routing is `building`. 422 when the project has no installers or rows are bad (same per-row report
+    as create).
+- `domain/schema.py`: `validate_stop_inputs(schema, stops)`, shared by create and append. `ProjectService.create`
+  uses it now instead of its own loop.
+- `services/projects.py`:
+  - `update` whitelists metadata keys. It rejects null for non-nullable keys and a blank name, validates
+    `field_schema` with `validate_schema`, and refuses an empty change set.
+  - `delete(confirm=)` requires the exact name (v1's two-step safeguard, 400 otherwise).
+- Routers:
+  - `POST /projects/{id}/stores/append` → `AppendResult`.
+  - `PATCH /projects/{id}` takes `ProjectUpdate` with `extra="forbid"`, so `installers`, `routing_status` etc.
+    are a 422, not silently ignored. `expected_version` → 409 on mismatch.
+  - `DELETE /projects/{id}?confirm=` → 204.
+- `tests/test_project_edit_api.py`, 8 tests: dedupe (venue code, address, in-batch), placement across installers
+  and states with `display_id` continuation, status/fields/PA merge, append errors
+  (422/409/422/404), delete confirm, PATCH success (cap, nullable percentage, schema with select options),
+  seven rejections, and the optimistic version.
+
+**Verified:** `make backend-lint backend-test frontend-typecheck frontend-test`, 181 backend passing.
+
+**Deviations**
+- Append returns 409 while a routing build is running. v1 had no async builds. A build computing over the old
+  stop set would place appended stops on days it is about to reuse.
+- Append does not return the routes bundle as v1 did. The handoff contract is `{appended, skipped, total}`; the
+  client refetches `/routes`.
+
+**Open questions**
+- Changing `field_schema` does not rewrite stop data. Values of a removed field stay in `fields` (hidden in the
+  UI, still exported? currently not exported, since export follows the schema). Making a field `required` does
+  not re-validate existing stops. Is that acceptable, or should a schema change that orphans data need
+  confirmation?

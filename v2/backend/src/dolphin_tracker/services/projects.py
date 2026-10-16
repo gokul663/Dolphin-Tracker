@@ -6,6 +6,7 @@ from typing import Any
 
 from dolphin_tracker.domain.errors import NotFoundError, ValidationFailed
 from dolphin_tracker.domain.models import (
+    FieldDef,
     Page,
     Project,
     ProjectCreate,
@@ -13,7 +14,12 @@ from dolphin_tracker.domain.models import (
     Stop,
     StopStatus,
 )
-from dolphin_tracker.domain.schema import coerce_fields, default_field_schema, validate_fields, validate_schema
+from dolphin_tracker.domain.schema import (
+    coerce_fields,
+    default_field_schema,
+    validate_schema,
+    validate_stop_inputs,
+)
 from dolphin_tracker.repositories.projects import ProjectRepository
 from dolphin_tracker.repositories.stores import StoreRepository
 from dolphin_tracker.services.routing import RoutingService
@@ -67,16 +73,7 @@ class ProjectService:
         schema = payload.field_schema if payload.field_schema is not None else default_field_schema()
         errors.extend(validate_schema(schema))
 
-        stop_errors = []
-        for index, stop in enumerate(payload.stops):
-            problems = []
-            if not stop.store_name.strip():
-                problems.append("Store name is required")
-            if not stop.addr.strip():
-                problems.append("Address is required")
-            problems.extend(validate_fields(schema, stop.fields))
-            if problems:
-                stop_errors.append({"index": index, "errors": problems})
+        stop_errors = validate_stop_inputs(schema, payload.stops)
         if errors or stop_errors:
             bad_rows = f"; {len(stop_errors)} stop(s) need fixing" if stop_errors else ""
             raise ValidationFailed(f"Project could not be created{bad_rows}", errors=errors, stops=stop_errors)
@@ -136,11 +133,39 @@ class ProjectService:
             return self.get(project_id), job.id
         return project, job.id
 
-    def update(self, project_id: str, changes: dict[str, Any], *, expected_version: int | None = None) -> Project:
-        return self._projects.update(project_id, changes, expected_version=expected_version)
+    UPDATABLE = frozenset(
+        {
+            "name", "pa", "project_type", "field_agent", "partner_account", "pa_percentage", "dolphin_percentage",
+            "store_percentage", "fa_percentage", "stops_per_day", "field_schema",
+        }
+    )
+    REQUIRED_TEXT = ("name",)
+    NOT_NULL = ("name", "pa", "project_type", "field_agent", "partner_account", "pa_percentage",
+                "dolphin_percentage", "stops_per_day", "field_schema")
 
-    def delete(self, project_id: str) -> None:
+    def update(self, project_id: str, changes: dict[str, Any], *, expected_version: int | None = None) -> Project:
+        """Metadata only (bounds are checked by the request model). A new `stops_per_day` applies from the next
+        routing build; a new `field_schema` does not rewrite existing stop values."""
+        extra = set(changes) - self.UPDATABLE
+        if extra:
+            raise ValueError(f"Not updatable here: {sorted(extra)}")
+        errors = [f"{key} cannot be null" for key in self.NOT_NULL if key in changes and changes[key] is None]
+        update = {key: value.strip() if isinstance(value, str) else value for key, value in changes.items()}
+        errors += [f"{key} cannot be blank" for key in self.REQUIRED_TEXT if update.get(key, "x") == ""]
+        if update.get("field_schema") is not None:
+            errors += validate_schema(FieldDef.model_validate(field) for field in update["field_schema"])
+        if errors:
+            raise ValidationFailed("; ".join(errors), errors=errors)
+        if not update:
+            raise ValidationFailed("No fields to update", errors=[])
         self.get(project_id)
+        return self._projects.update(project_id, update, expected_version=expected_version)
+
+    def delete(self, project_id: str, *, confirm: str) -> None:
+        """Two-step safeguard from v1: the caller must echo the exact project name."""
+        project = self.get(project_id)
+        if confirm.strip() != project.name.strip():
+            raise ValueError("Confirmation does not match. Type the project name exactly to delete it.")
         if self._stores is not None:
             self._stores.delete_all(project_id)
         self._projects.delete(project_id)

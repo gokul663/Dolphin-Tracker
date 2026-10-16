@@ -19,7 +19,7 @@ Tracks delivery against [PLAN.md](./PLAN.md). Tick items as they land; add sub-i
 - [x] Router / service / repository layers scaffolded with dependency injection and fakes
 - [x] Decimal/float serializer and cursor pagination helpers
 - [ ] Projects: list (paginated), get, create (routing as job), patch, delete
-- [ ] Stores: list (paginated, filter, search), get, update details with geocode verify, progress update, map pins endpoint
+- [x] Stores: list (paginated, filter, search), get, update details with geocode verify, progress update, map pins endpoint
 - [ ] Installers: add, rename; routing: reassign (sync), rebalance, recluster (jobs)
 - [ ] Jobs: create import, poll status, results from S3; worker handler for import and routing
 - [x] Pandas removed; CSV via `csv`, Excel via `openpyxl`; parser tests updated
@@ -34,7 +34,7 @@ Tracks delivery against [PLAN.md](./PLAN.md). Tick items as they land; add sub-i
   - [x] B4 local file store + local upload route
   - [x] B5 import job end to end
   - [x] B6 project create + routing job + routes bundle
-  - [ ] B7 store endpoints
+  - [x] B7 store endpoints
   - [ ] B8 installers + routing operations
   - [ ] B9 append stops, delete, patch
   - [ ] B10 project list KPI

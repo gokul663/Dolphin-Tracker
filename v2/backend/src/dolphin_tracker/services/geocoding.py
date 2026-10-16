@@ -1,7 +1,7 @@
 """Google Geocoding and Places lookups, ported from v1 server.py onto httpx."""
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Protocol
 
 import httpx
 
@@ -26,6 +26,14 @@ def google_address_parts(result: dict[str, Any]) -> dict[str, str]:
         "state": parts["administrative_area_level_1"],
         "zip": parts["postal_code"],
     }
+
+
+class Geocoder(Protocol):
+    """What services need from GoogleGeocoder; tests pass a fake with the same methods."""
+
+    def geocode(self, address: str) -> dict[str, Any]: ...
+    def find_place(self, query: str) -> dict[str, Any]: ...
+    def autocomplete(self, query: str) -> list[str]: ...
 
 
 class GoogleGeocoder:

@@ -1,9 +1,11 @@
 """HTTP request/response models that are not domain records. Domain records live in domain/models.py."""
 from __future__ import annotations
 
+from typing import Any
+
 from pydantic import BaseModel, Field
 
-from dolphin_tracker.domain.models import Project
+from dolphin_tracker.domain.models import Project, StopStatus
 
 
 class MapsConfig(BaseModel):
@@ -48,3 +50,32 @@ class ProjectCreated(BaseModel):
 
 class JobAccepted(BaseModel):
     job_id: str
+
+
+class Pin(BaseModel):
+    uid: str
+    lat: float
+    lng: float
+    status: StopStatus
+    store_name: str
+    installer: str
+    day: int
+
+
+class StoreDetailsUpdate(BaseModel):
+    """Detail edit. Omitted keys are unchanged; `fields` merges per key into the stop's custom fields."""
+
+    store_name: str | None = Field(default=None, max_length=300)
+    addr: str | None = Field(default=None, max_length=500)
+    city: str | None = Field(default=None, max_length=200)
+    state: str | None = Field(default=None, max_length=50)
+    zip: str | None = Field(default=None, max_length=20)
+    fields: dict[str, Any] | None = None
+
+
+class ProgressUpdate(BaseModel):
+    status: StopStatus | None = None
+    comment: str | None = Field(default=None, max_length=2000)
+    additional_task: bool | None = None
+    installer_name: str | None = Field(default=None, max_length=200)
+    updated_by: str | None = Field(default=None, max_length=200)

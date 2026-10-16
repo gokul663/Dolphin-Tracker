@@ -314,3 +314,51 @@ gave to `POST /jobs/imports`.
 **Open questions**
 - `stop_count` is maintained on create (and append in B9) but not decremented anywhere, since there is no stop
   delete endpoint. It is informational; the KPIs (B10) count actual stops.
+
+## B7 · Store endpoints
+
+**Changed**
+- `services/stores.py`, `StoreService(stores, projects, geocoder)`. The §4.3 semantics are in the module docstring.
+  - `list(project_id, StoreQuery, limit, cursor)`: `list_all`, then filters, then free-text search, then sort,
+    then an offset cursor.
+    - Filters: `status` (repeatable), `installer` (repeatable; empty = unassigned).
+    - `q` is case-insensitive over store_name/addr/city/zip/comment/fields values, **plus `display_id`** so
+      "S12" finds a stop.
+    - Sort: `store_name` (default), `addr`, `status`, `installer`, `day`, `updated_at`, `display_id` (natural
+      order: S10 after S9), or `fields.<schema key>`. Text sorts ignore case; numbers sort numerically; blanks are
+      always last in either direction; ties fall back to display order.
+    - An unknown sort or field returns 400, as does a bad cursor.
+  - `pins`: same filters, located stops only, `{uid, lat, lng, status, store_name, installer, day}`.
+  - `export_csv`: same filters and order. Core columns, then schema columns by label, then status and progress.
+    Text cells starting with `= + - @ \t \r` get a leading `'` (CSV formula-injection guard).
+  - `update_details`:
+    - Store name and address can't be blanked. `fields` is validated with `validate_fields(partial=True)`
+      (unknown keys and type errors), and every problem comes back in one 422.
+    - **Only when an address part actually changes**, it geocodes `addr, city, state, zip`. A partial or failed
+      result gives 422 `{message, google_status, suggestions}`, with autocomplete as the fallback suggestion
+      source, and nothing is written.
+    - On success it sets lat/lng/geocoded and `route_stale=True`.
+    - `fields` are written as one `fields.<key>` path each, so concurrent edits to other fields survive. No-op
+      edits skip the write. Installer/day/seq/progress can't be in this write: the request model has no such
+      keys.
+  - `update_progress`: only `PROGRESS_FIELDS` (asserted); an empty body is 422.
+- `api/routers/stores.py`: list, `/pins`, `/export.csv` (`text/csv`, attachment), `/{uid}`, `PATCH /{uid}`,
+  `PATCH /{uid}/progress`. `api/schemas.py`: `Pin`, `StoreDetailsUpdate`, `ProgressUpdate`.
+- The `Geocoder` protocol moved to `services/geocoding.py`, its natural home.
+- `tests/test_stores_api.py`, 16 tests: the default sort, every sort key including blanks-last in both directions,
+  400/422 for bad parameters, each filter and search target, cursor paging, 404s, pins, the CSV
+  layout/filter/injection guard, detail edits with and without an address change, the 422s with suggestions
+  (nothing written), validation, progress-only writes, and a spy proving the progress and detail writes carry
+  disjoint key sets.
+
+**Verified**
+- `make backend-lint backend-test frontend-typecheck frontend-test`, 173 backend passing.
+- Manual, local stack, on the B6 smoke project (60 stops): a page of 25 sorted desc with a next cursor, pins
+  filtered by installer (17), the CSV header plus a filtered export, a progress PATCH (installer/day unchanged),
+  and a nested fields PATCH. An address PATCH returns 422, because there is no Google key locally. The **real
+  geocode check is skipped** for that reason.
+
+**Deviations:** `display_id` is included in search and as a sort key; both are additions.
+
+**Open questions:** without a Google key locally, no address can be edited (always 422), the same as v1. Fine for
+dev?

@@ -70,6 +70,15 @@ def get_job_service(
     return JobService(jobs, files, invoker, projects)
 
 
+@lru_cache
+def _geocoder(api_key: str) -> GoogleGeocoder:
+    return GoogleGeocoder(api_key)  # one httpx.Client per warm process
+
+
+def get_geocoder(settings: SettingsDep) -> GoogleGeocoder:
+    return _geocoder(resolve_google_server_key(settings))
+
+
 def get_routing_service(
     projects: Annotated[ProjectRepository, Depends(get_project_repository)],
     stores: Annotated[StoreRepository, Depends(get_store_repository)],
@@ -87,17 +96,12 @@ def get_project_service(
     return ProjectService(projects, stores, routing)
 
 
-def get_store_service(stores: Annotated[StoreRepository, Depends(get_store_repository)]) -> StoreService:
-    return StoreService(stores)
-
-
-@lru_cache
-def _geocoder(api_key: str) -> GoogleGeocoder:
-    return GoogleGeocoder(api_key)  # one httpx.Client per warm process
-
-
-def get_geocoder(settings: SettingsDep) -> GoogleGeocoder:
-    return _geocoder(resolve_google_server_key(settings))
+def get_store_service(
+    stores: Annotated[StoreRepository, Depends(get_store_repository)],
+    projects: Annotated[ProjectRepository, Depends(get_project_repository)],
+    geocoder: Annotated[GoogleGeocoder, Depends(get_geocoder)],
+) -> StoreService:
+    return StoreService(stores, projects, geocoder)
 
 
 def get_places_service(geocoder: Annotated[GoogleGeocoder, Depends(get_geocoder)]) -> PlacesService:

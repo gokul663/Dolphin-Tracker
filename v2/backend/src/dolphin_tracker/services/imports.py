@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
-from typing import Any, Protocol
+from typing import Any
 
 from aws_lambda_powertools import Logger
 
@@ -26,6 +26,7 @@ from dolphin_tracker.domain.parsing import (
 )
 from dolphin_tracker.repositories.files import FileStore, result_key
 from dolphin_tracker.repositories.jobs import JobRepository
+from dolphin_tracker.services.geocoding import Geocoder
 
 logger = Logger(child=True)
 
@@ -41,14 +42,6 @@ CORE_ALIASES = (
 GEOCODE_WORKERS = 8
 PROGRESS_EVERY = 10
 MAX_IMPORT_ROWS = 5000
-
-
-class Geocoder(Protocol):
-    """The subset of GoogleGeocoder the import uses (lets tests pass a fake)."""
-
-    def geocode(self, address: str) -> dict[str, Any]: ...
-    def find_place(self, query: str) -> dict[str, Any]: ...
-    def autocomplete(self, query: str) -> list[str]: ...
 
 
 @dataclass

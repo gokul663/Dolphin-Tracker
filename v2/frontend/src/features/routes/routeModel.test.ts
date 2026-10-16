@@ -1,0 +1,133 @@
+import { describe, expect, it } from "vitest";
+import {
+  allCsvRows,
+  canonicalState,
+  copyText,
+  dayCsvRows,
+  dayStateLabel,
+  filterDays,
+  filterOptions,
+  installerSummary,
+  mapsUrlForStops,
+  NO_FILTERS,
+  parseDays,
+  routableStops,
+  routeChunks,
+  sameAddressRecords,
+  tally,
+  territoryTag,
+  toCsv,
+  uniqueCities,
+} from "@/features/routes/routeModel";
+import type { RoutesBundle, Stop } from "@/lib/api/types";
+import { makeStop } from "@/test/fixtures";
+import { DEFAULT_SCHEMA_FOR_TESTS as SCHEMA } from "@/test/schema";
+
+const s = (uid: string, overrides: Partial<Stop> = {}) =>
+  makeStop({ uid, display_id: uid.toUpperCase(), store_name: `Store ${uid}`, addr: `${uid} Main St`, ...overrides });
+
+describe("Google Maps links (v1 mapsUrlForStops / routeChunks)", () => {
+  it("builds a search link for one stop and directions for several", () => {
+    expect(mapsUrlForStops([])).toBe("#");
+    expect(mapsUrlForStops([s("a")])).toBe("https://www.google.com/maps/search/?api=1&query=a%20Main%20St%2C%20Atlanta%2C%20GA%2030303");
+    const url = new URL(mapsUrlForStops([s("a"), s("b"), s("c")]));
+    expect(url.pathname).toBe("/maps/dir/");
+    expect(url.searchParams.get("origin")).toBe("a Main St, Atlanta, GA 30303");
+    expect(url.searchParams.get("waypoints")).toBe("b Main St, Atlanta, GA 30303");
+    expect(url.searchParams.get("destination")).toBe("c Main St, Atlanta, GA 30303");
+  });
+
+  it("chunks at 10 stops, each chunk starting at the previous destination", () => {
+    const stops = Array.from({ length: 23 }, (_, i) => i);
+    expect(routeChunks(stops).map(({ start, end }) => [start, end])).toEqual([[0, 9], [9, 18], [18, 22]]);
+    expect(routeChunks(stops.slice(0, 10))).toHaveLength(1);
+    expect(routableStops([s("a", { status: "Complete" }), s("b")]).map((stop) => stop.uid)).toEqual(["b"]);
+  });
+});
+
+describe("day details", () => {
+  const day = [
+    s("a", { status: "Complete", city: "Atlanta " }),
+    s("b", { addr: "A Main St", city: "Decatur" }), // same address as a once normalised
+    s("c", { status: "Technical Issue", state: "Georgia" }),
+  ];
+  it("tallies statuses, cities, states and shared addresses", () => {
+    expect(tally(day)).toEqual({ complete: 1, pending: 1, technical: 1, other: 0 });
+    expect(uniqueCities(day)).toEqual(["Atlanta", "Decatur"]);
+    expect(dayStateLabel(day)).toBe("Georgia");
+    expect(dayStateLabel([s("x", { state: "TX" }), s("y")])).toBe("2 states");
+    expect(sameAddressRecords([s("a"), s("a2", { addr: "a main st." }), s("b")])).toBe(2);
+    expect(canonicalState("ga.")).toBe("GA");
+    expect(canonicalState("north carolina")).toBe("NC");
+    expect(canonicalState("Narnia")).toBe("");
+  });
+
+  it("copies addresses like v1", () => {
+    expect(copyText([s("a"), s("b", { store_name: "" })])).toBe(
+      "1. a Main St, Atlanta, GA 30303 — Store a\n2. b Main St, Atlanta, GA 30303",
+    );
+  });
+});
+
+const BUNDLE: RoutesBundle = {
+  installers: ["Ann", "Bo"],
+  stops_per_day: 8,
+  routing_status: "ready",
+  stats: {},
+  routes: {
+    Ann: [
+      [s("a", { lat: 33.80, lng: -84.39, fields: { pa: "North, South", dma: "ATL" } }), s("b", { lat: 33.81, lng: -84.39, status: "Complete" })],
+      [s("c", { lat: 33.82, lng: -84.39, city: "decatur", fields: { venue_type: "Bar" } })],
+    ],
+    Bo: [[s("d", { lat: 33.60, lng: -84.39, state: "AL", comment: "gate code 1234" })]],
+  },
+};
+
+describe("filters and summaries", () => {
+  it("parses day lists and filters by day, PA, DMA, venue type, state, city and search", () => {
+    expect(parseDays("1, 3 5")).toEqual([1, 3, 5]);
+    expect(parseDays("x")).toBeNull();
+    const ann = BUNDLE.routes.Ann as Stop[][];
+    expect(filterDays(ann, { ...NO_FILTERS, days: "2" }).map((d) => d.day)).toEqual([2]);
+    expect(filterDays(ann, { ...NO_FILTERS, pa: "South" }).flatMap((d) => d.stops.map((x) => x.uid))).toEqual(["a"]);
+    expect(filterDays(ann, { ...NO_FILTERS, dma: "ATL" })).toHaveLength(1);
+    expect(filterDays(ann, { ...NO_FILTERS, venueType: "Bar" })[0]?.day).toBe(2);
+    expect(filterDays(ann, { ...NO_FILTERS, city: "Decatur" })[0]?.stops[0]?.uid).toBe("c");
+    expect(filterDays(BUNDLE.routes.Bo as Stop[][], { ...NO_FILTERS, state: "AL" })).toHaveLength(1);
+    expect(filterDays(BUNDLE.routes.Bo as Stop[][], { ...NO_FILTERS, q: "GATE CODE" })).toHaveLength(1);
+    expect(filterDays(ann, { ...NO_FILTERS, q: "upcoming" }).flatMap((d) => d.stops.map((x) => x.uid))).toEqual(["a", "c"]);
+  });
+
+  it("summarises an installer like v1's section header", () => {
+    expect(installerSummary(BUNDLE.routes.Ann as Stop[][], NO_FILTERS)).toEqual({
+      total: 3, activeDays: 2, averageActive: "1.0", complete: 1, pending: 2, technical: 0, other: 0,
+    });
+  });
+
+  it("collects filter options", () => {
+    expect(filterOptions(BUNDLE.routes)).toEqual({
+      pa: ["North", "South"], dma: ["ATL"], venueType: ["Bar"], state: ["AL", "GA"], city: ["Atlanta", "Decatur"],
+    });
+  });
+
+  it("tags territories relative to the dominant city", () => {
+    expect(territoryTag(BUNDLE.routes, "Ann")).toBe("North Atlanta");
+    expect(territoryTag(BUNDLE.routes, "Bo")).toBe("South Atlanta");
+    expect(territoryTag({ Cy: [] }, "Cy")).toBe("Unassigned territory");
+  });
+});
+
+describe("CSV export", () => {
+  it("writes schema-driven day and all-route rows", () => {
+    const day = dayCsvRows("Ann", 1, BUNDLE.routes.Ann?.[0] as Stop[], SCHEMA);
+    expect(day[0]?.slice(0, 6)).toEqual(["Day", "Stop #", "Route Owner", "Installer Name", "ID", "Store Name"]);
+    expect(day[0]).toContain("Owner Phone");
+    expect(day[1]?.slice(0, 5)).toEqual([1, 1, "Ann", "Ann", "A"]);
+    const all = allCsvRows(BUNDLE, { ...NO_FILTERS, state: "GA" }, SCHEMA);
+    expect(all).toHaveLength(4); // header + Ann's three GA stops; Bo's AL stop filtered out
+  });
+
+  it("quotes and guards formulas but leaves numbers alone", () => {
+    expect(toCsv([["a,b", 'say "hi"', "=SUM(A1)", -84.4, 1]])).toBe('"a,b","say ""hi""",\'=SUM(A1),-84.4,1');
+  });
+});

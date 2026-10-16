@@ -62,13 +62,13 @@ Tracks delivery against [PLAN.md](./PLAN.md). Tick items as they land; add sub-i
   - [x] F7 stores tab
 
 **Phase 4 — Routes port**
-- [ ] Installer tabs with stats; day cards with ordered stops and status counts
-- [ ] Stop editing parity with the legacy page (progress, additional task, comment, installer name)
-- [ ] Reassign with confirmation; rebalance and recluster as jobs with progress
-- [ ] Google Maps route links, copy addresses, per-day and full CSV export
+- [x] Installer tabs with stats; day cards with ordered stops and status counts
+- [x] Stop editing parity with the legacy page (progress, additional task, comment, installer name)
+- [x] Reassign with confirmation; rebalance and recluster as jobs with progress
+- [x] Google Maps route links, copy addresses, per-day and full CSV export
 - [ ] Legacy planner page and iframe removed
 - Tasks (AGENT-HANDOFF §5):
-  - [ ] R1 routes tab port
+  - [x] R1 routes tab port
   - [ ] R2 remove the iframe path
 
 **Phase 5 — Cutover**

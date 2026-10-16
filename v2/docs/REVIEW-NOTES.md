@@ -877,3 +877,64 @@ unavailable) and not with a live map (no browser key).
 - Tests stub `clientWidth`/`clientHeight` (file-local) so the virtualizer renders rows in jsdom.
 
 **Open questions:** none.
+
+## R1 · Routes tab port
+
+**Changed**
+- `features/routes/routeModel.ts`: a pure, faithful port of the legacy planner logic, keyed by uid.
+  - `mapsUrlForStops` / `routeChunks` (10 stops per link; each chunk starts at the previous destination);
+    `routableStops` (Complete leaves the route).
+  - `territoryTag` ("North Atlanta", "Southwest Macon"… relative to the dominant city's centroid, same
+    thresholds as v1).
+  - Day helpers: `tally`, `uniqueCities`, `dayStateLabel` (US state names), `sameAddressRecords`.
+  - `installerSummary` (v1 section header: active days, ~active stops/day).
+  - Filters: day list `"1, 3 5"`, PA (multi-value `fields.pa`), DMA, venue type, state (canonical code), city
+    (title-cased), and search over name/address/ZIP/fields/comment/status label. `filterOptions` feeds the
+    dropdowns.
+  - CSV: `dayCsvRows` / `allCsvRows` / `toCsv`, with the same formula guard as the server export.
+- `features/routes/RoutesTab.tsx`:
+  - Installer tabs: colour, territory tag, and stats badge from the bundle (stops · days · miles), plus "All
+    installers".
+  - Day-cards / summary toggle and the filter row.
+  - Expand/collapse all.
+  - **Rebalance upcoming** and **Rebuild all routes**, each a job behind an in-app confirmation. They are
+    disabled while building, and the project banner (F5) shows progress.
+  - All-routes CSV of the current filters.
+  - The shared **MapView** with the filtered route pins; a pin click opens the store.
+  - **The bundle refetches when `routing_status` leaves `building`**, so a finished job shows by itself.
+- `features/routes/DayCard.tsx`:
+  - Header: day N of total, state label, status counts, active/records, same-address count, an addresses
+    dialog, collapse.
+  - Cities strip.
+  - Ordered stops: name, address, ID/PA/venue code, "by" installer name, an optimistic status select, an
+    **installer select that reassigns after a confirmation** (sync endpoint), an additional-task badge, the
+    comment, and **edit → the Stores drawer** (progress incl. installer name, additional task and comment, plus
+    details).
+  - Actions: Maps route link(s), chunked like v1, or "Route complete"; copy addresses (v1 text format); per-day
+    CSV.
+- `features/routes/SummaryTable.tsx`: v1's summary view.
+- `components/ConfirmDialog.tsx` (never `window.confirm`), `lib/download.ts`.
+- Tests: `routeModel.test.ts` (10), `RoutesTab.test.tsx` (7):
+  - tabs with stats and territory, the day card, the Maps link;
+  - installer/day/search filters and the summary view;
+  - **reassign only after confirm** (cancel sends nothing);
+  - rebalance job after confirm;
+  - disabled while building;
+  - all-routes CSV content and copy-addresses text;
+  - drawer from a stop.
+
+**Verified:** `make backend-lint backend-test frontend-typecheck frontend-test` (211 backend, 75 frontend passing)
+and `make frontend-build`. The bundle endpoint was already verified on DynamoDB Local in B6/B8. **Not verified in a
+browser** (Chrome extension unavailable).
+
+**Deviations from the legacy page**
+- **CSV columns follow the project schema.** v1 hard-coded PA/Venue Type/DMA/Venue Code/Brand/Assigned Region;
+  v2 emits the schema's fields by label, and migrated projects keep `brand` as a schema field (B12). "ARA Modem
+  Collected" is gone with the legacy external project.
+- **Add/rename installer** live in Settings (F5) instead of on the tab strip. The tab strip stays a view control.
+- "Rebalance" and "rebuild" are separate buttons with their own explanations. v1 exposed rebalance on the page
+  and recluster only through the API.
+- Inline per-field editing on the card (store name, brand…) moved to the shared drawer, so Stores and Routes edit
+  through one validated form.
+
+**Open questions:** none.

@@ -85,3 +85,37 @@ date input produces that format.
 inherited contract tests briefly ran unpatched and reached real AWS. The dummy credentials were rejected, so
 nothing was written. The Dynamo suite now starts the mock in `setUp`. Use the same pattern for any future
 contract-style test.
+
+## B3 · Job repository + worker invoker
+
+**Changed**
+- `domain/models.py`: `Job.payload: dict` (§3.1, the job-specific input).
+- `config.py`: `worker_mode: Literal["lambda", "inline"] = "lambda"` (`DT_WORKER_MODE`). The AWS default stays
+  `lambda`, so the CDK stack needs no change. B4 makes `make backend-dev` default to `inline`.
+- `repositories/jobs.py`, `DynamoJobRepository`:
+  - `put` writes `entity=JOB` and `ttl = created_at + 24 h` in epoch seconds. Jobs carry no GSI1 keys.
+  - `get` drops `ttl` before validation.
+  - `set_status(progress=None leaves it unchanged; clamped 0–100)`.
+  - `set_result(result_key)` sets succeeded at 100 %.
+  - Every update is conditioned on `attribute_exists(PK)` and raises `NotFoundError`. `set_result` is the one
+    method added to the stub protocol.
+- `repositories/memory.py`: `InMemoryJobRepository`, plus a `history` of status transitions for service tests.
+- `services/worker_invoker.py`:
+  - `WorkerInvoker` protocol.
+  - `LambdaInvoker`: `invoke(InvocationType="Event")`, client injectable, refuses an empty function name.
+  - `InlineInvoker`: daemon thread per job, runs `handlers.worker.dispatch`, logs and swallows crashes so the API
+    process survives, and has `wait()` for tests.
+  - `make_invoker(settings)`.
+- `handlers/worker.py`: the body moves into `dispatch(event)`, which the Lambda handler and the inline invoker
+  share. B6 wires the repositories into it.
+- `tests/test_jobs.py` (15 tests): the contract on moto and the fake, the TTL/layout check, invoker behaviour in
+  both modes, and `make_invoker` selection.
+
+**Verified:** `make backend-lint backend-test frontend-typecheck frontend-test`, 96 backend passing.
+
+**Deviations**
+- `LambdaInvoker` lives in `services/` and imports boto3, because the handoff puts it there. That is a narrow
+  exception to rule 1, "no boto3 in services". The import is local to the constructor, and no business service
+  touches boto3. If the reviewer prefers, it moves to `repositories/` (or a new `adapters/`) with no API change.
+
+**Open questions:** none.

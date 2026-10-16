@@ -124,6 +124,7 @@ class Job(BaseModel):
     project_id: str | None = None
     progress: int = Field(default=0, ge=0, le=100)
     message: str = ""
+    payload: dict[str, Any] = Field(default_factory=dict)  # job-specific input (upload key, routing mode, ...)
     result_key: str | None = None
     created_at: str = Field(default_factory=now_iso)
     updated_at: str = Field(default_factory=now_iso)

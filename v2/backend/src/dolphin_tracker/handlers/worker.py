@@ -30,8 +30,8 @@ RUNNERS: dict[JobType, Callable[[dict[str, Any]], None]] = {
 }
 
 
-@logger.inject_lambda_context(log_event=True)
-def handler(event: dict[str, Any], context) -> dict[str, Any]:
+def dispatch(event: dict[str, Any]) -> dict[str, Any]:
+    """Run one job event. Shared by the Lambda handler and the inline (local) invoker."""
     job_id = event.get("job_id", "")
     try:
         job_type = JobType(event["job_type"])
@@ -44,3 +44,8 @@ def handler(event: dict[str, Any], context) -> dict[str, Any]:
         logger.warning("Job runner not implemented", extra={"job_type": job_type, "detail": str(exc)})
         return {"ok": False, "job_id": job_id, "error": str(exc)}
     return {"ok": True, "job_id": job_id}
+
+
+@logger.inject_lambda_context(log_event=True)
+def handler(event: dict[str, Any], context) -> dict[str, Any]:
+    return dispatch(event)

@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import Any
 
 from dolphin_tracker.domain.errors import ConflictError, NotFoundError
-from dolphin_tracker.domain.models import Page, Project, Stop, now_iso
+from dolphin_tracker.domain.models import Job, JobStatus, Page, Project, Stop, now_iso
 from dolphin_tracker.repositories.dynamo import decode_cursor, encode_cursor
 from dolphin_tracker.repositories.projects import IMMUTABLE_FIELDS
 from dolphin_tracker.repositories.stores import IMMUTABLE_STOP_FIELDS, RoutingChange, check_routing_change
@@ -105,3 +105,38 @@ class InMemoryStoreRepository:
 
     def delete_all(self, project_id: str) -> int:
         return len(self._items.pop(project_id, {}))
+
+
+class InMemoryJobRepository:
+    def __init__(self) -> None:
+        self._items: dict[str, Job] = {}
+        self.history: dict[str, list[JobStatus]] = {}  # status transitions, for tests
+
+    def put(self, job: Job) -> None:
+        self._items[job.id] = job.model_copy(deep=True)
+        self.history.setdefault(job.id, []).append(job.status)
+
+    def get(self, job_id: str) -> Job | None:
+        job = self._items.get(job_id)
+        return job.model_copy(deep=True) if job else None
+
+    def _update(self, job_id: str, changes: dict[str, Any]) -> Job:
+        current = self._items.get(job_id)
+        if current is None:
+            raise NotFoundError(f"Job {job_id} not found")
+        updated = current.model_copy(update={**changes, "updated_at": now_iso()}, deep=True)
+        self._items[job_id] = updated
+        if self.history[job_id][-1] != updated.status:
+            self.history[job_id].append(updated.status)
+        return updated.model_copy(deep=True)
+
+    def set_status(self, job_id: str, status: JobStatus, *, progress: int | None = None, message: str = "") -> Job:
+        changes: dict[str, Any] = {"status": status, "message": message}
+        if progress is not None:
+            changes["progress"] = max(0, min(100, progress))
+        return self._update(job_id, changes)
+
+    def set_result(self, job_id: str, result_key: str | None, *, message: str = "") -> Job:
+        return self._update(
+            job_id, {"status": JobStatus.SUCCEEDED, "progress": 100, "result_key": result_key, "message": message}
+        )

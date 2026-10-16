@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -15,6 +16,7 @@ class Settings(BaseSettings):
     dynamodb_endpoint_url: str | None = None  # http://localhost:8000 for DynamoDB Local
     files_bucket: str = ""
     worker_function_name: str = ""
+    worker_mode: Literal["lambda", "inline"] = "lambda"  # inline: run jobs on a thread in the API process (local)
     cors_origins: str = "http://localhost:5173"  # comma-separated
     google_server_key: str = ""  # direct value for local dev
     google_server_key_param: str = ""  # SSM SecureString name, used in Lambda when the direct value is empty

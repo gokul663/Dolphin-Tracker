@@ -112,8 +112,11 @@ class InvokerTests(unittest.TestCase):
         self.assertEqual(json.loads(call["Payload"]), self.EVENT)
 
     def test_lambda_invoker_needs_a_function_name(self):
+        client = FakeLambdaClient()
+        invoker = LambdaInvoker("", client=client)  # constructing is fine; enqueueing is what fails
         with self.assertRaises(ValueError):
-            LambdaInvoker("", client=FakeLambdaClient())
+            invoker.invoke(self.EVENT)
+        self.assertEqual(client.calls, [])
 
     def test_inline_invoker_runs_on_another_thread(self):
         seen = []

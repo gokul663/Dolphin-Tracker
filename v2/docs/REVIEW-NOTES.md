@@ -190,3 +190,63 @@ settings field would be ceremony.
 
 **Note for F4:** the presigned PUT signs `Content-Type`, so the browser must send exactly the `content_type` it
 gave to `POST /jobs/imports`.
+
+## B5 · Import job end to end
+
+**Changed**
+- `api/routers/jobs.py`:
+  - `POST /jobs/imports` → 201 `{job_id, upload_url, upload_key}`. 422 for an unsupported extension, 404 for an
+    unknown `project_id`.
+  - `POST /jobs/{id}/start` → 202 `Job`. 409 if the upload is missing, the job has already started, or the job is
+    not an import. 503 if the worker can't be invoked; the job is then marked failed.
+  - `GET /jobs/{id}` → `JobView` (Job + `result_url` once succeeded).
+  - `GET /jobs/{id}/result`, local mode only (see the B4 deviation).
+- `services/jobs.py`: `create_import`, `start`, `view`, `result`.
+  - `start` does the queued→running transition as a conditional write (`expected_status`), so a double click or a
+    client retry can't launch two workers for one job.
+- `repositories/jobs.py` and the fake: `set_status(..., expected_status=)` raises `ConflictError` when the job is
+  no longer in that state.
+- `services/imports.py`: `ImportService(jobs, files, geocoder).run`.
+  1. Read the upload, `parse`, cap at 5,000 rows.
+  2. Geocode with `ThreadPoolExecutor(8)` over one shared geocoder, one per job.
+  3. Write progress every 10 rows (1 % reading, 5 % parsed, then 5–95 % linearly).
+  4. Write `result.json` per §3.4, then `set_result`.
+  - Any exception marks the job failed. `ValueError`/`KeyError` messages are shown verbatim ("Missing 'address'
+    column"); others are prefixed "Import failed: …".
+  - `verify_row` is the pure per-row port of v1's status rules. It always returns every §3.4 key (`None`/`""`
+    defaults), so the frontend type is stable. Route address and coordinates come only from geocoding.
+  - `fields` carries the venue columns the sheet actually has, plus every unknown column, keyed by normalised
+    header. Mapping to the project schema happens in the review UI (F4), so the job stays schema-agnostic.
+  - `ParsedTable.venue_columns` is new, so absent venue columns are not emitted as empty fields.
+- `services/geocoding.py`: `GoogleGeocoder.close()`. The worker closes the per-job client.
+- `handlers/worker.py`: a `WorkerDeps` container (repositories, file store, geocoder factory), with
+  `default_deps()` cached per process. `dispatch(event, deps=None)` lets tests and the inline invoker run the same
+  path with fakes.
+- `services/worker_invoker.py`: `LambdaInvoker` now creates its client lazily and checks the function name at
+  invoke time. Every job endpoint depends on the invoker, and a misconfigured env should fail the enqueue, not
+  `GET /jobs/{id}`.
+- `domain/models.py`: `JobView`. `api/schemas.py`: `ImportJobCreate`, `ImportJobCreated`.
+- Tests:
+  - `tests/test_import_service.py`: 3 parse, 6 status-rule and 5 run tests. The run tests cover the full result,
+    the progress cadence, and failure paths (bad sheet, missing upload, geocoder crash, vanished job).
+  - `tests/test_jobs_api.py`, 7 tests: the whole browser flow through `InlineInvoker` → `dispatch` with fakes,
+    plus every error code above.
+
+**Verified**
+- `make backend-lint backend-test frontend-typecheck frontend-test`, 133 backend passing.
+- Manual, local stack (`make ddb-up ddb-table backend-dev`, inline worker, `.local-files`): `POST
+  /jobs/imports` → `PUT` upload 204 → `start` 202 → job `succeeded` within 1.5 s → `GET result_url` returned
+  §3.4 JSON. Files landed under `backend/.local-files/{uploads,jobs}/<id>/`.
+- **Real-geocode check skipped:** there is no `DT_GOOGLE_SERVER_KEY` in `v2/backend/.env`. Without a key every row
+  comes back `needs_review` / 0 with error "missing key/address", which is what the manual run showed.
+
+**Deviations**
+- `find_place` is still called for every row, even when geocoding failed, to keep v1's `verified_by` semantics.
+  That is one Places call per row.
+
+**Open questions**
+1. Google cost (PLAN open question 5): should the Places check be skipped when geocoding fails, or when it
+   returns a partial match? It roughly halves calls on bad sheets, and the only change is `verified_by` on failed
+   rows.
+2. With no server key configured, the import "succeeds" with every row needing review, as v1 did. Should it fail
+   fast with "Google key not configured" instead?

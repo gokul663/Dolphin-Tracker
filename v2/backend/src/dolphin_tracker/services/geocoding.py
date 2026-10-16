@@ -39,6 +39,9 @@ class GoogleGeocoder:
     def enabled(self) -> bool:
         return bool(self._key)
 
+    def close(self) -> None:
+        self._client.close()
+
     def geocode(self, address: str) -> dict[str, Any]:
         if not self.enabled or not address.strip():
             return {"ok": False, "error": "missing key/address"}

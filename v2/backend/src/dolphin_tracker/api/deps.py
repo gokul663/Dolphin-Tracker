@@ -20,6 +20,7 @@ from dolphin_tracker.services.jobs import JobService
 from dolphin_tracker.services.places import PlacesService
 from dolphin_tracker.services.projects import ProjectService
 from dolphin_tracker.services.stores import StoreService
+from dolphin_tracker.services.worker_invoker import WorkerInvoker, make_invoker
 
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 
@@ -50,11 +51,22 @@ def get_file_store(settings: SettingsDep) -> FileStore:
     return make_file_store(settings)
 
 
+@lru_cache
+def _invoker(mode: str, function_name: str, region: str) -> WorkerInvoker:
+    return make_invoker(Settings(worker_mode=mode, worker_function_name=function_name, aws_region=region))
+
+
+def get_worker_invoker(settings: SettingsDep) -> WorkerInvoker:
+    return _invoker(settings.worker_mode, settings.worker_function_name, settings.aws_region)
+
+
 def get_job_service(
     jobs: Annotated[JobRepository, Depends(get_job_repository)],
     files: Annotated[FileStore, Depends(get_file_store)],
+    invoker: Annotated[WorkerInvoker, Depends(get_worker_invoker)],
+    projects: Annotated[ProjectRepository, Depends(get_project_repository)],
 ) -> JobService:
-    return JobService(jobs, files)
+    return JobService(jobs, files, invoker, projects)
 
 
 def get_project_service(

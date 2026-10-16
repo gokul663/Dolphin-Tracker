@@ -120,21 +120,31 @@ class InMemoryJobRepository:
         job = self._items.get(job_id)
         return job.model_copy(deep=True) if job else None
 
-    def _update(self, job_id: str, changes: dict[str, Any]) -> Job:
+    def _update(self, job_id: str, changes: dict[str, Any], *, expected_status: JobStatus | None = None) -> Job:
         current = self._items.get(job_id)
         if current is None:
             raise NotFoundError(f"Job {job_id} not found")
+        if expected_status is not None and current.status != expected_status:
+            raise ConflictError(f"Job {job_id} is no longer {expected_status.value}")
         updated = current.model_copy(update={**changes, "updated_at": now_iso()}, deep=True)
         self._items[job_id] = updated
         if self.history[job_id][-1] != updated.status:
             self.history[job_id].append(updated.status)
         return updated.model_copy(deep=True)
 
-    def set_status(self, job_id: str, status: JobStatus, *, progress: int | None = None, message: str = "") -> Job:
+    def set_status(
+        self,
+        job_id: str,
+        status: JobStatus,
+        *,
+        progress: int | None = None,
+        message: str = "",
+        expected_status: JobStatus | None = None,
+    ) -> Job:
         changes: dict[str, Any] = {"status": status, "message": message}
         if progress is not None:
             changes["progress"] = max(0, min(100, progress))
-        return self._update(job_id, changes)
+        return self._update(job_id, changes, expected_status=expected_status)
 
     def set_result(self, job_id: str, result_key: str | None, *, message: str = "") -> Job:
         return self._update(

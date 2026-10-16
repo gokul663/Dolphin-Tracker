@@ -25,3 +25,15 @@ class GeocodeResult(BaseModel):
 
 class Suggestions(BaseModel):
     suggestions: list[str]
+
+
+class ImportJobCreate(BaseModel):
+    filename: str = Field(min_length=1, max_length=255)
+    content_type: str = Field(default="application/octet-stream", max_length=255)
+    project_id: str | None = None  # set when appending to an existing project
+
+
+class ImportJobCreated(BaseModel):
+    job_id: str
+    upload_url: str  # presigned S3 PUT, or /api/jobs/{job_id}/upload in local mode
+    upload_key: str

@@ -6,7 +6,7 @@ from typing import Any, Protocol
 
 from botocore.exceptions import ClientError
 
-from dolphin_tracker.domain.errors import NotFoundError
+from dolphin_tracker.domain.errors import ConflictError, NotFoundError
 from dolphin_tracker.domain.models import Job, JobStatus, now_iso
 from dolphin_tracker.repositories.dynamo import Keys, build_set_expression, from_ddb, strip_internal, to_ddb
 
@@ -16,7 +16,17 @@ JOB_TTL = timedelta(hours=24)
 class JobRepository(Protocol):
     def put(self, job: Job) -> None: ...
     def get(self, job_id: str) -> Job | None: ...
-    def set_status(self, job_id: str, status: JobStatus, *, progress: int | None = None, message: str = "") -> Job: ...
+    def set_status(
+        self,
+        job_id: str,
+        status: JobStatus,
+        *,
+        progress: int | None = None,
+        message: str = "",
+        expected_status: JobStatus | None = None,
+    ) -> Job:
+        """Update status/progress/message. With `expected_status`, ConflictError unless the job is in that state."""
+        ...
     def set_result(self, job_id: str, result_key: str | None, *, message: str = "") -> Job:
         """Mark the job succeeded at 100 % with an optional result object key."""
         ...
@@ -50,28 +60,43 @@ class DynamoJobRepository:
         item = self._table.get_item(Key=Keys.job(job_id)).get("Item")
         return self._from_item(item) if item else None
 
-    def _update(self, job_id: str, changes: dict[str, Any]) -> Job:
+    def _update(self, job_id: str, changes: dict[str, Any], *, expected_status: JobStatus | None = None) -> Job:
         expression, names, values = build_set_expression({**changes, "updated_at": now_iso()})
+        condition = "attribute_exists(PK)"
+        if expected_status is not None:
+            names["#status_now"] = "status"
+            values[":expected_status"] = expected_status.value
+            condition += " AND #status_now = :expected_status"
         try:
             response = self._table.update_item(
                 Key=Keys.job(job_id),
                 UpdateExpression=expression,
                 ExpressionAttributeNames=names,
                 ExpressionAttributeValues=values,
-                ConditionExpression="attribute_exists(PK)",
+                ConditionExpression=condition,
                 ReturnValues="ALL_NEW",
             )
         except ClientError as exc:
             if exc.response["Error"]["Code"] != "ConditionalCheckFailedException":
                 raise
+            if expected_status is not None and self.get(job_id) is not None:
+                raise ConflictError(f"Job {job_id} is no longer {expected_status.value}") from exc
             raise NotFoundError(f"Job {job_id} not found") from exc
         return self._from_item(response["Attributes"])
 
-    def set_status(self, job_id: str, status: JobStatus, *, progress: int | None = None, message: str = "") -> Job:
+    def set_status(
+        self,
+        job_id: str,
+        status: JobStatus,
+        *,
+        progress: int | None = None,
+        message: str = "",
+        expected_status: JobStatus | None = None,
+    ) -> Job:
         changes: dict[str, Any] = {"status": status.value, "message": message}
         if progress is not None:
             changes["progress"] = max(0, min(100, progress))
-        return self._update(job_id, changes)
+        return self._update(job_id, changes, expected_status=expected_status)
 
     def set_result(self, job_id: str, result_key: str | None, *, message: str = "") -> Job:
         return self._update(

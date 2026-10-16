@@ -24,19 +24,21 @@ class WorkerInvoker(Protocol):
 
 
 class LambdaInvoker:
-    """Fire-and-forget `InvocationType=Event` to the worker function."""
+    """Fire-and-forget `InvocationType=Event` to the worker function. The client is created on first use, so a
+    misconfigured environment fails the enqueue, not every request that merely depends on the invoker."""
 
     def __init__(self, function_name: str, *, client: Any = None, region: str = "us-east-1") -> None:
-        if not function_name:
-            raise ValueError("DT_WORKER_FUNCTION_NAME is required when DT_WORKER_MODE=lambda")
-        if client is None:
-            import boto3  # local import: inline mode and tests never need the Lambda client
-
-            client = boto3.client("lambda", region_name=region)
         self._client = client
         self._function_name = function_name
+        self._region = region
 
     def invoke(self, event: JobEvent) -> None:
+        if not self._function_name:
+            raise ValueError("DT_WORKER_FUNCTION_NAME is required when DT_WORKER_MODE=lambda")
+        if self._client is None:
+            import boto3  # local import: inline mode and tests never need the Lambda client
+
+            self._client = boto3.client("lambda", region_name=self._region)
         self._client.invoke(
             FunctionName=self._function_name, InvocationType="Event", Payload=json.dumps(event).encode()
         )

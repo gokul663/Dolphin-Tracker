@@ -130,6 +130,12 @@ class Job(BaseModel):
     updated_at: str = Field(default_factory=now_iso)
 
 
+class JobView(Job):
+    """A job as the API returns it: plus a short-lived URL for the result once it has succeeded."""
+
+    result_url: str | None = None
+
+
 class Page(BaseModel, Generic[T]):
     items: list[T]
     next_cursor: str | None = None

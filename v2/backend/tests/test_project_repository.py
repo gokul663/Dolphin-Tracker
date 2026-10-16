@@ -4,7 +4,7 @@ import boto3
 from moto import mock_aws
 
 from dolphin_tracker.domain.errors import ConflictError, NotFoundError
-from dolphin_tracker.domain.models import Project, ProjectType
+from dolphin_tracker.domain.models import Project, ProjectType, RoutingStatus
 from dolphin_tracker.repositories.dynamo import TABLE_DEFINITION
 from dolphin_tracker.repositories.projects import DynamoProjectRepository
 
@@ -63,3 +63,29 @@ class DynamoProjectRepositoryTests(unittest.TestCase):
         self.repo.put(make_project("p1", "2026-10-01T00:00:00+00:00"))
         self.repo.delete("p1")
         self.assertIsNone(self.repo.get("p1"))
+
+    def test_begin_routing_fences_concurrent_builds(self):
+        self.repo.put(make_project("p1", "2026-10-01T00:00:00+00:00"))
+        long_ago = "2026-01-01T00:00:00+00:00"
+        claimed = self.repo.begin_routing("p1", "job-a", stale_before=long_ago)
+        self.assertEqual((claimed.routing_status, claimed.routing_job_id), (RoutingStatus.BUILDING, "job-a"))
+        with self.assertRaises(ConflictError):
+            self.repo.begin_routing("p1", "job-b", stale_before=long_ago)
+        with self.assertRaises(NotFoundError):
+            self.repo.begin_routing("missing", "job-c", stale_before=long_ago)
+
+    def test_stale_build_can_be_taken_over(self):
+        self.repo.put(make_project("p1", "2026-10-01T00:00:00+00:00"))
+        self.repo.begin_routing("p1", "job-a", stale_before="2026-01-01T00:00:00+00:00")
+        far_future = "2999-01-01T00:00:00+00:00"  # everything is older than this, so job-a counts as stale
+        self.assertEqual(self.repo.begin_routing("p1", "job-b", stale_before=far_future).routing_job_id, "job-b")
+
+    def test_finish_routing_only_for_the_slot_holder(self):
+        self.repo.put(make_project("p1", "2026-10-01T00:00:00+00:00"))
+        self.repo.begin_routing("p1", "job-a", stale_before="2026-01-01T00:00:00+00:00")
+        self.assertFalse(self.repo.finish_routing("p1", "job-old", RoutingStatus.READY))
+        self.assertEqual(self.repo.get("p1").routing_status, RoutingStatus.BUILDING)
+        self.assertTrue(self.repo.finish_routing("p1", "job-a", RoutingStatus.READY))
+        project = self.repo.get("p1")
+        self.assertEqual((project.routing_status, project.routing_job_id), (RoutingStatus.READY, ""))
+        self.assertFalse(self.repo.finish_routing("p1", "job-a", RoutingStatus.FAILED))  # already released

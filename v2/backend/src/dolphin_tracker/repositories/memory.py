@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import Any
 
 from dolphin_tracker.domain.errors import ConflictError, NotFoundError
-from dolphin_tracker.domain.models import Job, JobStatus, Page, Project, Stop, now_iso
+from dolphin_tracker.domain.models import Job, JobStatus, Page, Project, RoutingStatus, Stop, now_iso
 from dolphin_tracker.repositories.dynamo import decode_cursor, encode_cursor
 from dolphin_tracker.repositories.projects import IMMUTABLE_FIELDS
 from dolphin_tracker.repositories.stores import IMMUTABLE_STOP_FIELDS, RoutingChange, check_routing_change
@@ -49,6 +49,27 @@ class InMemoryProjectRepository:
 
     def delete(self, project_id: str) -> None:
         self._items.pop(project_id, None)
+
+    def begin_routing(self, project_id: str, job_id: str, *, stale_before: str) -> Project:
+        current = self._items.get(project_id)
+        if current is None:
+            raise NotFoundError(f"Project {project_id} not found")
+        if current.routing_status == RoutingStatus.BUILDING and current.updated_at >= stale_before:
+            raise ConflictError("Routing is already in progress for this project")
+        updated = current.model_copy(
+            update={"routing_status": RoutingStatus.BUILDING, "routing_job_id": job_id, "updated_at": now_iso()}
+        )
+        self._items[project_id] = updated
+        return updated.model_copy(deep=True)
+
+    def finish_routing(self, project_id: str, job_id: str, status: RoutingStatus) -> bool:
+        current = self._items.get(project_id)
+        if current is None or current.routing_job_id != job_id:
+            return False
+        self._items[project_id] = current.model_copy(
+            update={"routing_status": status, "routing_job_id": "", "updated_at": now_iso()}
+        )
+        return True
 
 
 class InMemoryStoreRepository:

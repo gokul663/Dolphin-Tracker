@@ -8,7 +8,7 @@ from starlette.middleware.cors import CORSMiddleware
 from dolphin_tracker import __version__
 from dolphin_tracker.api.routers import health, jobs, places, projects, stores
 from dolphin_tracker.config import Settings, get_settings
-from dolphin_tracker.domain.errors import ConflictError, NotFoundError
+from dolphin_tracker.domain.errors import ConflictError, NotFoundError, ValidationFailed
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -49,6 +49,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.exception_handler(ConflictError)
     async def _conflict(_: Request, exc: ConflictError) -> JSONResponse:
         return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+    @app.exception_handler(ValidationFailed)
+    async def _unprocessable(_: Request, exc: ValidationFailed) -> JSONResponse:
+        return JSONResponse(status_code=422, content={"detail": exc.detail})
 
     @app.exception_handler(NotImplementedError)
     async def _not_implemented(_: Request, exc: NotImplementedError) -> JSONResponse:

@@ -23,7 +23,7 @@ Tracks delivery against [PLAN.md](./PLAN.md). Tick items as they land; add sub-i
 - [ ] Installers: add, rename; routing: reassign (sync), rebalance, recluster (jobs)
 - [ ] Jobs: create import, poll status, results from S3; worker handler for import and routing
 - [x] Pandas removed; CSV via `csv`, Excel via `openpyxl`; parser tests updated
-- [ ] Optimizer ported unchanged behind `RoutingService`; `stops_per_day` per project
+- [x] Optimizer ported unchanged behind `RoutingService`; `stops_per_day` per project
 - [ ] Field schema stored on project; import maps columns to schema
 - [ ] Migration script Mongo → DynamoDB with parity report
 - [ ] Contract tests cover every endpoint
@@ -33,7 +33,7 @@ Tracks delivery against [PLAN.md](./PLAN.md). Tick items as they land; add sub-i
   - [x] B3 job repository + worker invoker
   - [x] B4 local file store + local upload route
   - [x] B5 import job end to end
-  - [ ] B6 project create + routing job + routes bundle
+  - [x] B6 project create + routing job + routes bundle
   - [ ] B7 store endpoints
   - [ ] B8 installers + routing operations
   - [ ] B9 append stops, delete, patch

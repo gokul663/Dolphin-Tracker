@@ -250,3 +250,67 @@ gave to `POST /jobs/imports`.
    rows.
 2. With no server key configured, the import "succeeds" with every row needing review, as v1 did. Should it fail
    fast with "Google key not configured" instead?
+
+## B6 · Project create + routing job + routes bundle
+
+**Changed**
+- `domain/models.py`: `Project.routing_job_id`. New: `StopInput`, `ProjectCreate` (§4.2 bounds in pydantic:
+  percentages 0–100, `stops_per_day` 1–50, ≥1 installer, ≤5,000 stops), `InstallerStats`, `RoutesBundle`.
+- `domain/errors.py`: `ValidationFailed(message, **extra)` maps to 422 with `{"detail": {"message", ...extra}}`,
+  so services can report structured rule failures without HTTP types.
+- `repositories/projects.py` and the fake, the §3.2 fence:
+  - `begin_routing(project_id, job_id, stale_before)`: conditional `routing_status <> building OR updated_at <
+    stale`. `ConflictError` → 409; 404 if the project is missing.
+  - `finish_routing(project_id, job_id, status)`: conditional `routing_job_id = :job`. Returns False when
+    superseded.
+- `services/routing.py`:
+  - `enqueue(project_id, mode, **payload)` (used by B8): record the job, claim the slot (a conflict marks the job
+    failed), invoke.
+  - `record_and_launch` for create.
+  - `launch`: an invoke failure marks the job failed and releases the slot as `failed`.
+  - `run_build(job_id)`: mode comes from the job's payload. `create` and `recluster` run `build_project_routes`
+    over all stops; B8 adds `rebalance` and `add_installer`. It checks the slot at three points: before computing,
+    after computing but before writing, and at finish. A superseded job stops without touching the project or
+    stops and marks its own job failed, "Superseded by a newer routing job". It writes only installer/day/seq
+    diffs, then clears `route_stale` on rebuilt stops in a separate write. Any exception gives a failed project
+    (conditional) and a failed job.
+  - `routes(project_id)`: the bundle. Days are ascending with gaps collapsed (as in v1), stops in `seq` order,
+    stats per v1.
+- `services/projects.py`, `create(ProjectCreate)`:
+  - Validates every rule and reports all problems at once: project-level `errors` plus `stops: [{index,
+    errors}]` (required name/address, `validate_fields` against the schema). The schema defaults to §3.1.
+  - Mints the project id, a uid per stop, `display_id S1..Sn`, `seq` = index, `day=1`, `installer=""`; status
+    comes from `initial_status`.
+  - Writes stops, then META (`building` + job id), then the job. With no stops it returns 201 with no job.
+- `api/routers/projects.py`: `POST /projects` (202 `{project, job_id}`, or 201 with no stops) and `GET
+  /projects/{id}/routes`.
+- `handlers/worker.py`: `routing_build` runs `RoutingService(...).run_build(job_id)`.
+- Tests:
+  - 3 moto fence tests in `test_project_repository.py`.
+  - `test_routing_service.py` rewritten, 17 tests: helpers, enqueue/conflict/invoke failure, success with
+    progress preserved and stale cleared, an idempotent rerun, superseded at each of the 3 checkpoints, the
+    failure path, the bundle.
+  - `test_projects_api.py`, 7 tests: the 202 flow through the real worker dispatch, minted fields, 201 with no
+    stops, 422 listing every bad row, pydantic bounds, a custom schema with number coercion, routes 404.
+
+**Verified**
+- `make backend-lint backend-test frontend-typecheck frontend-test`, 157 backend passing.
+- Manual, local stack (DynamoDB Local, inline worker): `POST /projects` with 60 stops, 3 installers, cap 30 → 202
+  `building`. The job succeeded in 0.5 s, "60 of 60 stops moved". META was `ready` with `routing_job_id` "". The
+  bundle showed days ≤ 30 and stats with miles. An invalid create returned 422 with project and row errors.
+
+**Deviations**
+- **Miles skip stops without coordinates.** `route_miles` indexes `lat`/`lng` directly, so v1's stats would crash
+  on a day containing an ungeocoded stop. v2 sums along the day's located stops in `seq` order. The optimizer is
+  untouched.
+- **A superseded job marks its own job record failed.** §3.2 says "log and exit without further writes". I read
+  that as no further project/stop writes. Updating the job's own status lets the UI stop polling.
+- **Create survives a worker-invoke failure.** The project and stops are already saved, so the client gets 202
+  with `routing_status=failed` and can recluster. Otherwise it would get a 503 for a project that exists.
+- **Write order on create:** stops, then META. If META fails there is no visible half-project, only orphan stop
+  items (no META, so nothing lists them).
+- **`run_build(job_id)`** replaces the stub's `run_build(project_id)`. The job carries the project id and mode.
+
+**Open questions**
+- `stop_count` is maintained on create (and append in B9) but not decremented anywhere, since there is no stop
+  delete endpoint. It is informational; the KPIs (B10) count actual stops.

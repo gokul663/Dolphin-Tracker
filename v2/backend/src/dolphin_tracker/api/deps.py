@@ -19,6 +19,7 @@ from dolphin_tracker.services.geocoding import GoogleGeocoder
 from dolphin_tracker.services.jobs import JobService
 from dolphin_tracker.services.places import PlacesService
 from dolphin_tracker.services.projects import ProjectService
+from dolphin_tracker.services.routing import RoutingService
 from dolphin_tracker.services.stores import StoreService
 from dolphin_tracker.services.worker_invoker import WorkerInvoker, make_invoker
 
@@ -69,11 +70,21 @@ def get_job_service(
     return JobService(jobs, files, invoker, projects)
 
 
+def get_routing_service(
+    projects: Annotated[ProjectRepository, Depends(get_project_repository)],
+    stores: Annotated[StoreRepository, Depends(get_store_repository)],
+    jobs: Annotated[JobRepository, Depends(get_job_repository)],
+    invoker: Annotated[WorkerInvoker, Depends(get_worker_invoker)],
+) -> RoutingService:
+    return RoutingService(projects, stores, jobs, invoker)
+
+
 def get_project_service(
     projects: Annotated[ProjectRepository, Depends(get_project_repository)],
     stores: Annotated[StoreRepository, Depends(get_store_repository)],
+    routing: Annotated[RoutingService, Depends(get_routing_service)],
 ) -> ProjectService:
-    return ProjectService(projects, stores)
+    return ProjectService(projects, stores, routing)
 
 
 def get_store_service(stores: Annotated[StoreRepository, Depends(get_store_repository)]) -> StoreService:

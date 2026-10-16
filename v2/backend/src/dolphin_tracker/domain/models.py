@@ -80,6 +80,7 @@ class Project(BaseModel):
     stops_per_day: int = Field(default=8, ge=1, le=50)
     field_schema: list[FieldDef] = Field(default_factory=list)
     routing_status: RoutingStatus = RoutingStatus.READY
+    routing_job_id: str = ""  # the routing job allowed to finish the current build (§3.2 fence); "" when idle
     stop_count: int = 0
     version: int = 1
     created_at: str = Field(default_factory=now_iso)
@@ -117,6 +118,37 @@ ROUTING_FIELDS = frozenset({"installer", "day", "seq"})
 PROGRESS_FIELDS = frozenset({"status", "comment", "additional_task", "installer_name", "updated_by"})
 
 
+class StopInput(BaseModel):
+    """One stop as the client submits it on create or append. The server mints uid, display_id, seq and day."""
+
+    store_name: str = Field(max_length=300)
+    addr: str = Field(max_length=500)
+    city: str = Field(default="", max_length=200)
+    state: str = Field(default="", max_length=50)
+    zip: str = Field(default="", max_length=20)
+    lat: float | None = Field(default=None, ge=-90, le=90)
+    lng: float | None = Field(default=None, ge=-180, le=180)
+    geocoded: str = Field(default="", max_length=500)
+    fields: dict[str, Any] = Field(default_factory=dict)
+    initial_status: StopStatus | None = None
+
+
+class ProjectCreate(BaseModel):
+    name: str = Field(max_length=200)
+    pa: str = Field(max_length=500)
+    project_type: ProjectType
+    installers: list[str] = Field(min_length=1, max_length=50)
+    field_agent: str = Field(default="", max_length=200)
+    partner_account: str = Field(default="", max_length=200)
+    pa_percentage: float = Field(ge=0, le=100)
+    dolphin_percentage: float = Field(ge=0, le=100)
+    store_percentage: float | None = Field(default=None, ge=0, le=100)
+    fa_percentage: float | None = Field(default=None, ge=0, le=100)
+    stops_per_day: int = Field(default=8, ge=1, le=50)
+    field_schema: list[FieldDef] | None = None  # None → DEFAULT_FIELD_SCHEMA
+    stops: list[StopInput] = Field(default_factory=list, max_length=5000)
+
+
 class Job(BaseModel):
     id: str
     type: JobType
@@ -134,6 +166,23 @@ class JobView(Job):
     """A job as the API returns it: plus a short-lived URL for the result once it has succeeded."""
 
     result_url: str | None = None
+
+
+class InstallerStats(BaseModel):
+    total: int
+    days: int
+    avg_stops: float
+    miles: float
+
+
+class RoutesBundle(BaseModel):
+    """Whole-project payload for the Routes tab: per installer, days in order, stops by seq."""
+
+    installers: list[str]
+    stops_per_day: int
+    routing_status: RoutingStatus
+    routes: dict[str, list[list[Stop]]]
+    stats: dict[str, InstallerStats]
 
 
 class Page(BaseModel, Generic[T]):

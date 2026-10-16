@@ -6,7 +6,7 @@ from typing import Any, Protocol
 from botocore.exceptions import ClientError
 
 from dolphin_tracker.domain.errors import ConflictError, NotFoundError
-from dolphin_tracker.domain.models import Page, Project, now_iso
+from dolphin_tracker.domain.models import Page, Project, RoutingStatus, now_iso
 from dolphin_tracker.repositories.dynamo import (
     GSI1,
     PROJECT_LIST_GSI1PK,
@@ -27,6 +27,13 @@ class ProjectRepository(Protocol):
     def list(self, *, limit: int = 50, cursor: str | None = None) -> Page[Project]: ...
     def update(self, project_id: str, changes: dict[str, Any], *, expected_version: int | None = None) -> Project: ...
     def delete(self, project_id: str) -> None: ...
+    def begin_routing(self, project_id: str, job_id: str, *, stale_before: str) -> Project:
+        """Claim the routing slot for `job_id` (§3.2). ConflictError while another build is in progress, unless
+        that build's META has not been touched since `stale_before`."""
+        ...
+    def finish_routing(self, project_id: str, job_id: str, status: RoutingStatus) -> bool:
+        """Release the slot if `job_id` still holds it. False means a newer job superseded this one."""
+        ...
 
 
 class DynamoProjectRepository:
@@ -98,6 +105,42 @@ class DynamoProjectRepository:
                 raise NotFoundError(f"Project {project_id} not found") from exc
             raise ConflictError(f"Project {project_id} was modified concurrently") from exc
         return self._from_item(response["Attributes"])
+
+    def begin_routing(self, project_id: str, job_id: str, *, stale_before: str) -> Project:
+        try:
+            response = self._table.update_item(
+                Key=Keys.project(project_id),
+                UpdateExpression="SET routing_status = :building, routing_job_id = :job, updated_at = :now",
+                ConditionExpression="attribute_exists(PK) AND (routing_status <> :building OR updated_at < :stale)",
+                ExpressionAttributeValues={
+                    ":building": RoutingStatus.BUILDING.value,
+                    ":job": job_id,
+                    ":now": now_iso(),
+                    ":stale": stale_before,
+                },
+                ReturnValues="ALL_NEW",
+            )
+        except ClientError as exc:
+            if exc.response["Error"]["Code"] != "ConditionalCheckFailedException":
+                raise
+            if self.get(project_id) is None:
+                raise NotFoundError(f"Project {project_id} not found") from exc
+            raise ConflictError("Routing is already in progress for this project") from exc
+        return self._from_item(response["Attributes"])
+
+    def finish_routing(self, project_id: str, job_id: str, status: RoutingStatus) -> bool:
+        try:
+            self._table.update_item(
+                Key=Keys.project(project_id),
+                UpdateExpression="SET routing_status = :status, routing_job_id = :empty, updated_at = :now",
+                ConditionExpression="routing_job_id = :job",
+                ExpressionAttributeValues={":status": status.value, ":empty": "", ":now": now_iso(), ":job": job_id},
+            )
+        except ClientError as exc:
+            if exc.response["Error"]["Code"] != "ConditionalCheckFailedException":
+                raise
+            return False
+        return True
 
     def delete(self, project_id: str) -> None:
         # Stops under the same PK are removed by StoreRepository.delete_all(project_id); callers do both.

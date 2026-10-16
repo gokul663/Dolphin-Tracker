@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
+from dolphin_tracker.domain.models import Project
+
 
 class MapsConfig(BaseModel):
     google_maps_browser_key: str
@@ -37,3 +39,12 @@ class ImportJobCreated(BaseModel):
     job_id: str
     upload_url: str  # presigned S3 PUT, or /api/jobs/{job_id}/upload in local mode
     upload_key: str
+
+
+class ProjectCreated(BaseModel):
+    project: Project
+    job_id: str | None = None  # the routing job; absent when the project has no stops (201)
+
+
+class JobAccepted(BaseModel):
+    job_id: str

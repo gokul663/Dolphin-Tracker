@@ -1,18 +1,46 @@
-"""Project use cases. Read paths are implemented; create/update land with the Phase 2 endpoint port."""
+"""Project use cases: list/get/update/delete and creation (which hands the first routing build to the worker)."""
 from __future__ import annotations
 
+import uuid
 from typing import Any
 
-from dolphin_tracker.domain.errors import NotFoundError
-from dolphin_tracker.domain.models import Page, Project
+from dolphin_tracker.domain.errors import NotFoundError, ValidationFailed
+from dolphin_tracker.domain.models import (
+    Page,
+    Project,
+    ProjectCreate,
+    RoutingStatus,
+    Stop,
+    StopStatus,
+)
+from dolphin_tracker.domain.schema import coerce_fields, default_field_schema, validate_fields, validate_schema
 from dolphin_tracker.repositories.projects import ProjectRepository
 from dolphin_tracker.repositories.stores import StoreRepository
+from dolphin_tracker.services.routing import RoutingService
+
+
+def clean_installers(names: list[str]) -> tuple[list[str], list[str]]:
+    """Strip names; returns (installers, problems) where problems lists blanks and duplicates."""
+    cleaned = [name.strip() for name in names]
+    problems = []
+    if any(not name for name in cleaned):
+        problems.append("Installer names cannot be blank")
+    duplicates = sorted({name for name in cleaned if name and cleaned.count(name) > 1})
+    if duplicates:
+        problems.append(f"Duplicate installer names: {', '.join(duplicates)}")
+    return cleaned, problems
 
 
 class ProjectService:
-    def __init__(self, projects: ProjectRepository, stores: StoreRepository | None = None) -> None:
+    def __init__(
+        self,
+        projects: ProjectRepository,
+        stores: StoreRepository | None = None,
+        routing: RoutingService | None = None,
+    ) -> None:
         self._projects = projects
         self._stores = stores
+        self._routing = routing
 
     def list(self, *, limit: int = 50, cursor: str | None = None) -> Page[Project]:
         return self._projects.list(limit=limit, cursor=cursor)
@@ -23,10 +51,90 @@ class ProjectService:
             raise NotFoundError(f"Project {project_id} not found")
         return project
 
-    def create(self, payload: dict[str, Any]) -> Project:
-        raise NotImplementedError(
-            "Phase 2: validate, write META with routing_status=building, write stops, enqueue routing_build job"
+    def create(self, payload: ProjectCreate) -> tuple[Project, str | None]:
+        """Validate, write META + stops, and start the `create` routing job when there are stops.
+
+        Returns (project, routing_job_id or None). Every invalid stop is reported at once (422).
+        """
+        errors: list[Any] = []
+        name, pa = payload.name.strip(), payload.pa.strip()
+        if not name:
+            errors.append("Project name is required")
+        if not pa:
+            errors.append("PA is required")
+        installers, installer_problems = clean_installers(payload.installers)
+        errors.extend(installer_problems)
+        schema = payload.field_schema if payload.field_schema is not None else default_field_schema()
+        errors.extend(validate_schema(schema))
+
+        stop_errors = []
+        for index, stop in enumerate(payload.stops):
+            problems = []
+            if not stop.store_name.strip():
+                problems.append("Store name is required")
+            if not stop.addr.strip():
+                problems.append("Address is required")
+            problems.extend(validate_fields(schema, stop.fields))
+            if problems:
+                stop_errors.append({"index": index, "errors": problems})
+        if errors or stop_errors:
+            bad_rows = f"; {len(stop_errors)} stop(s) need fixing" if stop_errors else ""
+            raise ValidationFailed(f"Project could not be created{bad_rows}", errors=errors, stops=stop_errors)
+
+        assert self._stores is not None
+        project_id = uuid.uuid4().hex
+        job = RoutingService.new_job(project_id, "create") if payload.stops else None
+        project = Project(
+            id=project_id,
+            name=name,
+            pa=pa,
+            project_type=payload.project_type,
+            installers=installers,
+            field_agent=payload.field_agent.strip(),
+            partner_account=payload.partner_account.strip(),
+            pa_percentage=payload.pa_percentage,
+            dolphin_percentage=payload.dolphin_percentage,
+            store_percentage=payload.store_percentage,
+            fa_percentage=payload.fa_percentage,
+            stops_per_day=payload.stops_per_day,
+            field_schema=schema,
+            routing_status=RoutingStatus.BUILDING if job else RoutingStatus.READY,
+            routing_job_id=job.id if job else "",
+            stop_count=len(payload.stops),
         )
+        stops = [
+            Stop(
+                uid=uuid.uuid4().hex,
+                display_id=f"S{index + 1}",
+                store_name=stop.store_name.strip(),
+                addr=stop.addr.strip(),
+                city=stop.city.strip(),
+                state=stop.state.strip(),
+                zip=stop.zip.strip(),
+                lat=stop.lat,
+                lng=stop.lng,
+                geocoded=stop.geocoded.strip(),
+                installer="",
+                day=1,
+                seq=index,
+                fields=coerce_fields(schema, stop.fields),
+                status=stop.initial_status or StopStatus.INCOMPLETE,
+            )
+            for index, stop in enumerate(payload.stops)
+        ]
+        # Stops first: if the META write fails there is no visible project, only orphan stop items.
+        self._stores.put_many(project_id, stops)
+        self._projects.put(project)
+        if job is None:
+            return project, None
+        assert self._routing is not None
+        try:
+            self._routing.record_and_launch(job)
+        except RuntimeError:
+            # The project and its stops are saved; launch() already marked routing failed. Return them so the
+            # client can open the project and retry with recluster instead of losing the import.
+            return self.get(project_id), job.id
+        return project, job.id
 
     def update(self, project_id: str, changes: dict[str, Any], *, expected_version: int | None = None) -> Project:
         return self._projects.update(project_id, changes, expected_version=expected_version)

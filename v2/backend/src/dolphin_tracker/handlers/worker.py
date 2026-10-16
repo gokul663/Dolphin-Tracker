@@ -59,7 +59,7 @@ def _run_import(event: dict[str, Any], deps: WorkerDeps) -> None:
 
 
 def _run_routing(event: dict[str, Any], deps: WorkerDeps) -> None:
-    RoutingService().run_build(event["project_id"])
+    RoutingService(deps.projects, deps.stores, deps.jobs).run_build(event["job_id"])
 
 
 RUNNERS: dict[JobType, Callable[[dict[str, Any], WorkerDeps], None]] = {

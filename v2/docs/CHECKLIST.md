@@ -27,6 +27,20 @@ Tracks delivery against [PLAN.md](./PLAN.md). Tick items as they land; add sub-i
 - [ ] Field schema stored on project; import maps columns to schema
 - [ ] Migration script Mongo → DynamoDB with parity report
 - [ ] Contract tests cover every endpoint
+- Tasks (AGENT-HANDOFF §5):
+  - [x] B1 field schema + validation
+  - [ ] B2 store repository
+  - [ ] B3 job repository + worker invoker
+  - [ ] B4 local file store + local upload route
+  - [ ] B5 import job end to end
+  - [ ] B6 project create + routing job + routes bundle
+  - [ ] B7 store endpoints
+  - [ ] B8 installers + routing operations
+  - [ ] B9 append stops, delete, patch
+  - [ ] B10 project list KPI
+  - [ ] B11 places + config endpoints
+  - [ ] B12 migration script
+  - [ ] B13 Lambda smoke in dev
 
 **Phase 3 — Frontend core + Stores**
 - [x] Vite + React 19 + TS + Tailwind v4 scaffold (shadcn/ui config ready, components added as needed)
@@ -38,6 +52,14 @@ Tracks delivery against [PLAN.md](./PLAN.md). Tick items as they land; add sub-i
 - [ ] Stores tab: virtualized editable table, required name + address, drawer editor, CSV export
 - [ ] Shared `MapView`: status pins, same-address stacking, legend toggles, clustering, table sync
 - [ ] Settings tab: metadata, installers, `stops_per_day`, field schema editor
+- Tasks (AGENT-HANDOFF §5):
+  - [ ] F1 typed API client
+  - [ ] F2 shadcn/ui primitives
+  - [ ] F3 dashboard
+  - [ ] F4 import wizard + append flow
+  - [ ] F5 project shell + settings
+  - [ ] F6 MapView
+  - [ ] F7 stores tab
 
 **Phase 4 — Routes port**
 - [ ] Installer tabs with stats; day cards with ordered stops and status counts
@@ -45,6 +67,9 @@ Tracks delivery against [PLAN.md](./PLAN.md). Tick items as they land; add sub-i
 - [ ] Reassign with confirmation; rebalance and recluster as jobs with progress
 - [ ] Google Maps route links, copy addresses, per-day and full CSV export
 - [ ] Legacy planner page and iframe removed
+- Tasks (AGENT-HANDOFF §5):
+  - [ ] R1 routes tab port
+  - [ ] R2 remove the iframe path
 
 **Phase 5 — Cutover**
 - [ ] Prod stacks deployed; Google keys restricted by referrer and API

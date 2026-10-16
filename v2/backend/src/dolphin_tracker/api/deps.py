@@ -11,9 +11,12 @@ from fastapi import Depends
 
 from dolphin_tracker.config import Settings, get_settings, resolve_google_server_key
 from dolphin_tracker.repositories.dynamo import dynamodb_resource
+from dolphin_tracker.repositories.files import FileStore, make_file_store
+from dolphin_tracker.repositories.jobs import DynamoJobRepository, JobRepository
 from dolphin_tracker.repositories.projects import DynamoProjectRepository, ProjectRepository
 from dolphin_tracker.repositories.stores import DynamoStoreRepository, StoreRepository
 from dolphin_tracker.services.geocoding import GoogleGeocoder
+from dolphin_tracker.services.jobs import JobService
 from dolphin_tracker.services.places import PlacesService
 from dolphin_tracker.services.projects import ProjectService
 from dolphin_tracker.services.stores import StoreService
@@ -37,6 +40,21 @@ def get_project_repository(table: Annotated[object, Depends(get_table)]) -> Proj
 
 def get_store_repository(table: Annotated[object, Depends(get_table)]) -> StoreRepository:
     return DynamoStoreRepository(table)
+
+
+def get_job_repository(table: Annotated[object, Depends(get_table)]) -> JobRepository:
+    return DynamoJobRepository(table)
+
+
+def get_file_store(settings: SettingsDep) -> FileStore:
+    return make_file_store(settings)
+
+
+def get_job_service(
+    jobs: Annotated[JobRepository, Depends(get_job_repository)],
+    files: Annotated[FileStore, Depends(get_file_store)],
+) -> JobService:
+    return JobService(jobs, files)
 
 
 def get_project_service(

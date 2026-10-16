@@ -32,8 +32,8 @@ infra-setup: ## Create infra venv and install CDK libraries
 frontend-setup: ## Install frontend dependencies
 	cd $(FRONTEND) && $(NODE_SETUP); npm install
 
-backend-dev: ## Run the API locally on :8000 against DynamoDB Local
-	cd $(BACKEND) && $(LOCAL_AWS) .venv/bin/uvicorn dolphin_tracker.api.app:app --reload --port 8080
+backend-dev: ## Run the API on :8080 against DynamoDB Local; jobs run inline, files in backend/.local-files
+	cd $(BACKEND) && $(LOCAL_AWS) DT_WORKER_MODE=$${DT_WORKER_MODE:-inline} .venv/bin/uvicorn dolphin_tracker.api.app:app --reload --port 8080
 
 backend-test: ## Run backend tests
 	cd $(BACKEND) && .venv/bin/pytest -q

@@ -152,3 +152,41 @@ settings field would be ceremony.
 - `DT_GOOGLE_BROWSER_KEY` is not set by `ApiStack`, so in AWS `/config/maps` returns an empty key until it is
   wired. Options: a plain env var from `cdk.json` context, or a second SSM parameter. The browser key is public by
   nature (referrer-restricted), so an env var is fine. Which do you prefer? I have not changed infra.
+
+## B4 · Local file store + local upload route
+
+**Changed**
+- `repositories/files.py`, rewritten:
+  - `FileStore` protocol: `is_local`, `presign_upload`, `presign_download`, `exists`, `get_bytes`, `put_bytes`,
+    `put_json`, `get_json`.
+  - Key layout is defined once, in `upload_key(job_id, filename)` (filename sanitised to `[A-Za-z0-9._-]`, no
+    path parts) and `result_key(job_id)`.
+  - `S3FileStore`, the former `FileStore` class: now takes the bucket name (not `Settings`) and an injectable
+    client, and gains `exists` (HEAD), `put_bytes` and `get_json`.
+  - `LocalFileStore(root)`: atomic writes (`.part` + rename), and refuses keys that resolve outside the root. Its
+    "presigned" URLs are the local API routes `/api/jobs/{id}/upload` and `/api/jobs/{id}/result`.
+  - `make_file_store(settings)`: S3 when `DT_FILES_BUCKET` is set, otherwise local.
+- **Bug fix:** the S3 client now forces SigV4 with virtual-hosted addressing. boto3 was producing SigV2
+  presigned URLs (`AWSAccessKeyId=…&Signature=…`), and S3 rejects those on buckets created after 2020, so
+  browser uploads would have failed in AWS. A test now asserts `X-Amz-Signature` on the default client.
+- `config.py`: `local_files_dir=".local-files"` (relative to `backend/`) and `max_upload_bytes=20 MiB`.
+- `services/jobs.py`, new `JobService`: `get` and `receive_upload`. `receive_upload` gives 404 when files are in
+  S3 or the job takes no upload, 409 once the job has started, and `ValueError`→422 on an empty body.
+- `api/routers/jobs.py`: `PUT /jobs/{job_id}/upload` (raw body, 204). Returns 413 above `max_upload_bytes`,
+  checked on Content-Length and on the actual size.
+- `api/deps.py`: `get_job_repository`, `get_file_store`, `get_job_service`.
+- `Makefile`: `backend-dev` defaults `DT_WORKER_MODE=inline`, overridable from the environment.
+  `.gitignore`: `.local-files/`.
+- `tests/test_files.py` (10 tests): key layout and sanitising, the store selection, a local round trip with no
+  `.part` leftovers, path escape, the local URLs, an S3 round trip plus SigV4 under moto, and the upload route's
+  204/404/409/413/422 cases plus 404 when S3 is configured.
+
+**Verified:** `make backend-lint backend-test frontend-typecheck frontend-test`, 114 backend passing.
+
+**Deviations**
+- Added a local-only `GET /jobs/{id}/result` URL scheme. The handoff has `result_url` in `GET /jobs/{id}` but only
+  defines a local route for upload, and the browser needs somewhere to fetch the result in local mode. The route
+  itself lands in B5. In AWS, `result_url` is a presigned S3 GET.
+
+**Note for F4:** the presigned PUT signs `Content-Type`, so the browser must send exactly the `content_type` it
+gave to `POST /jobs/imports`.

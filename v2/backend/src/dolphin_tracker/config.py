@@ -14,7 +14,9 @@ class Settings(BaseSettings):
     aws_region: str = "us-east-1"
     table_name: str = "dolphin-tracker-local"
     dynamodb_endpoint_url: str | None = None  # http://localhost:8000 for DynamoDB Local
-    files_bucket: str = ""
+    files_bucket: str = ""  # empty: files live in local_files_dir and the local upload/result routes are used
+    local_files_dir: str = ".local-files"
+    max_upload_bytes: int = 20 * 1024 * 1024
     worker_function_name: str = ""
     worker_mode: Literal["lambda", "inline"] = "lambda"  # inline: run jobs on a thread in the API process (local)
     cors_origins: str = "http://localhost:5173"  # comma-separated

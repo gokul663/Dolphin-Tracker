@@ -31,7 +31,7 @@ Tracks delivery against [PLAN.md](./PLAN.md). Tick items as they land; add sub-i
   - [x] B1 field schema + validation
   - [x] B2 store repository
   - [x] B3 job repository + worker invoker
-  - [ ] B4 local file store + local upload route
+  - [x] B4 local file store + local upload route
   - [ ] B5 import job end to end
   - [ ] B6 project create + routing job + routes bundle
   - [ ] B7 store endpoints

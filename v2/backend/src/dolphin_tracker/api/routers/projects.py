@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
 from dolphin_tracker.api.deps import get_project_service, get_routing_service
 from dolphin_tracker.api.schemas import ProjectCreated, ProjectUpdate
-from dolphin_tracker.domain.models import Page, Project, ProjectCreate, RoutesBundle
+from dolphin_tracker.domain.models import Page, Project, ProjectCreate, ProjectSummary, RoutesBundle
 from dolphin_tracker.services.projects import ProjectService
 from dolphin_tracker.services.routing import RoutingService
 
@@ -15,12 +15,12 @@ ServiceDep = Annotated[ProjectService, Depends(get_project_service)]
 RoutingDep = Annotated[RoutingService, Depends(get_routing_service)]
 
 
-@router.get("", response_model=Page[Project])
+@router.get("", response_model=Page[ProjectSummary])
 def list_projects(
     service: ServiceDep,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     cursor: str | None = None,
-) -> Page[Project]:
+) -> Page[ProjectSummary]:
     try:
         return service.list(limit=limit, cursor=cursor)
     except ValueError as exc:

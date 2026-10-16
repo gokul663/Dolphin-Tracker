@@ -7,6 +7,8 @@ from typing import Any, Generic, TypeVar
 
 from pydantic import BaseModel, Field
 
+from dolphin_tracker.domain.kpi import Kpi
+
 T = TypeVar("T")
 
 
@@ -188,3 +190,9 @@ class RoutesBundle(BaseModel):
 class Page(BaseModel, Generic[T]):
     items: list[T]
     next_cursor: str | None = None
+
+
+class ProjectSummary(Project):
+    """A project as the dashboard lists it: META plus KPIs computed on read."""
+
+    kpi: Kpi

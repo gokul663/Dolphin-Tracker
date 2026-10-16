@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 from dolphin_tracker.api.app import create_app
 from dolphin_tracker.api.deps import get_db_probe, get_project_repository, get_store_repository
 from dolphin_tracker.domain.models import Project, ProjectType
-from dolphin_tracker.repositories.memory import InMemoryProjectRepository
+from dolphin_tracker.repositories.memory import InMemoryProjectRepository, InMemoryStoreRepository
 
 
 class ApiTests(unittest.TestCase):
@@ -13,7 +13,8 @@ class ApiTests(unittest.TestCase):
         self.app = create_app()
         self.projects = InMemoryProjectRepository()
         self.app.dependency_overrides[get_project_repository] = lambda: self.projects
-        self.app.dependency_overrides[get_store_repository] = lambda: None
+        self.stores = InMemoryStoreRepository()
+        self.app.dependency_overrides[get_store_repository] = lambda: self.stores
         self.app.dependency_overrides[get_db_probe] = lambda: (lambda: True)
         self.client = TestClient(self.app)
 

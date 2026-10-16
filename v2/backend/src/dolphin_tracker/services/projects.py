@@ -2,14 +2,17 @@
 from __future__ import annotations
 
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from dolphin_tracker.domain.errors import NotFoundError, ValidationFailed
+from dolphin_tracker.domain.kpi import KPI_ATTRIBUTES, kpi_summary
 from dolphin_tracker.domain.models import (
     FieldDef,
     Page,
     Project,
     ProjectCreate,
+    ProjectSummary,
     RoutingStatus,
     Stop,
     StopStatus,
@@ -48,8 +51,21 @@ class ProjectService:
         self._stores = stores
         self._routing = routing
 
-    def list(self, *, limit: int = 50, cursor: str | None = None) -> Page[Project]:
-        return self._projects.list(limit=limit, cursor=cursor)
+    KPI_WORKERS = 8
+
+    def list(self, *, limit: int = 50, cursor: str | None = None) -> Page[ProjectSummary]:
+        """A page of projects, each with KPIs from one projected Query, fanned out over a thread pool."""
+        assert self._stores is not None
+        page = self._projects.list(limit=limit, cursor=cursor)
+        stores = self._stores
+
+        def summarise(project: Project) -> ProjectSummary:
+            rows = stores.list_projected(project.id, KPI_ATTRIBUTES)
+            return ProjectSummary(**project.model_dump(), kpi=kpi_summary(rows))
+
+        with ThreadPoolExecutor(max_workers=self.KPI_WORKERS) as pool:
+            items = list(pool.map(summarise, page.items))
+        return Page(items=items, next_cursor=page.next_cursor)
 
     def get(self, project_id: str) -> Project:
         project = self._projects.get(project_id)

@@ -41,6 +41,9 @@ class StoreRepository(Protocol):
         """Apply installer/day/seq diffs. Stops deleted meanwhile are skipped. Returns how many were written."""
         ...
     def delete_all(self, project_id: str) -> int: ...
+    def list_projected(self, project_id: str, attributes: tuple[str, ...]) -> list[dict[str, Any]]:
+        """Whole project, only `attributes` per stop (cheap reads for KPIs). Plain dicts, no Decimals."""
+        ...
 
 
 def check_routing_change(changes: dict[str, Any]) -> None:
@@ -148,6 +151,13 @@ class DynamoStoreRepository:
                 lambda entry: self._write_routing(project_id, entry[0], entry[1], updated_at), changes
             )
             return sum(1 for written in results if written)
+
+    def list_projected(self, project_id: str, attributes: tuple[str, ...]) -> list[dict[str, Any]]:
+        names = {f"#p{index}": name for index, name in enumerate(attributes)}
+        items = self._iter_items(
+            project_id, ProjectionExpression=", ".join(names), ExpressionAttributeNames=names
+        )  # aliased: `status` is a DynamoDB reserved word
+        return [from_ddb(item) for item in items]
 
     def delete_all(self, project_id: str) -> int:
         keys = [

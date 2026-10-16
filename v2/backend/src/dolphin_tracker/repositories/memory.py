@@ -127,6 +127,12 @@ class InMemoryStoreRepository:
     def delete_all(self, project_id: str) -> int:
         return len(self._items.pop(project_id, {}))
 
+    def list_projected(self, project_id: str, attributes: tuple[str, ...]) -> list[dict[str, Any]]:
+        return [
+            {key: value for key, value in stop.model_dump(mode="json").items() if key in attributes}
+            for stop in self._ordered(project_id)
+        ]
+
 
 class InMemoryJobRepository:
     def __init__(self) -> None:

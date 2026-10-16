@@ -18,7 +18,7 @@ Tracks delivery against [PLAN.md](./PLAN.md). Tick items as they land; add sub-i
 **Phase 2 — Backend port**
 - [x] Router / service / repository layers scaffolded with dependency injection and fakes
 - [x] Decimal/float serializer and cursor pagination helpers
-- [ ] Projects: list (paginated), get, create (routing as job), patch, delete
+- [x] Projects: list (paginated), get, create (routing as job), patch, delete
 - [x] Stores: list (paginated, filter, search), get, update details with geocode verify, progress update, map pins endpoint
 - [ ] Installers: add, rename; routing: reassign (sync), rebalance, recluster (jobs)
 - [ ] Jobs: create import, poll status, results from S3; worker handler for import and routing
@@ -37,7 +37,7 @@ Tracks delivery against [PLAN.md](./PLAN.md). Tick items as they land; add sub-i
   - [x] B7 store endpoints
   - [ ] B8 installers + routing operations
   - [x] B9 append stops, delete, patch
-  - [ ] B10 project list KPI
+  - [x] B10 project list KPI
   - [x] B11 places + config endpoints
   - [ ] B12 migration script
   - [ ] B13 Lambda smoke in dev

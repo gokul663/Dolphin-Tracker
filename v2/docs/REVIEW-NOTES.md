@@ -403,7 +403,41 @@ dev?
   client refetches `/routes`.
 
 **Open questions**
-- Changing `field_schema` does not rewrite stop data. Values of a removed field stay in `fields` (hidden in the
-  UI, still exported? currently not exported, since export follows the schema). Making a field `required` does
+- Changing `field_schema` does not rewrite stop data. Values of a removed field stay in `fields`. They are hidden
+  from the UI and left out of the CSV, because both follow the schema. Making a field `required` does
   not re-validate existing stops. Is that acceptable, or should a schema change that orphans data need
   confirmation?
+
+## B10 · Project list KPI
+
+**Changed**
+- `domain/kpi.py`, pure: a port of v1 `kpi_summary` over stop rows. `Kpi`/`Breakdown` models.
+  - `by_installer` prefers `installer_name`.
+  - `by_dma`/`by_venue_type` read `fields.dma`/`fields.venue_type` ("Not provided" when blank).
+  - `address_status` groups by v1's normalised `addr|city|state|zip` key, falling back to `missing-address|uid`
+    only when every part is blank. A group counts complete when all its stops are.
+  - `KPI_ATTRIBUTES` is the §4.1 projection.
+- `repositories/stores.py` and the fake: `list_projected(project_id, attributes)`. A paginated Query with
+  `ProjectionExpression`, every name aliased (`status` is a DynamoDB reserved word). Returns plain dicts via
+  `from_ddb`.
+- `domain/models.py`: `ProjectSummary(Project)` + `kpi`.
+- `services/projects.py`: `list` returns `Page[ProjectSummary]`, with one projected Query per project fanned out
+  over `ThreadPoolExecutor(8)`. Paging is unchanged (GSI1 cursor).
+- `GET /projects` → `Page[ProjectSummary]`.
+- `tests/test_kpi.py`, 4 tests: v1 rules on hand-computed data (including address grouping), an empty project, a
+  moto test with two projects through the real repository and the service fan-out (projection excludes `lat`),
+  and the API shape. `tests/test_api.py` now gives the app an in-memory store repository, since listing reads
+  stops.
+
+**Verified**
+- `make backend-lint backend-test frontend-typecheck frontend-test`, 185 backend passing.
+- Manual: `GET /api/projects` on the local stack returns the B6 smoke project with `kpi.total=60`, `complete=1`
+  (from the B7 progress PATCH) and per-installer counts. That confirms the aliased projection against DynamoDB
+  Local, not just moto.
+
+**Deviations**
+- No cross-project aggregate in the response. v1 returned a top-level `kpi` over all projects; with pagination,
+  F3 aggregates on the client by paging through, as the handoff says.
+- No `read_only` flag: the legacy external project is out of scope (§8).
+
+**Open questions:** none.

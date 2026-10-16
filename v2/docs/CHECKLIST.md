@@ -44,7 +44,7 @@ Tracks delivery against [PLAN.md](./PLAN.md). Tick items as they land; add sub-i
 
 **Phase 3 — Frontend core + Stores**
 - [x] Vite + React 19 + TS + Tailwind v4 scaffold (shadcn/ui config ready, components added as needed)
-- [ ] Typed API client generated from OpenAPI
+- [x] Typed API client generated from OpenAPI
 - [x] TanStack Query setup, Zustand UI store, auth provider no-op
 - [ ] Dashboard page (KPIs, charts, project cards, filters)
 - [ ] Import wizard: presigned upload, live job progress, review table, column-to-field mapping
@@ -53,7 +53,7 @@ Tracks delivery against [PLAN.md](./PLAN.md). Tick items as they land; add sub-i
 - [ ] Shared `MapView`: status pins, same-address stacking, legend toggles, clustering, table sync
 - [ ] Settings tab: metadata, installers, `stops_per_day`, field schema editor
 - Tasks (AGENT-HANDOFF §5):
-  - [ ] F1 typed API client
+  - [x] F1 typed API client
   - [x] F2 shadcn/ui primitives
   - [ ] F3 dashboard
   - [ ] F4 import wizard + append flow

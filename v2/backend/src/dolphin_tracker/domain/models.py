@@ -5,8 +5,9 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any, Generic, TypeVar
 
-from pydantic import BaseModel, Field
+from pydantic import Field
 
+from dolphin_tracker.domain.base import ApiModel
 from dolphin_tracker.domain.kpi import Kpi
 
 T = TypeVar("T")
@@ -56,7 +57,7 @@ class FieldType(StrEnum):
     EMAIL = "email"
 
 
-class FieldDef(BaseModel):
+class FieldDef(ApiModel):
     """One entry of a project's field schema. Store name and address are fixed and not listed here."""
 
     key: str
@@ -67,7 +68,7 @@ class FieldDef(BaseModel):
     source_column: str | None = None
 
 
-class Project(BaseModel):
+class Project(ApiModel):
     id: str
     name: str
     pa: str = ""
@@ -89,7 +90,7 @@ class Project(BaseModel):
     updated_at: str = Field(default_factory=now_iso)
 
 
-class Stop(BaseModel):
+class Stop(ApiModel):
     """Planning data and field progress for one store, stored as one item."""
 
     uid: str
@@ -120,7 +121,7 @@ ROUTING_FIELDS = frozenset({"installer", "day", "seq"})
 PROGRESS_FIELDS = frozenset({"status", "comment", "additional_task", "installer_name", "updated_by"})
 
 
-class StopInput(BaseModel):
+class StopInput(ApiModel):
     """One stop as the client submits it on create or append. The server mints uid, display_id, seq and day."""
 
     store_name: str = Field(max_length=300)
@@ -135,7 +136,7 @@ class StopInput(BaseModel):
     initial_status: StopStatus | None = None
 
 
-class ProjectCreate(BaseModel):
+class ProjectCreate(ApiModel):
     name: str = Field(max_length=200)
     pa: str = Field(max_length=500)
     project_type: ProjectType
@@ -151,7 +152,7 @@ class ProjectCreate(BaseModel):
     stops: list[StopInput] = Field(default_factory=list, max_length=5000)
 
 
-class Job(BaseModel):
+class Job(ApiModel):
     id: str
     type: JobType
     status: JobStatus = JobStatus.QUEUED
@@ -170,14 +171,14 @@ class JobView(Job):
     result_url: str | None = None
 
 
-class InstallerStats(BaseModel):
+class InstallerStats(ApiModel):
     total: int
     days: int
     avg_stops: float
     miles: float
 
 
-class RoutesBundle(BaseModel):
+class RoutesBundle(ApiModel):
     """Whole-project payload for the Routes tab: per installer, days in order, stops by seq."""
 
     installers: list[str]
@@ -187,7 +188,7 @@ class RoutesBundle(BaseModel):
     stats: dict[str, InstallerStats]
 
 
-class Page(BaseModel, Generic[T]):
+class Page(ApiModel, Generic[T]):
     items: list[T]
     next_cursor: str | None = None
 

@@ -5,21 +5,22 @@ import re
 from collections.abc import Iterable, Mapping
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import Field
 
+from dolphin_tracker.domain.base import ApiModel
 from dolphin_tracker.domain.parsing import clean_cell
 
 STATUSES = ("Complete", "Incomplete", "Technical Issue", "Other")
 KPI_ATTRIBUTES = ("uid", "status", "installer", "installer_name", "fields", "addr", "city", "state", "zip")
 
 
-class Breakdown(BaseModel):
+class Breakdown(ApiModel):
     total: int = 0
     complete: int = 0
     pending: int = 0
 
 
-class Kpi(BaseModel):
+class Kpi(ApiModel):
     total: int = 0
     complete: int = 0
     pending: int = 0

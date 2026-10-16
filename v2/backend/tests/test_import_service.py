@@ -1,6 +1,7 @@
 import tempfile
 import unittest
 
+from dolphin_tracker.api.schemas import ImportResult
 from dolphin_tracker.domain.models import Job, JobStatus, JobType
 from dolphin_tracker.repositories.files import LocalFileStore, result_key
 from dolphin_tracker.repositories.memory import InMemoryJobRepository
@@ -138,6 +139,7 @@ class ImportRunTests(unittest.TestCase):
         self.assertEqual(self.jobs.history[job_id], [JobStatus.RUNNING, JobStatus.SUCCEEDED])
 
         result = self.files.get_json(result_key(job_id))
+        ImportResult.model_validate(result)  # the documented §3.4 contract the frontend type is generated from
         self.assertEqual(result["summary"], {"total": 27, "valid": 25, "needs_review": 1, "invalid": 1})
         self.assertEqual(result["address_column"], "address")
         self.assertEqual(result["store_column"], "store_name")

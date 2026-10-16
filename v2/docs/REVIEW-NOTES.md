@@ -595,3 +595,52 @@ and the S3 CORS rule falls back to `*` when `cors_origins` is empty.
 
 **Deviations:** the status colour values are my reading of v1. F6 checks them against `STATUS_MAP` in
 `route-planner.html` and adjusts if they differ.
+
+## F1 · Typed API client
+
+**Changed**
+- **Generated types:** `openapi-typescript` writes `src/lib/api/schema.d.ts`, committed.
+  - `npm run gen:api` reads `http://localhost:8080/api/openapi.json` (overridable via `OPENAPI_URL`).
+  - New `make gen-api` dumps the spec from `create_app()` without a running server.
+  - Both produce byte-identical output (checked).
+- **Backend changes so the types are exact:**
+  - New `domain/base.py` `ApiModel` with `json_schema_serialization_defaults_required=True`. Every domain and
+    API model inherits it, so response fields with defaults are *required* in the generated types (no
+    `undefined` checks) while requests keep their defaults. FastAPI now emits `FieldDef-Input` /
+    `FieldDef-Output`.
+  - `GET /health` → `HealthResponse`; `GET /jobs/{id}/result` → `ImportResult`/`ImportRow` (§3.4). The import
+    service test now validates the real worker output against `ImportResult`, so the TS type can't drift from
+    what the worker writes.
+- `src/lib/api/types.ts`: aliases over `components["schemas"]` only; the old hand-written `HealthResponse` is
+  gone. Two non-record helpers stay hand-written: the generic `Page<T>` shape and `ValidationDetail`, the body of
+  our `ValidationFailed` 422, which FastAPI's OpenAPI doesn't describe. `ApiError.validation` exposes it.
+- `src/lib/api/client.ts`:
+  - Repeatable query params (`status=A&status=B`).
+  - `errorMessage` reads string / `{message}` / pydantic-list details.
+  - `uploadFile` PUTs to a presigned or local URL with the signed Content-Type, attaching the bearer only for
+    `/api` routes.
+  - `fetchJson` for result URLs.
+- `src/lib/api/resources.ts`: one typed function per §4 endpoint. `src/lib/api/keys.ts`: a prefix-based query-key
+  factory.
+- Hooks:
+  - `features/projects/api.ts`: all-projects paging for the dashboard; `useProject` **polls every 2 s while
+    `building`**; routes; create/update/delete; routing jobs; rename; reassign.
+  - `features/stores/api.ts`: infinite store list, pins, one store, details, and **optimistic progress**. That
+    patches every cached list page, the detail and the pin colour, rolls back on error, and refetches pins and
+    routes on settle.
+  - `features/imports/api.ts`: `useStartImport` (create → upload → start); `useJob` polls every 1.5 s while
+    queued/running; `useImportResult`.
+  - `features/places/api.ts`: validate, maps config.
+- Tests: `client.test.ts` (5), `stores/cache.test.ts` (3), `features/api.test.ts` (3).
+
+**New dependency:** dev `openapi-typescript`, the generator F1 names.
+
+**Verified:** `make backend-lint backend-test frontend-typecheck frontend-test` (210 backend, 13 frontend
+passing). `npm run gen:api` against the live local API matches `make gen-api` byte for byte.
+
+**Deviations:** the `ApiModel` base and the two new response models are backend changes made inside F1. Without
+them the generated types would be loose (optional everywhere), or §3.4 would need a hand-written duplicate,
+which rule 10 forbids.
+
+**Open questions:** add a CI drift check (`make gen-api && git diff --exit-code`)? It needs Python and Node in one
+job, so I have not changed `v2-ci.yml`.

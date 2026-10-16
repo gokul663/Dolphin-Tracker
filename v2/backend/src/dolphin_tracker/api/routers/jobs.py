@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from typing import Annotated, Any
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 
 from dolphin_tracker.api.deps import SettingsDep, get_job_service
-from dolphin_tracker.api.schemas import ImportJobCreate, ImportJobCreated
+from dolphin_tracker.api.schemas import ImportJobCreate, ImportJobCreated, ImportResult
 from dolphin_tracker.domain.models import Job, JobView
 from dolphin_tracker.services.jobs import JobService
 
@@ -51,7 +51,7 @@ def get_job(job_id: str, service: ServiceDep) -> JobView:
     return service.view(job_id)
 
 
-@router.get("/{job_id}/result")
-def get_result_local(job_id: str, service: ServiceDep) -> Any:
+@router.get("/{job_id}/result", response_model=ImportResult)
+def get_result_local(job_id: str, service: ServiceDep) -> dict:
     """Local mode only: the import result document (§3.4). In AWS, follow `result_url` from GET /jobs/{id}."""
     return service.result(job_id)

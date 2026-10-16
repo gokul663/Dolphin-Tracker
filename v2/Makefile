@@ -16,7 +16,7 @@ LOCAL_AWS := AWS_ACCESS_KEY_ID=local AWS_SECRET_ACCESS_KEY=local AWS_DEFAULT_REG
 .PHONY: help setup backend-setup infra-setup frontend-setup ddb-moto \
         backend-dev backend-test backend-lint build-lambda \
         frontend-dev frontend-build frontend-test frontend-typecheck \
-        infra-synth infra-diff infra-deploy ddb-up ddb-down ddb-table
+        infra-synth infra-diff infra-deploy ddb-up ddb-down ddb-table gen-api
 
 help:
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-18s %s\n", $$1, $$2}'
@@ -78,3 +78,7 @@ ddb-down: ## Stop DynamoDB Local
 
 ddb-table: ## Create the local table matching DataStack
 	cd $(BACKEND) && $(LOCAL_AWS) .venv/bin/python scripts/create_local_table.py
+
+gen-api: ## Regenerate frontend/src/lib/api/schema.d.ts from the backend's OpenAPI (no running server needed)
+	cd $(BACKEND) && .venv/bin/python -c "import json; from dolphin_tracker.api.app import create_app; print(json.dumps(create_app().openapi()))" > ../$(FRONTEND)/openapi.json
+	cd $(FRONTEND) && $(NODE_SETUP); OPENAPI_URL=openapi.json npm run gen:api && rm -f openapi.json

@@ -1,18 +1,19 @@
 """HTTP request/response models that are not domain records. Domain records live in domain/models.py."""
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import ConfigDict, Field
 
+from dolphin_tracker.domain.base import ApiModel
 from dolphin_tracker.domain.models import FieldDef, Project, ProjectType, StopInput, StopStatus
 
 
-class MapsConfig(BaseModel):
+class MapsConfig(ApiModel):
     google_maps_browser_key: str
 
 
-class GeocodeResult(BaseModel):
+class GeocodeResult(ApiModel):
     ok: bool
     status: str | None = None
     formatted: str = ""
@@ -27,32 +28,32 @@ class GeocodeResult(BaseModel):
     error: str = ""
 
 
-class Suggestions(BaseModel):
+class Suggestions(ApiModel):
     suggestions: list[str]
 
 
-class ImportJobCreate(BaseModel):
+class ImportJobCreate(ApiModel):
     filename: str = Field(min_length=1, max_length=255)
     content_type: str = Field(default="application/octet-stream", max_length=255)
     project_id: str | None = None  # set when appending to an existing project
 
 
-class ImportJobCreated(BaseModel):
+class ImportJobCreated(ApiModel):
     job_id: str
     upload_url: str  # presigned S3 PUT, or /api/jobs/{job_id}/upload in local mode
     upload_key: str
 
 
-class ProjectCreated(BaseModel):
+class ProjectCreated(ApiModel):
     project: Project
     job_id: str | None = None  # the routing job; absent when the project has no stops (201)
 
 
-class JobAccepted(BaseModel):
+class JobAccepted(ApiModel):
     job_id: str
 
 
-class Pin(BaseModel):
+class Pin(ApiModel):
     uid: str
     lat: float
     lng: float
@@ -62,7 +63,7 @@ class Pin(BaseModel):
     day: int
 
 
-class StoreDetailsUpdate(BaseModel):
+class StoreDetailsUpdate(ApiModel):
     """Detail edit. Omitted keys are unchanged; `fields` merges per key into the stop's custom fields."""
 
     store_name: str | None = Field(default=None, max_length=300)
@@ -73,7 +74,7 @@ class StoreDetailsUpdate(BaseModel):
     fields: dict[str, Any] | None = None
 
 
-class ProgressUpdate(BaseModel):
+class ProgressUpdate(ApiModel):
     status: StopStatus | None = None
     comment: str | None = Field(default=None, max_length=2000)
     additional_task: bool | None = None
@@ -81,7 +82,7 @@ class ProgressUpdate(BaseModel):
     updated_by: str | None = Field(default=None, max_length=200)
 
 
-class ProjectUpdate(BaseModel):
+class ProjectUpdate(ApiModel):
     """Metadata edit. Installers change only through the installer endpoints; routing state only through jobs."""
 
     model_config = ConfigDict(extra="forbid")
@@ -100,37 +101,87 @@ class ProjectUpdate(BaseModel):
     expected_version: int | None = Field(default=None, description="409 if the project has moved past this version")
 
 
-class AppendStops(BaseModel):
+class AppendStops(ApiModel):
     stops: list[StopInput] = Field(min_length=1, max_length=5000)
     pa: str = Field(default="", max_length=500)
 
 
-class SkippedStop(BaseModel):
+class SkippedStop(ApiModel):
     addr: str
     venue_code: str
     reason: str
 
 
-class AppendResult(BaseModel):
+class AppendResult(ApiModel):
     appended: int
     skipped: list[SkippedStop]
     total: int
 
 
-class InstallerAdd(BaseModel):
+class InstallerAdd(ApiModel):
     name: str = Field(min_length=1, max_length=200)
 
 
-class InstallerRename(BaseModel):
+class InstallerRename(ApiModel):
     old_name: str = Field(min_length=1, max_length=200)
     new_name: str = Field(max_length=200)
 
 
-class StopReassign(BaseModel):
+class StopReassign(ApiModel):
     installer: str = Field(min_length=1, max_length=200)
 
 
-class ReassignResult(BaseModel):
+class ReassignResult(ApiModel):
     old_installer: str
     installer: str
     changed: list[str]  # uids whose installer/day/seq changed
+
+
+class HealthResponse(ApiModel):
+    status: Literal["ok"]
+    env: str
+    db: bool
+    ts: str
+
+
+class ImportSummary(ApiModel):
+    total: int
+    valid: int
+    needs_review: int
+    invalid: int
+
+
+class ImportRow(ApiModel):
+    """One verified spreadsheet row (AGENT-HANDOFF §3.4)."""
+
+    index: int
+    address: str  # as uploaded
+    store_name: str
+    pa: str
+    status: Literal["valid", "needs_review", "invalid"]
+    confidence: int
+    verified_by: list[str]
+    formatted: str
+    addr: str
+    city: str
+    state: str
+    zip: str
+    lat: float | None
+    lng: float | None
+    place_name: str
+    suggestions: list[str]
+    error: str
+    venue_status: StopStatus
+    venue_status_valid: bool
+    venue_status_raw: str
+    fields: dict[str, str]  # keyed by normalised header; mapped to the schema in the review UI
+
+
+class ImportResult(ApiModel):
+    columns: list[str]
+    address_column: str
+    store_column: str | None
+    extra_columns: list[str]
+    summary: ImportSummary
+    pa_names: list[str]
+    rows: list[ImportRow]

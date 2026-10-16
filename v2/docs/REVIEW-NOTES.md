@@ -43,3 +43,45 @@ domain) and `partial` mode (B7 needs it for PATCH semantics).
 
 **Open questions:** none. The DATE type has no rule in the handoff, so I chose ISO `YYYY-MM-DD`. The frontend
 date input produces that format.
+
+## B2 · Store repository
+
+**Changed**
+- `domain/models.py`: `Stop.route_stale: bool = False` (§3.1). `ROUTING_FIELDS` / `PROGRESS_FIELDS` frozensets
+  name the two write groups from rule 5, so services and repositories share one definition.
+- `repositories/dynamo.py`: `build_set_expression(changes)` builds the `SET` expression, names and values.
+  Every path segment is aliased, and a dotted key (`fields.dma`) sets one nested map entry, so two detail edits
+  to different custom fields don't overwrite each other.
+- `repositories/stores.py`, `DynamoStoreRepository`:
+  - `put_many`: `batch_writer(overwrite_by_pkeys=…)`. boto3 sends 25 items per request and resubmits unprocessed
+    items.
+  - `get`.
+  - `list`: Query `PK = :pk AND begins_with(SK, 'STOP#')`, `Limit`, cursor = the encoded `LastEvaluatedKey`.
+  - `list_all`: paginated loop.
+  - `update_fields`: UpdateItem, `attribute_exists(PK)`, `NotFoundError` on condition failure, always stamps
+    `updated_at`, ignores `uid`.
+  - `update_routing_many(project_id, [(uid, {installer?, day?, seq?})])`: `ThreadPoolExecutor(16)` over the
+    *client* (thread-safe; resource objects are not), each write conditioned on `attribute_exists(PK)`. A stop
+    deleted mid-build is skipped instead of being recreated as a half item. Returns the count written. Raises
+    `ValueError` if a change carries anything beyond installer/day/seq. That makes rule 5 a hard guarantee on
+    the routing path, not just a convention.
+  - `delete_all`: keys-only Query, then batch delete. Leaves META alone.
+- `repositories/memory.py`: `InMemoryStoreRepository`, same contract (SK-ordered list, offset cursor, dotted
+  keys). The offset-paging helper is now shared with the project fake.
+- `tests/test_store_repository.py`: one contract suite run against both moto and the fake (8 tests each), plus 2
+  Dynamo-only tests (item layout; `delete_all` keeps META). Covers the 37-item batch, three-plus pages with an
+  opaque cursor, nested updates, routing writes that preserve progress and skip missing stops, rejection of
+  non-routing keys, and per-project deletes.
+
+**Verified**
+- `make backend-lint backend-test frontend-typecheck frontend-test`, 81 backend passing.
+- Manual: against DynamoDB Local (Podman, `make ddb-up ddb-table`), 60 stops: listed in 3 pages of 25, nested
+  `fields.dma` update, 60 routing writes plus one ghost skipped, `delete_all` removed 60.
+
+**Deviations:** none from the contract. `update_routing_many` takes `(uid, changes)` pairs, the shape
+`RoutingService.diff` already returns.
+
+**Note for the reviewer:** `@mock_aws` used as a class decorator only patches methods defined on that class. The
+inherited contract tests briefly ran unpatched and reached real AWS. The dummy credentials were rejected, so
+nothing was written. The Dynamo suite now starts the mock in `setUp`. Use the same pattern for any future
+contract-style test.

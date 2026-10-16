@@ -29,7 +29,7 @@ Tracks delivery against [PLAN.md](./PLAN.md). Tick items as they land; add sub-i
 - [ ] Contract tests cover every endpoint
 - Tasks (AGENT-HANDOFF §5):
   - [x] B1 field schema + validation
-  - [ ] B2 store repository
+  - [x] B2 store repository
   - [ ] B3 job repository + worker invoker
   - [ ] B4 local file store + local upload route
   - [ ] B5 import job end to end

@@ -107,8 +107,14 @@ class Stop(BaseModel):
     comment: str = ""
     additional_task: bool = False
     installer_name: str = ""
+    route_stale: bool = False  # address/geo changed after the last routing build
     updated_at: str = Field(default_factory=now_iso)
     updated_by: str = ""
+
+
+# Disjoint write groups on a stop item (AGENT-HANDOFF §2 rule 5). A single write never mixes ROUTING and PROGRESS.
+ROUTING_FIELDS = frozenset({"installer", "day", "seq"})
+PROGRESS_FIELDS = frozenset({"status", "comment", "additional_task", "installer_name", "updated_by"})
 
 
 class Job(BaseModel):

@@ -73,6 +73,25 @@ def decode_cursor(cursor: str | None) -> dict[str, Any] | None:
         raise ValueError("Invalid cursor") from exc
 
 
+def build_set_expression(changes: dict[str, Any]) -> tuple[str, dict[str, str], dict[str, Any]]:
+    """`SET` expression, names and values for a partial update. A dotted key (`fields.dma`) sets one nested map entry.
+
+    Every path segment goes through ExpressionAttributeNames, so reserved words and odd keys are safe.
+    """
+    names: dict[str, str] = {}
+    values: dict[str, Any] = {}
+    assignments: list[str] = []
+    for index, (key, value) in enumerate(changes.items()):
+        segments = []
+        for depth, segment in enumerate(key.split(".")):
+            name = f"#f{index}_{depth}"
+            names[name] = segment
+            segments.append(name)
+        values[f":v{index}"] = to_ddb(value)
+        assignments.append(f"{'.'.join(segments)} = :v{index}")
+    return "SET " + ", ".join(assignments), names, values
+
+
 def strip_internal(item: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in item.items() if key not in INTERNAL_ATTRIBUTES}
 

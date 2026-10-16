@@ -23,7 +23,7 @@ export function renderWithProviders(ui: ReactElement, { path = "/", route = "/" 
   return { client, ...render(ui, { wrapper }) };
 }
 
-type Handler = (url: URL, init: RequestInit) => unknown;
+type Handler = (url: URL, init: RequestInit) => unknown; // may return a Promise (e.g. to hold a response)
 
 /** Stub `fetch` with a router: `routes["GET /api/projects"] = () => body`. Unmatched calls fail the test loudly. */
 export function mockApi(routes: Record<string, Handler>) {
@@ -35,7 +35,7 @@ export function mockApi(routes: Record<string, Handler>) {
     calls.push({ method, url, body });
     const handler = routes[`${method} ${url.pathname}`];
     if (!handler) return new Response(JSON.stringify({ detail: `No mock for ${method} ${url.pathname}` }), { status: 599 });
-    const result = handler(url, init);
+    const result: unknown = await handler(url, init);
     if (result instanceof Response) return result;
     return new Response(result === undefined ? null : JSON.stringify(result), {
       status: result === undefined ? 204 : 200,

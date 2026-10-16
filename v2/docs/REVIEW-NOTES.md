@@ -822,3 +822,58 @@ and bounds logic is unit-tested.
 - New project fields from the sheet are typed `text`. Change the type in Settings afterwards.
 
 **Open questions:** none.
+
+## F7 · Stores tab
+
+**Changed**
+- `features/stores/StoresTab.tsx`: toolbar, then **table left and map right** (stacked below `lg`), both driven by
+  the same filters; the store drawer.
+- `features/stores/StoresToolbar.tsx`:
+  - debounced search (250 ms) → `q`;
+  - status chips → `status=…`;
+  - installer multi-select, including **Unassigned** (`installer=`);
+  - "only stores in map view";
+  - clear;
+  - a **CSV** link to `export.csv` with the current filters and sort.
+- `features/stores/StoresTable.tsx`:
+  - **TanStack Table + Virtual**, with core columns then one column per schema field.
+  - Header clicks map to the list endpoint's `sort`/`dir`; only the columns the API can sort are sortable.
+  - The next page auto-loads near the end.
+  - Inline editing (`EditableCell`) for store name and every schema field, with B1's rules checked client-side
+    first. Address edits open the drawer, because they need geocode feedback.
+  - Per-row status select (**optimistic**, rolled back on error).
+  - A `route_stale` marker.
+  - Row hover highlights the pin, and a pin click selects and scrolls to the row and opens the drawer.
+- `features/stores/StoreDrawer.tsx` (sheet):
+  - **Progress:** status, completed-by with installer suggestions, additional task, comment. Each saves on change
+    or blur through the progress endpoint, optimistically.
+  - **Details:** name, address parts and typed schema inputs, validated client-side. Only changed keys are sent,
+    so an untouched address is never re-geocoded.
+  - On a 422 it shows Google's message and **suggestions**; picking one validates it via `/places/validate` and
+    fills addr/city/state/zip.
+- "Only stores in view": the map reports bounds, then the tab loads the remaining pages and filters loaded rows
+  with `inBounds`.
+- `stores/ui.ts` (Zustand): UI state only (filters, sort, selection, hover, drawer, bounds), reset when the
+  project changes. `features/stores/details.ts`: the pure details model (form ↔ stop, validation, minimal patch).
+- Test harness: `mockApi` now awaits async handlers. The F7 tests use a small stateful fake, so refetches see
+  writes.
+- Tests: `ui.test.ts` (1), `details.test.ts` (3), `StoresTab.test.tsx` (5):
+  - filters, search, sort and CSV URL reach the API; schema columns render; the map degrades without a key;
+  - inline edit with B1 validation and a minimal PATCH;
+  - **optimistic status with rollback on a 500**;
+  - drawer address 422 → suggestion → fields filled;
+  - drawer progress writes are progress-only (no details PATCH).
+
+**New dependencies:** `@tanstack/react-table` and `@tanstack/react-virtual`, the table stack PLAN/F7 name.
+
+**Verified:** `make backend-lint backend-test frontend-typecheck frontend-test` (211 backend, 58 frontend passing)
+and `make frontend-build`. The Stores tab is its own 197 kB chunk. **Not verified in a browser** (Chrome extension
+unavailable) and not with a live map (no browser key).
+
+**Deviations**
+- City, state and ZIP columns aren't sortable: the §4.3 sort list doesn't include them.
+- "Only in view" filters the loaded rows client-side after loading every page (≤ ~1000 stops). The server has no
+  bounds filter, and §8 keeps list filtering in the service.
+- Tests stub `clientWidth`/`clientHeight` (file-local) so the virtualizer renders rows in jsdom.
+
+**Open questions:** none.

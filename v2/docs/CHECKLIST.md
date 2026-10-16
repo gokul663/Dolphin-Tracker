@@ -54,7 +54,7 @@ Tracks delivery against [PLAN.md](./PLAN.md). Tick items as they land; add sub-i
 - [ ] Settings tab: metadata, installers, `stops_per_day`, field schema editor
 - Tasks (AGENT-HANDOFF §5):
   - [ ] F1 typed API client
-  - [ ] F2 shadcn/ui primitives
+  - [x] F2 shadcn/ui primitives
   - [ ] F3 dashboard
   - [ ] F4 import wizard + append flow
   - [ ] F5 project shell + settings

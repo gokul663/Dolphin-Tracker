@@ -554,3 +554,44 @@ counts.
 **Open questions**
 - The prod Mongo dump is needed for the real parity run (PLAN Phase 5). Not done here.
 - `assigned_region` was always empty in v1 code paths. It is kept only if non-empty, like any extra attribute.
+
+## B13 · Lambda smoke in dev: **skipped**
+
+No AWS credentials are configured on this machine: `aws sts get-caller-identity` returns `NoCredentials` (the
+`~/.aws` files exist but hold no usable profile). Per the run instructions, B13 runs only with credentials and
+after asking you, so nothing was deployed. The CHECKLIST item stays unticked. To run it: configure credentials,
+then `aws ssm put-parameter … google-maps-server-key`, `make infra-deploy ENV=dev`, and the checks listed in the
+handoff. Two infra gaps to settle first (see B11 and below): `DT_GOOGLE_BROWSER_KEY` is not set by `ApiStack`,
+and the S3 CORS rule falls back to `*` when `cors_origins` is empty.
+
+## F2 · shadcn/ui primitives
+
+**Changed**
+- Added with `npx shadcn@latest add …` (new-york): button, input, label, select, dialog, badge, card, tabs,
+  table, progress, popover, dropdown-menu, sheet, sonner (toast), tooltip, checkbox, textarea, in
+  `src/components/ui/`.
+- **CLI misfire, corrected.** With the `@/*` alias only in `tsconfig.app.json`, the CLI first wrote into a
+  literal `frontend/@/` directory. On the second run it rewrote every `@/lib/utils` import to the unrelated npm
+  package **`cn`** and installed it. Fixes:
+  - added the alias to the root `tsconfig.json` (shadcn's documented Vite setup);
+  - pointed all imports back at `@/lib/utils`;
+  - uninstalled `cn`;
+  - dropped `next-themes`. `sonner.tsx` is fixed to the light theme; the app is light-only, as v1 was.
+- `src/index.css`: shadcn token layer (`--primary` = v1 brand `#0F5B7C`, ring = brand accent, slate neutrals)
+  plus `@theme inline` mappings. Fonts are v1's (Bebas Neue display, IBM Plex Mono labels, IBM Plex Sans body),
+  loaded in `index.html` like the legacy page. The shared **status colours** match the legacy page.
+- `app/providers.tsx`: `TooltipProvider` and the `Toaster`.
+- Test toolchain: Vitest now runs in jsdom with `src/test/setup.ts` (explicit Testing Library cleanup).
+  `src/components/ui/primitives.test.tsx` renders Button/Badge/Checkbox and toggles the checkbox.
+
+**New dependencies**
+- `radix-ui`, `sonner`: added by the shadcn CLI; the primitives need them.
+- dev `tw-animate-css`: shadcn's enter/exit animation classes; without it dialogs and sheets don't animate.
+- dev `@testing-library/react`, `@testing-library/dom`, `@testing-library/user-event`, `jsdom`: rule 8 component
+  tests.
+
+**Verified:** `make backend-lint backend-test frontend-typecheck frontend-test` (2 frontend tests passing) and
+`make frontend-build`.
+
+**Deviations:** the status colour values are my reading of v1. F6 checks them against `STATUS_MAP` in
+`route-planner.html` and adjusts if they differ.

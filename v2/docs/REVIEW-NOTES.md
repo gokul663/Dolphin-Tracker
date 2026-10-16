@@ -644,3 +644,47 @@ which rule 10 forbids.
 
 **Open questions:** add a CI drift check (`make gen-api && git diff --exit-code`)? It needs Python and Node in one
 job, so I have not changed `v2-ci.yml`.
+
+## F3 · Dashboard
+
+**Changed**
+- `features/dashboard/DashboardPage.tsx`, a port of v1 `Dashboard.jsx`:
+  - six KPI cards;
+  - three Recharts charts (sites by installer, status breakdown, sites per project);
+  - the KPI project-filter popover (search, select visible, all, clear);
+  - all/ongoing/completed tabs;
+  - project cards with progress, installers, PA/FA/partner and the four percentages;
+  - routing status badges (`Routing…` / `Routing failed`, new);
+  - card actions: open, append, edit, delete;
+  - loading, empty and error-with-retry states.
+  - It pages through `GET /projects` (limit 200) to aggregate across all projects, per the handoff.
+- `features/dashboard/aggregate.ts`: the pure aggregation logic (totals, unique installers, breakdowns,
+  completed rule, progress, search, filter toggling).
+- `features/projects/ProjectDialogs.tsx`:
+  - `EditProjectDialog`: react-hook-form + zod, sends `expected_version`, so a concurrent edit gets 409.
+  - `DeleteProjectDialog`: v1's type-the-exact-name safeguard.
+- `features/projects/schema.ts` / `ProjectMetaFields.tsx`: the metadata form schema and fields, shared with F4
+  and F5.
+- `lib/status.ts`: **one status palette from v1 `STATUS_MAP`** (route-planner.html: Upcoming `#d97706`, Other
+  `#7c3aed`, …), used by chips, charts and pins. The F2 token guesses were corrected to it.
+- `app/layout/HealthBadge.tsx`: v1's connection badge, now for API + DynamoDB.
+- `features/imports/ImportWizard.tsx`: a **placeholder** the Add/Append buttons open. F4 replaces it.
+- Test helpers: `src/test/render.tsx` (`renderWithProviders`, a `mockApi` fetch router), `fixtures.ts`,
+  `schema.ts`. `setup.ts` gains `ResizeObserver` / pointer-capture stubs for Recharts and Radix in jsdom.
+- Tests: `aggregate.test.ts` (5), `DashboardPage.test.tsx` (5: paging + KPIs + tabs, project filter, error and
+  retry, delete gate with the confirm param, edit validation plus PATCH body with `expected_version`).
+
+**New dependencies**
+- `recharts` (+ its `react-is` peer): the charts, as in v1 and PLAN.
+- `react-hook-form`, `zod`, `@hookform/resolvers`: the PLAN Part 3 form stack, reused by F4, F5 and F7.
+
+**Verified**
+- `make backend-lint backend-test frontend-typecheck frontend-test` (23 frontend tests) and `make
+  frontend-build`.
+- **Visual check in a browser: skipped.** The Claude-in-Chrome extension was not connected. The Vite dev server
+  ran against the local API (`/api/health` proxied OK), but I could not screenshot. Please give the dashboard a
+  quick look.
+
+**Deviations**
+- "Upcoming" uses the planner's `#d97706`, not the v1 dashboard's `#ca8a04`, so the dashboard and map agree.
+- No read-only cards: the legacy external project is out of scope (§8).

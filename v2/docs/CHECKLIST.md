@@ -46,7 +46,7 @@ Tracks delivery against [PLAN.md](./PLAN.md). Tick items as they land; add sub-i
 - [x] Vite + React 19 + TS + Tailwind v4 scaffold (shadcn/ui config ready, components added as needed)
 - [x] Typed API client generated from OpenAPI
 - [x] TanStack Query setup, Zustand UI store, auth provider no-op
-- [ ] Dashboard page (KPIs, charts, project cards, filters)
+- [x] Dashboard page (KPIs, charts, project cards, filters)
 - [ ] Import wizard: presigned upload, live job progress, review table, column-to-field mapping
 - [ ] Project shell with Stores / Routes / Settings tabs and `routing_status` banner
 - [ ] Stores tab: virtualized editable table, required name + address, drawer editor, CSV export
@@ -55,7 +55,7 @@ Tracks delivery against [PLAN.md](./PLAN.md). Tick items as they land; add sub-i
 - Tasks (AGENT-HANDOFF §5):
   - [x] F1 typed API client
   - [x] F2 shadcn/ui primitives
-  - [ ] F3 dashboard
+  - [x] F3 dashboard
   - [ ] F4 import wizard + append flow
   - [ ] F5 project shell + settings
   - [ ] F6 MapView

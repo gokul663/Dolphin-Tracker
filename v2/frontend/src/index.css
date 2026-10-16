@@ -10,11 +10,11 @@
   --font-mono: "IBM Plex Mono", ui-monospace, monospace;
   --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
 
-  /* Status colours shared by chips, charts and map pins (v1 STATUS_MAP). */
+  /* Status colours shared by chips, charts and map pins: v1 STATUS_MAP in route-planner.html. */
   --color-status-complete: #16a34a;
-  --color-status-incomplete: #0891b2;
+  --color-status-incomplete: #d97706;
   --color-status-technical: #dc2626;
-  --color-status-other: #d97706;
+  --color-status-other: #7c3aed;
 }
 
 /* shadcn/ui tokens (new-york), light only, primary = v1 brand. */

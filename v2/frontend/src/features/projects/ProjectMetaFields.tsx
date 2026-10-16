@@ -1,0 +1,56 @@
+import type { UseFormReturn } from "react-hook-form";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import type { ProjectMetaForm } from "@/features/projects/schema";
+import { PROJECT_TYPE_LABELS } from "@/lib/status";
+
+type FieldName = keyof ProjectMetaForm;
+
+/** Metadata inputs shared by the edit dialog, the import wizard and the Settings tab. */
+export function ProjectMetaFields({ form }: { form: UseFormReturn<ProjectMetaForm> }) {
+  const { register, formState, watch, setValue } = form;
+  const field = (name: FieldName, label: string, props: { placeholder?: string; inputMode?: "decimal" } = {}) => (
+    <div className="space-y-1.5">
+      <Label htmlFor={`meta-${name}`} className="font-mono text-[11px] uppercase tracking-wider text-slate-600">
+        {label}
+      </Label>
+      <Input id={`meta-${name}`} aria-invalid={Boolean(formState.errors[name])} {...props} {...register(name)} />
+      {formState.errors[name] && <p className="text-xs text-rose-600">{formState.errors[name]?.message}</p>}
+    </div>
+  );
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-4 sm:grid-cols-2">
+        {field("name", "Project name *")}
+        {field("pa", "PA *", { placeholder: "Comma-separated when several" })}
+        <div className="space-y-1.5">
+          <Label className="font-mono text-[11px] uppercase tracking-wider text-slate-600">Project type *</Label>
+          <Select
+            value={watch("project_type")}
+            onValueChange={(value) => setValue("project_type", value as ProjectMetaForm["project_type"], { shouldDirty: true })}
+          >
+            <SelectTrigger className="w-full" aria-label="Project type">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {Object.entries(PROJECT_TYPE_LABELS).map(([value, label]) => (
+                <SelectItem key={value} value={value}>
+                  {label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        {field("field_agent", "Field agent")}
+        {field("partner_account", "Partner account")}
+      </div>
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        {field("pa_percentage", "PA % *", { inputMode: "decimal" })}
+        {field("dolphin_percentage", "Dolphin % *", { inputMode: "decimal" })}
+        {field("store_percentage", "Store %", { inputMode: "decimal" })}
+        {field("fa_percentage", "FA %", { inputMode: "decimal" })}
+      </div>
+    </div>
+  );
+}

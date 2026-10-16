@@ -50,6 +50,11 @@ class PlacesApiTests(unittest.TestCase):
         body = self.client.get("/api/config/maps").json()
         self.assertEqual(body, {"google_maps_browser_key": "browser-k"})
 
+    def test_default_field_schema(self):
+        body = self.client.get("/api/config/field-schema").json()
+        self.assertEqual([field["key"] for field in body][:3], ["pa", "venue_type", "dma"])
+        self.assertEqual(len(body), 8)
+
     def test_endpoints_are_documented(self):
         paths = self.client.get("/api/openapi.json").json()["paths"]
         for path in ("/api/config/maps", "/api/places/validate", "/api/places/autocomplete"):

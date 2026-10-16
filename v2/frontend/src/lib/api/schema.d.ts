@@ -55,6 +55,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/config/field-schema": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Default Schema
+         * @description The schema a new project starts with (§3.1); the import wizard maps sheet columns against it.
+         */
+        get: operations["default_schema_api_config_field_schema_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/places/validate": {
         parameters: {
             query?: never;
@@ -1363,6 +1383,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MapsConfig"];
+                };
+            };
+        };
+    };
+    default_schema_api_config_field_schema_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FieldDef-Output"][];
                 };
             };
         };

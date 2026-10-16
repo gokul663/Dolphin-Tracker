@@ -3,6 +3,7 @@ import { api, apiUrl, fetchJson, uploadFile } from "@/lib/api/client";
 import type {
   AppendResult,
   AppendStops,
+  FieldDef,
   GeocodeResult,
   HealthResponse,
   ImportJobCreate,
@@ -54,6 +55,7 @@ export const healthApi = {
 
 export const configApi = {
   maps: () => api<MapsConfig>("/config/maps"),
+  defaultFieldSchema: () => api<FieldDef[]>("/config/field-schema"),
 };
 
 export const placesApi = {

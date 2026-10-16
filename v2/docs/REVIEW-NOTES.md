@@ -770,3 +770,55 @@ and bounds logic is unit-tested.
 **Open questions**
 1. Is a Map ID available? It allows `AdvancedMarkerElement`; `Marker` is deprecated but still supported.
 2. Is the cluster threshold (zoom ≤ 11) right for your densest projects?
+
+## F4 · Import wizard + append flow
+
+**Changed**
+- `features/imports/ImportWizard.tsx` replaces the F3 placeholder.
+  - **New project:** details → upload → review → mapping → `POST /projects` → navigate to the project's Stores
+    tab, where the routing banner shows. **Append:** upload → review → mapping → `stores/append` → summary.
+  - It remounts on every open, so state never leaks between imports.
+- Steps:
+  - `DetailsStep`: shared metadata fields plus stops per day and installer chips. The installer error now shows
+    *together with* the form errors.
+  - `UploadStep`: file picker / drop zone, then `useStartImport` (create job → presigned or local PUT with the
+    signed Content-Type → start). **Real job progress** comes from polling `GET /jobs/{id}` (message + %), with
+    the failure message and retry. PA prefills from the sheet's `pa_names` when empty.
+  - `ReviewStep`:
+    - status chips that filter (all / valid / need review / invalid / to fix);
+    - editable store name (now **required**, as in B1) and address, re-validated **on blur** via
+      `/places/validate`, as in v1;
+    - a suggestion picker that validates the pick;
+    - per-row exclude, and "exclude every row that still needs fixing";
+    - 100 rows per page.
+  - `MappingStep`:
+    - every extra column with sample values, mapped to an existing field (auto-matched by key, label or
+      `source_column`), **"Add as a new field"**, or ignore;
+    - duplicate-target and required-field checks;
+    - a preview of values the server would reject, with an opt-in "import with those values blank".
+  - Append: when new fields were added, it first PATCHes the project's `field_schema` with `expected_version`,
+    then appends, then lists `skipped` duplicates.
+- `features/imports/model.ts`: all of the above as pure functions (review rows, `applyGeocode`, `rowProblems`,
+  filters/summary, `normalizeColumn` = backend's, `autoMap`, `newFieldTarget`, `mappingErrors`,
+  `extendedSchema`, `mappedValueProblems`, `buildStops`). Only verified rows (valid + coordinates), as in v1.
+- **Backend, new endpoint `GET /config/field-schema`:** the default schema for a not-yet-created project, so the
+  wizard maps against the backend's own `DEFAULT_FIELD_SCHEMA` rather than a frontend copy. Tested; types
+  regenerated.
+- **UX bug found by the tests and fixed:** with the "to fix" filter active, a row disappeared (unmounting its
+  input) on the first keystroke that made it valid. Review filters are now a snapshot taken when chosen.
+- Tests: `model.test.ts` (5), `ImportWizard.test.tsx` (2 end-to-end flows through the mocked API: validation,
+  upload request shape, polling, store-name fix, suggestion re-validate, auto and new-field mapping, the exact
+  `POST /projects` and append payloads, PATCH-before-append ordering, the skipped summary).
+
+**Verified**
+- `make backend-lint backend-test frontend-typecheck frontend-test` (211 backend, 49 frontend passing).
+- Live: `GET /api/config/field-schema` through the Vite proxy.
+- **Not verified end to end against the real stack.** Without a Google key every row comes back
+  `needs_review`/0, so the review step can't make rows valid locally. The flow is covered by the mocked
+  component tests, and the backend half was verified in B5/B6.
+
+**Deviations**
+- v1 had three steps; v2 adds **mapping** as a fourth, per the handoff. The other three run in v1's order.
+- New project fields from the sheet are typed `text`. Change the type in Settings afterwards.
+
+**Open questions:** none.

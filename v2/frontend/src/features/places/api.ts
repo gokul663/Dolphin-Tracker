@@ -9,3 +9,8 @@ export function useValidateAddress() {
 export function useMapsConfig() {
   return useQuery({ queryKey: keys.mapsConfig, queryFn: configApi.maps, staleTime: Infinity });
 }
+
+/** The schema a new project starts with (backend §3.1 default), for the import wizard's column mapping. */
+export function useDefaultFieldSchema() {
+  return useQuery({ queryKey: keys.defaultFieldSchema, queryFn: configApi.defaultFieldSchema, staleTime: Infinity });
+}

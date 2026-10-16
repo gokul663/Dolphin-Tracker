@@ -24,7 +24,7 @@ Tracks delivery against [PLAN.md](./PLAN.md). Tick items as they land; add sub-i
 - [x] Jobs: create import, poll status, results from S3; worker handler for import and routing
 - [x] Pandas removed; CSV via `csv`, Excel via `openpyxl`; parser tests updated
 - [x] Optimizer ported unchanged behind `RoutingService`; `stops_per_day` per project
-- [ ] Field schema stored on project; import maps columns to schema
+- [x] Field schema stored on project; import maps columns to schema
 - [x] Migration script Mongo → DynamoDB with parity report
 - [ ] Contract tests cover every endpoint
 - Tasks (AGENT-HANDOFF §5):
@@ -47,7 +47,7 @@ Tracks delivery against [PLAN.md](./PLAN.md). Tick items as they land; add sub-i
 - [x] Typed API client generated from OpenAPI
 - [x] TanStack Query setup, Zustand UI store, auth provider no-op
 - [x] Dashboard page (KPIs, charts, project cards, filters)
-- [ ] Import wizard: presigned upload, live job progress, review table, column-to-field mapping
+- [x] Import wizard: presigned upload, live job progress, review table, column-to-field mapping
 - [x] Project shell with Stores / Routes / Settings tabs and `routing_status` banner
 - [ ] Stores tab: virtualized editable table, required name + address, drawer editor, CSV export
 - [ ] Shared `MapView`: status pins, same-address stacking, legend toggles, clustering, table sync
@@ -56,7 +56,7 @@ Tracks delivery against [PLAN.md](./PLAN.md). Tick items as they land; add sub-i
   - [x] F1 typed API client
   - [x] F2 shadcn/ui primitives
   - [x] F3 dashboard
-  - [ ] F4 import wizard + append flow
+  - [x] F4 import wizard + append flow
   - [x] F5 project shell + settings
   - [x] F6 MapView
   - [ ] F7 stores tab

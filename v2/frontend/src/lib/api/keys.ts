@@ -4,6 +4,7 @@ import type { StoreFilters } from "@/lib/api/resources";
 export const keys = {
   health: ["health"] as const,
   mapsConfig: ["config", "maps"] as const,
+  defaultFieldSchema: ["config", "field-schema"] as const,
   projects: ["projects"] as const,
   projectList: (limit: number) => ["projects", "list", limit] as const,
   project: (id: string) => ["projects", id] as const,

@@ -9,10 +9,12 @@ import boto3
 from botocore.config import Config
 from fastapi import Depends
 
-from dolphin_tracker.config import Settings, get_settings
+from dolphin_tracker.config import Settings, get_settings, resolve_google_server_key
 from dolphin_tracker.repositories.dynamo import dynamodb_resource
 from dolphin_tracker.repositories.projects import DynamoProjectRepository, ProjectRepository
 from dolphin_tracker.repositories.stores import DynamoStoreRepository, StoreRepository
+from dolphin_tracker.services.geocoding import GoogleGeocoder
+from dolphin_tracker.services.places import PlacesService
 from dolphin_tracker.services.projects import ProjectService
 from dolphin_tracker.services.stores import StoreService
 
@@ -46,6 +48,19 @@ def get_project_service(
 
 def get_store_service(stores: Annotated[StoreRepository, Depends(get_store_repository)]) -> StoreService:
     return StoreService(stores)
+
+
+@lru_cache
+def _geocoder(api_key: str) -> GoogleGeocoder:
+    return GoogleGeocoder(api_key)  # one httpx.Client per warm process
+
+
+def get_geocoder(settings: SettingsDep) -> GoogleGeocoder:
+    return _geocoder(resolve_google_server_key(settings))
+
+
+def get_places_service(geocoder: Annotated[GoogleGeocoder, Depends(get_geocoder)]) -> PlacesService:
+    return PlacesService(geocoder)
 
 
 def get_db_probe(settings: SettingsDep) -> Callable[[], bool]:

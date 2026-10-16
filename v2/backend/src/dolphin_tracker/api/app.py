@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.cors import CORSMiddleware
 
 from dolphin_tracker import __version__
-from dolphin_tracker.api.routers import health, jobs, projects, stores
+from dolphin_tracker.api.routers import health, jobs, places, projects, stores
 from dolphin_tracker.config import Settings, get_settings
 from dolphin_tracker.domain.errors import ConflictError, NotFoundError
 
@@ -36,6 +36,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {"message": "Dolphin Tracker API", "version": __version__}
 
     api.include_router(health.router)
+    api.include_router(places.router)
     api.include_router(projects.router)
     api.include_router(stores.router)
     api.include_router(jobs.router)

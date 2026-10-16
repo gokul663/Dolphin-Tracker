@@ -36,7 +36,6 @@ def get_settings() -> Settings:
     return Settings()
 
 
-@lru_cache
 def resolve_google_server_key(settings: Settings | None = None) -> str:
     """Return the Google server key from settings, or fetch it once from SSM when only a parameter name is set."""
     settings = settings or get_settings()
@@ -44,8 +43,14 @@ def resolve_google_server_key(settings: Settings | None = None) -> str:
         return settings.google_server_key
     if not settings.google_server_key_param:
         return ""
+    return _ssm_secure_string(settings.google_server_key_param, settings.aws_region)
+
+
+@lru_cache
+def _ssm_secure_string(name: str, region: str) -> str:
+    # Cached on hashable strings: Settings itself is a pydantic model and cannot be an lru_cache key.
     import boto3  # local import keeps module import cheap for tests
 
-    client = boto3.client("ssm", region_name=settings.aws_region)
-    response = client.get_parameter(Name=settings.google_server_key_param, WithDecryption=True)
+    client = boto3.client("ssm", region_name=region)
+    response = client.get_parameter(Name=name, WithDecryption=True)
     return response["Parameter"]["Value"].strip()

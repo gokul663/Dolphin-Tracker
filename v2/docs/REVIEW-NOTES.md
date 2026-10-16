@@ -119,3 +119,36 @@ contract-style test.
   touches boto3. If the reviewer prefers, it moves to `repositories/` (or a new `adapters/`) with no API change.
 
 **Open questions:** none.
+
+## B11 · Places + config endpoints
+
+**Changed**
+- `services/places.py`: `PlacesService.validate(address)` geocodes. On failure with no Google suggestions, it falls
+  back to autocomplete, as v1's parse flow did. `autocomplete(q)` is also here.
+- `api/routers/places.py`:
+  - `GET /config/maps` → `{google_maps_browser_key}`.
+  - `GET /places/validate?address=` (1–500 chars, otherwise 422) → `GeocodeResult`.
+  - `GET /places/autocomplete?q=` → `{suggestions}`.
+- `api/schemas.py`, new: HTTP DTOs that aren't domain records (`MapsConfig`, `GeocodeResult`, `Suggestions`).
+  Later tasks add their request/response models here.
+- `api/deps.py`: `get_geocoder` returns one cached `GoogleGeocoder` per key per warm process, so its
+  `httpx.Client` is reused. `get_places_service` is also here.
+- **Bug fix in `config.py`:** `resolve_google_server_key` was `@lru_cache`'d on a `Settings` argument, and pydantic
+  models are unhashable, so passing settings raised `TypeError`. The cache now sits on a private
+  `_ssm_secure_string(name, region)`. Behaviour is otherwise unchanged.
+- `tests/fakes.py`: `FakeGeocoder` (configurable geocode/places/autocomplete, thread-safe call log) and
+  `geocode_ok()`, reused by B5/B7.
+- `tests/test_places_api.py` (8 tests): success, failure with fallback suggestions, 422 on a missing address,
+  autocomplete, browser-key-only config, OpenAPI presence, and the server-key resolution (direct value; SSM
+  SecureString through moto).
+
+**Verified:** `make backend-lint backend-test frontend-typecheck frontend-test`, 104 backend passing. The manual
+check against Google is **skipped**: no `v2/backend/.env`, so no server key.
+
+**Deviations:** `/config/maps` reads settings in the router directly, as `/health` already does. A service for one
+settings field would be ceremony.
+
+**Open questions**
+- `DT_GOOGLE_BROWSER_KEY` is not set by `ApiStack`, so in AWS `/config/maps` returns an empty key until it is
+  wired. Options: a plain env var from `cdk.json` context, or a second SSM parameter. The browser key is public by
+  nature (referrer-restricted), so an env var is fine. Which do you prefer? I have not changed infra.

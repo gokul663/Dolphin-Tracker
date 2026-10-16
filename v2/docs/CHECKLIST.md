@@ -38,7 +38,7 @@ Tracks delivery against [PLAN.md](./PLAN.md). Tick items as they land; add sub-i
   - [ ] B8 installers + routing operations
   - [ ] B9 append stops, delete, patch
   - [ ] B10 project list KPI
-  - [ ] B11 places + config endpoints
+  - [x] B11 places + config endpoints
   - [ ] B12 migration script
   - [ ] B13 Lambda smoke in dev
 

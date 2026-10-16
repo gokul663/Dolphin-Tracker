@@ -25,7 +25,7 @@ Tracks delivery against [PLAN.md](./PLAN.md). Tick items as they land; add sub-i
 - [x] Pandas removed; CSV via `csv`, Excel via `openpyxl`; parser tests updated
 - [x] Optimizer ported unchanged behind `RoutingService`; `stops_per_day` per project
 - [ ] Field schema stored on project; import maps columns to schema
-- [ ] Migration script Mongo → DynamoDB with parity report
+- [x] Migration script Mongo → DynamoDB with parity report
 - [ ] Contract tests cover every endpoint
 - Tasks (AGENT-HANDOFF §5):
   - [x] B1 field schema + validation
@@ -39,7 +39,7 @@ Tracks delivery against [PLAN.md](./PLAN.md). Tick items as they land; add sub-i
   - [x] B9 append stops, delete, patch
   - [x] B10 project list KPI
   - [x] B11 places + config endpoints
-  - [ ] B12 migration script
+  - [x] B12 migration script
   - [ ] B13 Lambda smoke in dev
 
 **Phase 3 — Frontend core + Stores**

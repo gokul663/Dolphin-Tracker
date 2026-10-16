@@ -493,3 +493,64 @@ dev?
 - **Add-installer** returns 202 `{job_id}` only (handoff contract). v1 returned the whole bundle synchronously.
 
 **Open questions:** none.
+
+## B12 · Migration script
+
+**Changed**
+- `domain/migration.py`, the pure transform. The composite key appears **only in this module**, to join once.
+  - `legacy_keys(stop)` returns both spellings of `atl-route-v2|installer|id|addr|lat|lng`. The legacy page wrote
+    state with **JS** formatting (`null`→`''`, `33.0`→`33`), while v1's server code used **Python** f-strings
+    (`None`, `33.0`). The join tries both, for both the stored and the repaired address.
+  - `transform_project(doc, states)` returns `Project`, `Stop[]` and a `ProjectReport`:
+    - uid: `uuid5(project id | position | legacy id)`, stable, so re-runs overwrite rather than duplicate.
+    - `display_id` = legacy id.
+    - `seq` from array order within `(installer, day)`.
+    - v1 address repair (`apply_parsed_address`), which PLAN says moves off the read path, runs here.
+    - Legacy attributes (`pa`, `venue_type`, `dma`, `venue_code`, `owner_*`, `payee_name`) move into `fields`.
+    - **Any other non-empty attribute (e.g. `brand`) is kept** as an extra text field in that project's schema,
+      not dropped.
+    - From state: status, comment, `additional_task` (falling back to `modem`), `installer_name`,
+      `updatedBy`/`updatedAt`, a store-name override, and a `venue_code` override (v1 detail edits stored it on
+      the state).
+    - `stops_per_day=8` (v1's constant).
+  - `v1_kpi` replays v1's dashboard: its `kpi_summary` joined on the Python key only, with no status
+    normalisation. The report compares that with the v2 `kpi_summary`.
+  - `format_report` prints per-project stops / states / matched / orphans, old vs new
+    complete/pending/technical/other, repaired-address and extra-field notes, and totals.
+- `scripts/migrate_from_mongo.py`:
+  - Options: `--dry-run`, `--include-legacy` (`atlanta-default` is skipped by default and reads the shared
+    `stop_states` collection), `--project` (repeatable), `--report-json`.
+  - Mongo comes from `MONGO_URL`/`DB_NAME`; the table from the `DT_*` settings.
+  - For each project: `delete_all` stops, `put_many`, then put META.
+- `pyproject.toml`: a `migrate` extra (`pymongo>=4`), script-only. Not in runtime deps or
+  `requirements-lambda.txt`.
+- `tests/test_migration.py`, 12 tests on a fixture covering each key spelling (Python, JS-integral, JS-null),
+  orphans, modem→additional_task, store-name and venue-code overrides, the extra `brand` field, seq derivation,
+  address repair, stable uids, the KPI parity flag, sparse-document defaults, legacy detection, and the script's
+  argument guard.
+
+**Verified**
+- `make backend-lint backend-test frontend-typecheck frontend-test`, 210 backend passing.
+- **Manual DB round trip:**
+  1. Ran a throwaway `mongo:7` in Podman and seeded the test fixture plus an `atlanta-default` doc with a
+     `stop_states` row.
+  2. `--dry-run`: legacy skipped, report printed, nothing written.
+  3. A real run with `--include-legacy`, run twice (idempotent), into DynamoDB Local.
+  4. Through the v2 API: stores show the joined statuses, the renamed store, the `venue_code` override and
+     seq 0/1/2. `/routes` grouped Ann [3, 1], Bo [1]. KPIs came back from `/projects`. The container was stopped
+     afterwards.
+
+**Finding for the reviewer (a v1 bug, surfaced by the parity report):** v1's server-side KPI looked up state with
+the Python key, but the page saved state with the JS key. For stops with **integral or null coordinates**, the
+old dashboard never counted saved progress (it showed them as pending). In the fixture the old KPI is 1/4/0/0 and
+the new one is 1/2/1/1, so the report flags "KPI differs". On real data, expect such differences exactly for
+those stops. v2's numbers are the correct ones. Each difference should be explainable from the report's matched
+counts.
+
+**Deviations**
+- Extra attributes become schema fields instead of being dropped (no capability loss).
+- The address repair runs during migration (PLAN: read paths stop writing).
+
+**Open questions**
+- The prod Mongo dump is needed for the real parity run (PLAN Phase 5). Not done here.
+- `assigned_region` was always empty in v1 code paths. It is kept only if non-empty, like any extra attribute.

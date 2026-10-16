@@ -25,6 +25,8 @@ dev = [
   "ruff>=0.6",
   "uvicorn>=0.30",
 ]
+# scripts/migrate_from_mongo.py only; never packaged into the Lambda
+migrate = ["pymongo>=4"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/dolphin_tracker"]

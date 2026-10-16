@@ -729,3 +729,44 @@ frontend-build`. The visual browser check was skipped (Chrome extension not conn
 **Open questions**
 - The main bundle is ~1.07 MB (≈323 kB gzip), mostly Recharts on the landing dashboard. Lazy-loading the chart
   row would roughly halve first load. Worth doing now, or at cutover?
+
+## F6 · MapView
+
+**Changed**
+- `components/map/MapView.tsx`, on `@vis.gl/react-google-maps` + `@googlemaps/markerclusterer`:
+  - The key comes from `GET /config/maps`.
+  - Status-coloured pins use **v1's SVG pin with the stack count in its head**.
+  - Same-location records share one pin (mixed statuses show as "Other", as in v1), and clicking a stack opens
+    an info window listing every record with installer, day and status; each row selects that store.
+  - Legend toggles with counts. Turning off the last visible status brings all back, as in v1.
+  - A meta line: records · pins · stacked records.
+  - **Fit to bounds** only when the set of locations changes (one location → zoom 13, as in v1), never on
+    selection or hover.
+  - **Clustering at zoom ≤ 11** (`SuperClusterAlgorithm({maxZoom: 11})`); every location is its own pin closer
+    in.
+  - Props: `pins`, controlled `selectedId` / `hoveredId` (restyle and raise the marker; pan to the selected one
+    if it is off-screen), `onSelect(uid)`, and `onBoundsChange(bounds)` for "only stores in view".
+  - Without a browser key the map area shows a clear message, while the legend and counts still work.
+- `components/map/pins.ts`, pure and tested: `groupPins`, `locationKey`, `filterByStatus`, `statusCounts`,
+  `toggleStatus`, `boundsOf`, `inBounds` (antimeridian-safe), `markerSvg`.
+- `tsconfig.app.json` loads `google.maps` types.
+- Tests: `pins.test.ts` (5), `MapView.test.tsx` (2: the no-key message with legend/counts, and v1 toggle
+  semantics through the UI).
+
+**New dependencies:** `@vis.gl/react-google-maps` and `@googlemaps/markerclusterer` (the libraries PLAN/F6 name),
+plus dev `@types/google.maps`.
+
+**Verified:** `make backend-lint backend-test frontend-typecheck frontend-test` (42 frontend tests) and `make
+frontend-build`. **Not verified against real Google Maps.** There is no browser key locally, and the Chrome
+extension was unavailable, so pins, clustering and fit-bounds are untested on a live map. The grouping, colour
+and bounds logic is unit-tested.
+
+**Deviations**
+- Stacking groups by coordinates rounded to 6 places. v1 used coordinates plus the address string, but `Pin`
+  (§4) has no address, and records at one address share one geocode, so the groups are the same in practice.
+- Markers are classic `google.maps.Marker`. `AdvancedMarkerElement` needs a Map ID from Google Cloud, which this
+  project doesn't have yet.
+
+**Open questions**
+1. Is a Map ID available? It allows `AdvancedMarkerElement`; `Marker` is deprecated but still supported.
+2. Is the cluster threshold (zoom ≤ 11) right for your densest projects?

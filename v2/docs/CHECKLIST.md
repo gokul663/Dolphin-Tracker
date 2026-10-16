@@ -58,7 +58,7 @@ Tracks delivery against [PLAN.md](./PLAN.md). Tick items as they land; add sub-i
   - [x] F3 dashboard
   - [ ] F4 import wizard + append flow
   - [x] F5 project shell + settings
-  - [ ] F6 MapView
+  - [x] F6 MapView
   - [ ] F7 stores tab
 
 **Phase 4 — Routes port**

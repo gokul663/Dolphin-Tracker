@@ -217,6 +217,9 @@ class ImportService:
             if job is None:
                 logger.warning("Import job vanished before it ran", extra={"job_id": job_id})
                 return
+            if job.status in (JobStatus.SUCCEEDED, JobStatus.FAILED):  # at-least-once delivery: already done
+                logger.info("Import job already finished; ignoring redelivery", extra={"job_id": job_id})
+                return
             self._jobs.set_status(job_id, JobStatus.RUNNING, progress=1, message="Reading file")
             raw = self._files.get_bytes(job.payload["upload_key"])
             table = self.parse(job.payload.get("filename") or job.payload["upload_key"], raw)

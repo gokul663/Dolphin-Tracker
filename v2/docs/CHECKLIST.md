@@ -104,7 +104,7 @@ Tracks delivery against [PLAN.md](./PLAN.md). Tick items as they land; add sub-i
 - [ ] X7 Map hover restyle diffing; bounds published only when needed
 - [ ] X8 Minor frontend fixes + tests
 - [ ] X9 v1 fidelity gaps (after user confirms which)
-- [ ] Y1 Job runners idempotent on redelivery
+- [x] Y1 Job runners idempotent on redelivery
 - [ ] Y2 Wrong-shape cursor → 400
 - [ ] Y3 Unlisted-installer stops visible in /routes; reassign 404 not 500; migration derives installers
 - [ ] Y4 DT_AWS_REGION wired for Lambda

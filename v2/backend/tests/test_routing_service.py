@@ -149,6 +149,27 @@ class RoutingBuildTests(unittest.TestCase):
         self.assertEqual((kept.status, kept.comment), (StopStatus.COMPLETE, "done"))  # progress preserved
         self.assertFalse(self.stores.get("p1", "u04").route_stale)
 
+    def test_redelivered_event_after_success_is_a_no_op(self):
+        job_id = self._enqueue()
+        self.service.run_build(job_id)
+        def layout():
+            return {stop.uid: (stop.installer, stop.day, stop.seq) for stop in self.stores.list_all("p1")}
+
+        before = layout()
+        self.service.run_build(job_id)  # Lambda async invoke is at-least-once
+        self.assertEqual(self.jobs.history[job_id], [JobStatus.QUEUED, JobStatus.RUNNING, JobStatus.SUCCEEDED])
+        self.assertEqual(self.jobs.get(job_id).status, JobStatus.SUCCEEDED)
+        self.assertEqual(before, layout())
+
+    def test_redelivered_event_after_failure_stays_failed(self):
+        job_id = self._enqueue()
+        self.service.build_assignments = lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("boom"))
+        self.service.run_build(job_id)
+        message = self.jobs.get(job_id).message
+        self.service.run_build(job_id)
+        self.assertEqual(self.jobs.history[job_id], [JobStatus.QUEUED, JobStatus.RUNNING, JobStatus.FAILED])
+        self.assertEqual(self.jobs.get(job_id).message, message)
+
     def test_rerun_is_idempotent(self):
         job_id = self._enqueue()
         self.service.run_build(job_id)

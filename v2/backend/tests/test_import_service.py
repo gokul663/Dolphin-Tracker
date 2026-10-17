@@ -153,6 +153,15 @@ class ImportRunTests(unittest.TestCase):
         status = (lost["venue_status"], lost["venue_status_valid"], lost["venue_status_raw"])
         self.assertEqual(status, ("Incomplete", False, "bogus"))
 
+    def test_redelivered_event_does_not_rerun_the_import(self):
+        job_id = self._job(b"address\n1 Main St\n")
+        geocoder = FakeGeocoder(geocodes={"1 Main St": geocode_ok("1 Main St")})
+        service = ImportService(self.jobs, self.files, geocoder)
+        service.run(job_id, {"job_id": job_id})
+        service.run(job_id, {"job_id": job_id})  # at-least-once delivery
+        self.assertEqual([kind for kind, _ in geocoder.calls].count("geocode"), 1)
+        self.assertEqual(self.jobs.history[job_id], [JobStatus.RUNNING, JobStatus.SUCCEEDED])
+
     def test_unparseable_file_fails_the_job(self):
         job_id = self._job(b"store_name\nOnly a name\n")
         ImportService(self.jobs, self.files, FakeGeocoder()).run(job_id, {"job_id": job_id})

@@ -999,3 +999,26 @@ browser** (Chrome extension unavailable).
 **Not verified here:** anything needing AWS (B13), a Google key (real geocoding, the live map), or a browser (the
 Chrome extension was not connected). Those paths are covered by unit and component tests with fakes and mocks,
 and the backend flows were exercised end to end on DynamoDB Local.
+
+---
+
+# Round 2
+
+Work order: `AGENT-HANDOFF.md` §9–§11 and `STORE-MODEL.md`. Same process as round 1: one commit per task on
+`tech-stack-migration`, all four gates green before each commit. Baseline commit `2023536` holds the round-2
+docs unchanged.
+
+## Y1 · Job runners idempotent on redelivery
+
+**Changed**
+- `RoutingService.run_build` and `ImportService.run` return early (with an info log) when the job is already
+  `succeeded` or `failed`. Before, a redelivered routing event flipped SUCCEEDED → RUNNING → FAILED
+  ("superseded"), and a redelivered import re-ran every geocode.
+- A redelivery while the first run is still `running` is not guarded: the fence (§3.2) already makes the loser
+  stop as superseded for routing, and a duplicate import run writes the same result file. Guarding that would
+  need a conditional `queued → running` claim; noted as an option, not done.
+
+**Tests:** same event twice for routing (after success, after failure) and for imports; status history stays
+`[queued, running, succeeded]` / `[queued, running, failed]`, and the import geocodes once.
+
+**Verified:** gates green (214 backend, 77 frontend).

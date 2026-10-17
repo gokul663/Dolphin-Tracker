@@ -47,6 +47,7 @@ Assignment = tuple[str, int, int]  # installer, day (1-based), seq (0-based with
 STALE_BUILD = timedelta(minutes=20)
 MODES = ("create", "recluster", "rebalance", "add_installer")
 SUPERSEDED = "Superseded by a newer routing job"
+TERMINAL = frozenset({JobStatus.SUCCEEDED, JobStatus.FAILED})
 
 
 def order_stops(stops: list[Stop]) -> list[Stop]:
@@ -337,6 +338,9 @@ class RoutingService:
         job = self._jobs.get(job_id)
         if job is None or not job.project_id:
             logger.warning("Routing job vanished before it ran", extra={"job_id": job_id})
+            return
+        if job.status in TERMINAL:  # Lambda async invoke is at-least-once: a redelivered event is a no-op
+            logger.info("Routing job already finished; ignoring redelivery", extra={"job_id": job_id})
             return
         project_id = job.project_id
         mode = job.payload.get("mode", "")

@@ -2,7 +2,7 @@
 
 AWS re-platform of Dolphin Tracker plus the new store-level view. Design and status live in
 [`docs/PLAN.md`](docs/PLAN.md) and [`docs/CHECKLIST.md`](docs/CHECKLIST.md). Implementation agents start from
-[`docs/AGENT-HANDOFF.md`](docs/AGENT-HANDOFF.md). The v1 app at the
+[`docs/AGENT-HANDOFF.md`](docs/AGENT-HANDOFF.md); the store field spec is [`docs/STORE-MODEL.md`](docs/STORE-MODEL.md). The v1 app at the
 repo root stays untouched until cutover.
 
 ## Layout

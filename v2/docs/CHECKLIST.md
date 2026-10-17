@@ -81,3 +81,48 @@ Tracks delivery against [PLAN.md](./PLAN.md). Tick items as they land; add sub-i
 - [ ] Cognito user pool, hosted UI, groups for admin / planner / installer
 - [ ] JWT authorizer on the HTTP API; role checks in services
 - [ ] Frontend sign-in flow and token refresh; per-project visibility if required
+
+---
+
+## Round 2 (see AGENT-HANDOFF.md §9–§11, STORE-MODEL.md)
+
+**Decisions applied (§9)**
+- [ ] Browser Maps key and Map ID via infra config; S3/API CORS never `*`; prod synth fails on empty origins
+- [ ] `LambdaInvoker` moved out of `services/`
+- [ ] Places call skipped when geocoding fails; import start fails fast without a key outside local
+- [ ] Schema field removal asks for confirmation when values exist
+- [ ] CI drift check for the generated API client
+- [ ] Dashboard charts lazy-loaded
+
+**Review fixes (§10)**
+- [ ] X1 Map fits bounds only when locations change
+- [ ] X2 Stores tab refreshes when a routing build finishes
+- [ ] X3 Day-card status select optimistic
+- [ ] X4 Append retry does not resend a stale version
+- [ ] X5 Import wizard shows result/schema fetch errors
+- [ ] X6 Dashboard refreshes after append
+- [ ] X7 Map hover restyle diffing; bounds published only when needed
+- [ ] X8 Minor frontend fixes + tests
+- [ ] X9 v1 fidelity gaps (after user confirms which)
+- [ ] Y1 Job runners idempotent on redelivery
+- [ ] Y2 Wrong-shape cursor → 400
+- [ ] Y3 Unlisted-installer stops visible in /routes; reassign 404 not 500; migration derives installers
+- [ ] Y4 DT_AWS_REGION wired for Lambda
+- [ ] Y5 add_installer appends atomically
+- [ ] Y6 append holds the routing slot
+- [ ] Y7 rename installer_name writes threaded
+- [ ] Y8 cp1252 replace; empty CSV header → column_N
+- [ ] Y9 migration day/datetime normalisation
+- [ ] Y10 invoker and cursor helpers out of services/dynamo coupling
+
+**Phase 5 — Store model v2 (§11)**
+- [ ] S1 Domain model v2: screens, statuses, derived status, validation
+- [ ] S2 Import mapping v2 from the IBC sheet, screen rows, dedupe by external_id then address
+- [ ] S3 Repository: external_id uniqueness markers, screens write, address dedupe
+- [ ] S4 Store API v2: fields, screens, filters, by-state, export, KPI v2, client regenerated
+- [ ] S5 Routing pending set on derived status
+- [ ] S6 Migration v2 status mapping and parity
+- [ ] S7 Store drawer and table v2
+- [ ] S8 Filters with greyed empties, top-states chart, KPIs
+- [ ] S9 Import wizard v2: mapping override, duplicates, screens preview
+- [ ] S10 Routes tab follow-through

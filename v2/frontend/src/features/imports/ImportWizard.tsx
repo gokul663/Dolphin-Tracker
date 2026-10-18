@@ -183,6 +183,20 @@ function WizardBody({ appendTo, onClose }: { appendTo: Project | null; onClose: 
         <div className="space-y-4">
           <UploadStep projectId={appendTo?.id} jobId={jobId} onJobId={setJobId} />
           {result.isFetching && <p className="font-mono text-xs text-slate-500">Loading the verified rows…</p>}
+          {result.isError && (
+            <FetchError
+              message={`Could not load the verified rows: ${result.error.message}`}
+              retrying={result.isFetching}
+              onRetry={() => void result.refetch()}
+            />
+          )}
+          {!appendTo && defaults.isError && (
+            <FetchError
+              message={`Could not load the default store fields: ${defaults.error.message}`}
+              retrying={defaults.isFetching}
+              onRetry={() => void defaults.refetch()}
+            />
+          )}
           {!appendTo && (
             <Button variant="ghost" onClick={() => setStep("details")}>
               <ArrowLeft /> Back
@@ -265,5 +279,17 @@ function WizardBody({ appendTo, onClose }: { appendTo: Project | null; onClose: 
         </div>
       )}
     </>
+  );
+}
+
+/** A failed fetch the wizard depends on: say so and offer a retry, instead of sitting on "succeeded 100%". */
+function FetchError({ message, retrying, onRetry }: { message: string; retrying: boolean; onRetry: () => void }) {
+  return (
+    <div role="alert" className="flex items-center justify-between gap-3 rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">
+      <span>{message}</span>
+      <Button size="sm" variant="outline" onClick={onRetry} disabled={retrying}>
+        {retrying && <Loader2 className="animate-spin" />} Retry
+      </Button>
+    </div>
   );
 }

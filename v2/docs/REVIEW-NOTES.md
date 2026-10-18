@@ -1151,3 +1151,16 @@ reverts when it fails (fails without the fix). `cache.test.ts`: `patchStopInRout
 PATCH (the fake 409s any PATCH with the old version). Fails without the fix.
 
 **Verified:** gates green (227 backend, 85 frontend).
+
+---
+
+## X5 · Import wizard shows result/schema fetch errors
+
+**Changed**
+- `ImportWizard` upload step renders a `FetchError` alert with the message and a Retry button when the
+  `result_url` fetch fails, and (new projects only) when `GET /config/field-schema` fails. Retry refetches that
+  query; once both are in, the wizard moves to review as before.
+
+**Tests:** result fetch 500 → alert → retry → review table; default-schema 503 → alert → retry → alert gone.
+
+**Verified:** gates green (227 backend, 87 frontend).

@@ -99,7 +99,7 @@ Tracks delivery against [PLAN.md](./PLAN.md). Tick items as they land; add sub-i
 - [x] X2 Stores tab refreshes when a routing build finishes
 - [x] X3 Day-card status select optimistic
 - [x] X4 Append retry does not resend a stale version
-- [ ] X5 Import wizard shows result/schema fetch errors
+- [x] X5 Import wizard shows result/schema fetch errors
 - [ ] X6 Dashboard refreshes after append
 - [ ] X7 Map hover restyle diffing; bounds published only when needed
 - [ ] X8 Minor frontend fixes + tests

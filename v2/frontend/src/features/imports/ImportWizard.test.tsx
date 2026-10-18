@@ -165,3 +165,41 @@ describe("ImportWizard: append", () => {
     expect(order.indexOf("PATCH /api/projects/p1")).toBeLessThan(order.indexOf("POST /api/projects/p1/stores/append"));
   });
 });
+
+describe("ImportWizard: fetch errors", () => {
+  async function startAppend(extra: Parameters<typeof importRoutes>[0]) {
+    const api = importRoutes(extra);
+    renderWithProviders(<ImportWizard open appendTo={makeProject({ id: "p1" })} onClose={() => {}} />);
+    const file = new File(["store_name,address\n"], "sites.csv", { type: "text/csv" });
+    await userEvent.upload(screen.getByLabelText("Spreadsheet file"), file);
+    await userEvent.click(screen.getByRole("button", { name: /Upload and verify/ }));
+    return api;
+  }
+
+  it("shows a result fetch error with a retry that recovers", async () => {
+    let fail = true;
+    await startAppend({ "GET /api/jobs/j1/result": () => (fail ? jsonError(500, "S3 is down") : RESULT) });
+    const alert = await screen.findByRole("alert", undefined, { timeout: 4000 });
+    expect(alert.textContent).toContain("Could not load the verified rows: S3 is down");
+    fail = false;
+    await userEvent.click(within(alert).getByRole("button", { name: /Retry/ }));
+    expect(await screen.findByRole("table")).toBeTruthy();
+  });
+
+  it("shows a default-schema fetch error for a new project with a retry", async () => {
+    let fail = true;
+    importRoutes({ "GET /api/config/field-schema": () => (fail ? jsonError(503, "unavailable") : DEFAULT_SCHEMA_FOR_TESTS) });
+    renderWithProviders(<ImportWizard open onClose={() => {}} />);
+    await userEvent.type(screen.getByLabelText("Project name *"), "Wave 3");
+    await userEvent.type(screen.getByLabelText("PA *"), "North");
+    await userEvent.type(screen.getByLabelText("PA % *"), "40");
+    await userEvent.type(screen.getByLabelText("Dolphin % *"), "60");
+    await userEvent.type(screen.getByLabelText("Installers *"), "Ann{Enter}");
+    await userEvent.click(screen.getByRole("button", { name: /Next/ }));
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("Could not load the default store fields: unavailable");
+    fail = false;
+    await userEvent.click(within(alert).getByRole("button", { name: /Retry/ }));
+    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+  });
+});

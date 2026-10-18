@@ -293,6 +293,7 @@ class JobView(Job):
 
 class InstallerStats(ApiModel):
     total: int
+    pending: int = 0  # stops whose derived status still needs a visit (PENDING_STATUSES)
     days: int
     avg_stops: float
     miles: float

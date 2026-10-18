@@ -1,5 +1,5 @@
 from dolphin_tracker.domain.errors import NotFoundError
-from dolphin_tracker.domain.models import JobStatus, Project, RoutingStatus, ScreenStatus
+from dolphin_tracker.domain.models import PENDING_STATUSES, JobStatus, Project, RoutingStatus, ScreenStatus
 from dolphin_tracker.services.routing import RoutingService
 from tests.fakes import status_write
 from tests.test_projects_api import NoopInvoker, ProjectApiTestCase, stop_input
@@ -30,10 +30,10 @@ class InstallerOpsTests(ProjectApiTestCase):
         return job.payload
 
     def check_caps(self, cap: int = 4, *, pending_only: bool = False):
-        """Per-day cap. For rebalance (v1 semantics) only Incomplete stops consume capacity."""
+        """Per-day cap. For rebalance (v1 semantics) only pending stops consume capacity."""
         counts: dict[tuple[str, int], int] = {}
         for stop in self.stores.list_all(self.pid):
-            if pending_only and stop.status != ScreenStatus.UPCOMING:
+            if pending_only and stop.status not in PENDING_STATUSES:
                 continue
             counts[(stop.installer, stop.day)] = counts.get((stop.installer, stop.day), 0) + 1
         self.assertTrue(all(count <= cap for count in counts.values()), counts)

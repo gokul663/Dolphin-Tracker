@@ -18,6 +18,7 @@ from aws_lambda_powertools import Logger
 
 from dolphin_tracker.domain.errors import ConflictError, NotFoundError, ValidationFailed
 from dolphin_tracker.domain.models import (
+    PENDING_STATUSES,
     InstallerStats,
     Job,
     JobStatus,
@@ -25,7 +26,6 @@ from dolphin_tracker.domain.models import (
     Project,
     RoutesBundle,
     RoutingStatus,
-    ScreenStatus,
     Stop,
 )
 from dolphin_tracker.domain.route_optimizer import (
@@ -169,6 +169,7 @@ class RoutingService:
             total = sum(len(day) for day in days)
             stats[installer] = InstallerStats(
                 total=total,
+                pending=sum(1 for day in days for stop in day if stop.status in PENDING_STATUSES),
                 days=len(days),
                 avg_stops=round(total / len(days), 1) if days else 0,
                 miles=round(sum(day_miles(day) for day in days), 1),
@@ -254,12 +255,13 @@ class RoutingService:
     def rebalance_assignments(
         cls, project: Project, stops: list[Stop], new_installer: str | None = None
     ) -> tuple[list[Stop], dict[str, Assignment]]:
-        """Port of v1 `rebalance_project_incomplete`, keyed by uid: only Incomplete stops move; completed and other
-        stops keep their installer and day. With `new_installer`, the busiest territory is split to give it one
+        """Port of v1 `rebalance_project_incomplete`, keyed by uid: only pending stops move (derived status in
+        PENDING_STATUSES: Upcoming, Invitation Email Sent, Shipped, Delivered); Completed, Offline and the rest
+        keep their installer and day. With `new_installer`, the busiest territory is split to give it one
         coherent cluster first."""
         installers = project.installers
         current = optimizer_routes(stops, installers)
-        incomplete = {stop.uid for stop in stops if stop.status == ScreenStatus.UPCOMING}
+        incomplete = {stop.uid for stop in stops if stop.status in PENDING_STATUSES}
         if new_installer:
             existing = [name for name in installers if name != new_installer]
             override = split_territory_for_new_installer(current, incomplete, existing, new_installer)

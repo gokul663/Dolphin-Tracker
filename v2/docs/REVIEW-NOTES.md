@@ -1635,3 +1635,23 @@ v2 vocabulary through a `status_write` helper (bare `status` writes are now over
 
 **Verified:** gates green (285 backend, 102 frontend). Not run against DynamoDB Local (moto implements
 `TransactWriteItems` with cancellation reasons).
+
+---
+
+## S5 · Routing pending set on the derived status (backend)
+
+**Changed**
+- `RoutingService.rebalance_assignments` (rebalance and add-installer) re-plans the stops whose derived status
+  is in `PENDING_STATUSES` (Upcoming, Invitation Email Sent, Shipped, Delivered). Completed, Offline (§7 #2:
+  not routed), Archived and Cancelled keep their installer and day. In S1 it was still v1's "Upcoming only".
+- `InstallerStats.pending` (new): pending stops per installer in the routes bundle, for the "route complete"
+  display.
+- Recluster still assigns every stop (v1 behaviour: it rebuilds all routes, keeping progress).
+- **Split across commits:** the frontend half ("Route complete" and `routableStops` over the pending set) needs
+  the v2 status types, so it lands in S4 with the regenerated client, where the frontend has to move to v2
+  statuses anyway.
+
+**Tests:** with one stop in each of the 8 statuses, rebalance re-plans the 4 pending ones and none of the others;
+the bundle's `pending` totals match. The installer-ops caps helper counts the pending set.
+
+**Verified:** gates green (286 backend, 102 frontend).

@@ -95,7 +95,7 @@ Tracks delivery against [PLAN.md](./PLAN.md). Tick items as they land; add sub-i
 - [ ] Dashboard charts lazy-loaded
 
 **Review fixes (§10)**
-- [ ] X1 Map fits bounds only when locations change
+- [x] X1 Map fits bounds only when locations change
 - [ ] X2 Stores tab refreshes when a routing build finishes
 - [ ] X3 Day-card status select optimistic
 - [ ] X4 Append retry does not resend a stale version

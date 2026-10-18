@@ -1,11 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
   boundsOf,
+  changedStyles,
   filterByStatus,
   groupPins,
   inBounds,
   locationKey,
+  locationSignature,
+  markerStyles,
   markerSvg,
+  markerZIndex,
   statusCounts,
   toggleStatus,
 } from "@/components/map/pins";
@@ -69,5 +73,43 @@ describe("markerSvg", () => {
     expect(svg).toContain('stroke="#0f172a"');
     expect(decodeURIComponent(markerSvg("Other", 150))).toContain(">99+</text>");
     expect(decodeURIComponent(markerSvg("Other"))).toContain("></text>");
+  });
+});
+
+describe("marker signatures and style diffs", () => {
+  const base: Pin[] = [
+    { uid: "a", lat: 33.7, lng: -84.4, status: "Incomplete", store_name: "A", installer: "Ann", day: 1 },
+    { uid: "b", lat: 33.9, lng: -84.1, status: "Incomplete", store_name: "B", installer: "Ann", day: 1 },
+  ];
+
+  it("ignores status in the location signature, so a recolour never rebuilds or refits", () => {
+    const recoloured = base.map((pin) => (pin.uid === "a" ? { ...pin, status: "Complete" as const } : pin));
+    expect(locationSignature(groupPins(recoloured))).toBe(locationSignature(groupPins(base)));
+    const moved = base.map((pin) => (pin.uid === "a" ? { ...pin, lat: 34.1 } : pin));
+    expect(locationSignature(groupPins(moved))).not.toBe(locationSignature(groupPins(base)));
+  });
+
+  it("restyles only the markers whose status or emphasis changed", () => {
+    const groups = groupPins(base);
+    const [keyA, keyB] = groups.map((group) => group.key);
+    const idle = markerStyles(groups);
+    expect(changedStyles(new Map(), idle)).toEqual([keyA, keyB]); // first paint styles everything
+    expect(changedStyles(idle, markerStyles(groups))).toEqual([]);
+
+    const hoverA = markerStyles(groups, null, "a");
+    expect(changedStyles(idle, hoverA)).toEqual([keyA]);
+    const hoverB = markerStyles(groups, null, "b");
+    expect(changedStyles(hoverA, hoverB)).toEqual([keyA, keyB]); // A back to normal, B emphasised
+    expect(hoverB.get(keyB as string)?.emphasis).toBe("hover");
+    expect(markerStyles(groups, "b", "b").get(keyB as string)?.emphasis).toBe("selected");
+
+    const recoloured = groupPins(base.map((pin) => (pin.uid === "b" ? { ...pin, status: "Complete" as const } : pin)));
+    expect(changedStyles(idle, markerStyles(recoloured))).toEqual([keyB]);
+  });
+
+  it("raises stacks and emphasised markers above single pins", () => {
+    expect(markerZIndex({ status: "Complete", count: 1, emphasis: "normal" })).toBe(1);
+    expect(markerZIndex({ status: "Complete", count: 3, emphasis: "normal" })).toBe(1003);
+    expect(markerZIndex({ status: "Complete", count: 1, emphasis: "hover" })).toBe(5000);
   });
 });

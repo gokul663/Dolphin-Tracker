@@ -1082,3 +1082,28 @@ docs unchanged.
 
 **Verified:** gates green (227 backend, 77 frontend). `cdk synth -c env=dev` (output to a scratch dir, not
 `infra/cdk.out`): `DT_AWS_REGION` is set on the Api and Worker functions.
+
+---
+
+## X1 · Map fits bounds only when locations change
+
+**Changed** (`components/map/MapView.tsx`, `components/map/pins.ts`)
+- Markers are keyed by location key. They are rebuilt only when `locationSignature(visible groups)` changes
+  (keys only: no status, no count).
+- The fit is its own effect, keyed on `locationSignature` over **all** pins (before the legend filter). It runs
+  when the project's set of locations changes (first load, import, address edit that moves a pin), never on an
+  optimistic recolour, a legend toggle, a hover or a selection.
+- Styling is a third effect: `markerStyles(groups, selectedId, hoveredId)` gives each location its
+  `{status, count, emphasis}`; `changedStyles(previous, next)` lists the keys that differ, and only those markers
+  get `setIcon` / `setZIndex` / `setTitle`. This also covers **X7(a)**: a row hover now restyles two markers
+  (the old and the new one) instead of every marker.
+- Click handlers and the stack InfoWindow read the current group through a ref, so a recoloured stack shows its
+  new statuses without a rebuild.
+- Pan-to-selection runs only when `selectedId` changes.
+
+**Tests:** `pins.test.ts`: the signature ignores status and changes on a move; style diffs on first paint, hover
+A → hover B (exactly the two keys), selection, recolour of one stop; z-index ordering. The effects themselves
+need a Google Maps mock; not added (the helpers carry the logic).
+
+**Verified:** gates green (227 backend, 80 frontend). No browser check (no browser key; Chrome extension not
+connected in round 1 either).

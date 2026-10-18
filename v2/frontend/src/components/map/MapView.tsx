@@ -4,12 +4,18 @@ import { MarkerClusterer, SuperClusterAlgorithm } from "@googlemaps/markercluste
 import { MapPinOff } from "lucide-react";
 import {
   boundsOf,
+  changedStyles,
   filterByStatus,
   groupPins,
+  locationSignature,
+  markerStyles,
   markerSvg,
+  markerZIndex,
   statusCounts,
   toggleStatus,
   type Bounds,
+  type Emphasis,
+  type MarkerStyle,
   type PinGroup,
 } from "@/components/map/pins";
 import { useMapsConfig } from "@/features/places/api";
@@ -37,6 +43,7 @@ export function MapView({ pins, selectedId, hoveredId, onSelect, onBoundsChange,
   const [active, setActive] = useState<Set<StopStatus>>(new Set());
   const visible = useMemo(() => filterByStatus(pins, active), [pins, active]);
   const groups = useMemo(() => groupPins(visible), [visible]);
+  const fitSignature = useMemo(() => locationSignature(groupPins(pins)), [pins]);
   const counts = statusCounts(pins);
   const stacked = groups.filter((group) => group.pins.length > 1);
   const key = config.data?.google_maps_browser_key ?? "";
@@ -84,7 +91,7 @@ export function MapView({ pins, selectedId, hoveredId, onSelect, onBoundsChange,
               className="absolute inset-0"
               onBoundsChanged={(event) => onBoundsChange?.(event.detail.bounds)}
             >
-              <Markers groups={groups} selectedId={selectedId} hoveredId={hoveredId} onSelect={onSelect} />
+              <Markers groups={groups} fitSignature={fitSignature} selectedId={selectedId} hoveredId={hoveredId} onSelect={onSelect} />
             </Map>
           </APIProvider>
         )}
@@ -104,21 +111,27 @@ function MapMessage({ text }: { text: string }) {
 
 interface MarkersProps {
   groups: PinGroup[];
+  /** Location signature over every pin (before the legend filter): the map refits only when it changes. */
+  fitSignature: string;
   selectedId?: string | null;
   hoveredId?: string | null;
   onSelect?: (uid: string) => void;
 }
 
 /** Imperative markers (one per location) in a clusterer that only clusters at low zoom. */
-function Markers({ groups, selectedId, hoveredId, onSelect }: MarkersProps) {
+function Markers({ groups, fitSignature, selectedId, hoveredId, onSelect }: MarkersProps) {
   const map = useMap();
   const clusterer = useRef<MarkerClusterer | null>(null);
-  const markers = useRef(new globalThis.Map<string, google.maps.Marker>());
+  const markers = useRef(new globalThis.Map<string, google.maps.Marker>()); // by location key
+  const applied = useRef(new globalThis.Map<string, MarkerStyle>()); // the style each marker has now
+  const latest = useRef(new globalThis.Map<string, PinGroup>()); // click handlers read the current group
+  latest.current = new globalThis.Map(groups.map((group) => [group.key, group]));
   const onSelectRef = useRef(onSelect);
   useEffect(() => {
     onSelectRef.current = onSelect;
   }, [onSelect]);
-  const [openGroup, setOpenGroup] = useState<PinGroup | null>(null);
+  const [openKey, setOpenKey] = useState<string | null>(null);
+  const openGroup = openKey ? latest.current.get(openKey) ?? null : null;
 
   useEffect(() => {
     if (!map) return;
@@ -133,60 +146,69 @@ function Markers({ groups, selectedId, hoveredId, onSelect }: MarkersProps) {
     };
   }, [map]);
 
-  // Rebuild markers when the set of locations changes, and fit the map to them (v1: one pin → zoom 13).
-  const signature = groups.map((group) => `${group.key}:${group.status}:${group.pins.length}`).join(",");
+  // Rebuild markers only when the set of visible locations changes; styling is the next effect's job.
+  const signature = locationSignature(groups);
   useEffect(() => {
     if (!map || !clusterer.current) return;
     clusterer.current.clearMarkers();
     markers.current.clear();
+    applied.current.clear();
     const created = groups.map((group) => {
-      const marker = new google.maps.Marker({
-        position: { lat: group.lat, lng: group.lng },
-        title: group.pins.length > 1 ? `${group.pins.length} locations` : group.pins[0]?.store_name,
-        icon: icon(group.status, group.pins.length, "normal"),
-        zIndex: group.pins.length > 1 ? 1000 + group.pins.length : 1,
-      });
+      const marker = new google.maps.Marker({ position: { lat: group.lat, lng: group.lng } });
       marker.addListener("click", () => {
-        if (group.pins.length === 1 && group.pins[0]) onSelectRef.current?.(group.pins[0].uid);
-        else setOpenGroup(group);
+        const current = latest.current.get(group.key);
+        if (!current) return;
+        if (current.pins.length === 1 && current.pins[0]) onSelectRef.current?.(current.pins[0].uid);
+        else setOpenKey(current.key);
       });
-      for (const pin of group.pins) markers.current.set(pin.uid, marker);
+      markers.current.set(group.key, marker);
       return marker;
     });
     clusterer.current.addMarkers(created);
-    const bounds = boundsOf(groups);
+  }, [map, signature]); // `signature` stands in for `groups`: rebuild only when locations change
+
+  // Fit to the project's locations (v1: one pin → zoom 13) only when those change, not on legend toggles.
+  const fitGroups = useRef(groups);
+  fitGroups.current = groups;
+  useEffect(() => {
+    if (!map) return;
+    const bounds = boundsOf(fitGroups.current);
     if (!bounds) {
       map.setCenter(US_CENTER);
       map.setZoom(4);
-    } else if (groups.length === 1) {
+    } else if (fitGroups.current.length === 1) {
       map.setCenter({ lat: bounds.north, lng: bounds.east });
       map.setZoom(13);
     } else {
       map.fitBounds(bounds, 54);
     }
-  }, [map, signature]); // `signature` stands in for `groups`: rebuild only when locations change
+  }, [map, fitSignature]);
 
-  // Selection and hover only restyle the affected markers; they never refit the map.
+  // Status, stack count, selection and hover restyle only the markers whose style changed. Never refits.
   useEffect(() => {
-    const byMarker = new globalThis.Map<google.maps.Marker, PinGroup>();
-    for (const group of groups) {
-      const marker = group.pins[0] && markers.current.get(group.pins[0].uid);
-      if (marker) byMarker.set(marker, group);
+    const next = markerStyles(groups, selectedId, hoveredId);
+    for (const key of changedStyles(applied.current, next)) {
+      const marker = markers.current.get(key);
+      const style = next.get(key);
+      if (!marker || !style) continue;
+      const group = latest.current.get(key);
+      marker.setIcon(icon(style.status, style.count, style.emphasis));
+      marker.setZIndex(markerZIndex(style));
+      marker.setTitle(style.count > 1 ? `${style.count} locations` : group?.pins[0]?.store_name ?? "");
+      applied.current.set(key, style);
     }
-    for (const [marker, group] of byMarker) {
-      const uids = group.pins.map((pin) => pin.uid);
-      const emphasis = selectedId && uids.includes(selectedId) ? "selected" : hoveredId && uids.includes(hoveredId) ? "hover" : "normal";
-      marker.setIcon(icon(group.status, group.pins.length, emphasis));
-      marker.setZIndex(emphasis === "normal" ? (group.pins.length > 1 ? 1000 + group.pins.length : 1) : 5000);
-    }
-    const selected = selectedId ? markers.current.get(selectedId) : undefined;
-    const position = selected?.getPosition();
+  });
+
+  // A newly selected store off-screen is panned into view.
+  useEffect(() => {
+    const group = selectedId ? groups.find((item) => item.pins.some((pin) => pin.uid === selectedId)) : undefined;
+    const position = group && markers.current.get(group.key)?.getPosition();
     if (map && position && !map.getBounds()?.contains(position)) map.panTo(position);
-  }, [map, signature, selectedId, hoveredId]);
+  }, [map, selectedId]); // only when the selection changes
 
   if (!openGroup) return null;
   return (
-    <InfoWindow position={{ lat: openGroup.lat, lng: openGroup.lng }} onCloseClick={() => setOpenGroup(null)}>
+    <InfoWindow position={{ lat: openGroup.lat, lng: openGroup.lng }} onCloseClick={() => setOpenKey(null)}>
       <div className="max-w-64 space-y-1 text-sm">
         <div className="font-semibold">{openGroup.pins.length} locations at this address</div>
         <ul className="max-h-48 space-y-1 overflow-y-auto">
@@ -197,7 +219,7 @@ function Markers({ groups, selectedId, hoveredId, onSelect }: MarkersProps) {
                 className="text-left hover:underline"
                 onClick={() => {
                   onSelect?.(pin.uid);
-                  setOpenGroup(null);
+                  setOpenKey(null);
                 }}
               >
                 <b>
@@ -216,7 +238,7 @@ function Markers({ groups, selectedId, hoveredId, onSelect }: MarkersProps) {
   );
 }
 
-function icon(status: StopStatus, count: number, emphasis: "normal" | "hover" | "selected"): google.maps.Icon {
+function icon(status: StopStatus, count: number, emphasis: Emphasis): google.maps.Icon {
   const scale = emphasis === "normal" ? 1 : 1.2;
   return {
     url: markerSvg(status, count, emphasis),

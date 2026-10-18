@@ -86,3 +86,48 @@ export function markerSvg(status: StopStatus, count = 1, emphasis: "normal" | "h
     `</svg>`;
   return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
 }
+
+export type Emphasis = "normal" | "hover" | "selected";
+
+/**
+ * Which markers exist: one per location key. Status, stack count and emphasis are styling, so an optimistic
+ * recolour never rebuilds the markers. The map fits its bounds only when the signature over *all* pins changes
+ * (a new project or an import), never on a legend toggle, a status change or a hover.
+ */
+export function locationSignature(groups: Pick<PinGroup, "key">[]): string {
+  return groups.map((group) => group.key).join(",");
+}
+
+export interface MarkerStyle {
+  status: StopStatus;
+  count: number;
+  emphasis: Emphasis;
+}
+
+/** The style every marker should have now, keyed by location key. */
+export function markerStyles(groups: PinGroup[], selectedId?: string | null, hoveredId?: string | null): Map<string, MarkerStyle> {
+  const styles = new Map<string, MarkerStyle>();
+  for (const group of groups) {
+    const has = (uid?: string | null) => Boolean(uid) && group.pins.some((pin) => pin.uid === uid);
+    const emphasis: Emphasis = has(selectedId) ? "selected" : has(hoveredId) ? "hover" : "normal";
+    styles.set(group.key, { status: group.status, count: group.pins.length, emphasis });
+  }
+  return styles;
+}
+
+/** Location keys whose style differs between two `markerStyles` results (new keys included): restyle only these. */
+export function changedStyles(previous: ReadonlyMap<string, MarkerStyle>, next: ReadonlyMap<string, MarkerStyle>): string[] {
+  const changed: string[] = [];
+  for (const [key, style] of next) {
+    const before = previous.get(key);
+    if (!before || before.status !== style.status || before.count !== style.count || before.emphasis !== style.emphasis) {
+      changed.push(key);
+    }
+  }
+  return changed;
+}
+
+export function markerZIndex(style: MarkerStyle): number {
+  if (style.emphasis !== "normal") return 5000;
+  return style.count > 1 ? 1000 + style.count : 1;
+}

@@ -1435,3 +1435,16 @@ The rename test checks one progress batch with only the stop whose `installer_na
 **Tests:** cp1252 with all five undefined bytes; blank and `###` CSV headers; blank/whitespace XLSX headers.
 
 **Verified:** gates green (245 backend, 102 frontend).
+
+---
+
+## Fix · flaky D3 test (process note)
+
+- `test_start_without_a_key_still_runs_locally` (added in D3) started an inline job and returned without waiting,
+  so the test's temp dir could be removed while the worker thread was still writing (`OSError: Directory not
+  empty`). It now calls `self.invoker.wait()`, like the other flow tests. Backend suite run 5× green afterwards.
+- **Process slip:** my gate wrapper script printed the results but always exited 0. The Y8 commit (`3dcaace`)
+  landed with this one flaky failure in its gate run; every earlier commit's gate output showed `exit=0` with all
+  tests passing. The wrapper now exits with the gates' status. Y8's own changes were green.
+
+**Verified:** gates green (245 backend, 102 frontend).

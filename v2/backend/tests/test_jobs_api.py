@@ -130,6 +130,7 @@ class ImportJobFlowTests(unittest.TestCase):
         job_id = self._create()["job_id"]
         self.client.put(f"/api/jobs/{job_id}/upload", content=CSV)
         self.assertEqual(self.client.post(f"/api/jobs/{job_id}/start").status_code, 202)
+        self.invoker.wait()  # let the inline job finish before the temp dir is removed
 
     def test_failed_import_reports_message(self):
         job_id = self._create()["job_id"]

@@ -1289,3 +1289,17 @@ without a key; #7 is the Phase 5 cutover run.)
 no PATCH; confirm saves. The existing schema test now mocks the usage call (payee name unused → no dialog).
 
 **Verified:** gates green (236 backend, 89 frontend).
+
+---
+
+## D8 · §9 #8: CI drift check for the generated client
+
+**Changed** (`.github/workflows/v2-ci.yml`)
+- New `api-drift` job: Python 3.12 + Node 24, creates `backend/.venv` (the Makefile's `gen-api` calls
+  `.venv/bin/python`), `npm ci`, `make gen-api`, then `git diff --exit-code -- v2/frontend/src/lib/api/`
+  with an error annotation naming the fix.
+- The `infra` job also runs the new config unit tests (`python -m unittest discover -s tests`) before synth.
+
+**Verified:** gates green (236 backend, 89 frontend). Workflow parses (4 jobs). Locally: `make gen-api` twice
+leaves no diff (deterministic); adding a field to `MapsConfig` without committing the regenerated client makes
+the diff step exit 1. The workflow itself has not run on GitHub from here.

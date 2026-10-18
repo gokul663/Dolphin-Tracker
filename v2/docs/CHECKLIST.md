@@ -91,7 +91,7 @@ Tracks delivery against [PLAN.md](./PLAN.md). Tick items as they land; add sub-i
 - [x] `LambdaInvoker` moved out of `services/`
 - [x] Places call skipped when geocoding fails; import start fails fast without a key outside local
 - [x] Schema field removal asks for confirmation when values exist
-- [ ] CI drift check for the generated API client
+- [x] CI drift check for the generated API client
 - [ ] Dashboard charts lazy-loaded
 
 **Review fixes (§10)**

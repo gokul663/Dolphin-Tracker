@@ -37,6 +37,31 @@ jobs:
       - run: npm test -- --run
       - run: npm run build
 
+  api-drift:
+    name: Generated API client is current
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12", cache: pip, cache-dependency-path: v2/backend/pyproject.toml }
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: npm, cache-dependency-path: v2/frontend/package-lock.json }
+      - name: Install backend (the Makefile expects backend/.venv)
+        working-directory: v2/backend
+        run: python -m venv .venv && .venv/bin/pip install -e '.[dev]'
+      - name: Install frontend
+        working-directory: v2/frontend
+        run: npm ci
+      - name: Regenerate the client from the backend's OpenAPI
+        working-directory: v2
+        run: make gen-api
+      - name: Fail if it changed
+        run: |
+          git diff --exit-code -- v2/frontend/src/lib/api/ || {
+            echo "::error::frontend/src/lib/api/schema.d.ts is stale: run 'make gen-api' and commit the result"
+            exit 1
+          }
+
   infra:
     name: Infra (build lambda + cdk synth)
     runs-on: ubuntu-latest
@@ -53,4 +78,5 @@ jobs:
         working-directory: v2/infra
         run: |
           pip install -r requirements.txt
+          python -m unittest discover -s tests
           npx --yes aws-cdk@2 synth -c env=dev --quiet

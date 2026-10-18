@@ -1528,3 +1528,61 @@ API: a progress `status` sets both screens of a two-screen store and keeps their
 v2 vocabulary through a `status_write` helper (bare `status` writes are now overridden by the screens, by design).
 
 **Verified:** gates green (265 backend, 102 frontend).
+
+---
+
+## S2 · Import mapping v2 from the IBC sheet
+
+**Changed**
+- `domain/import_mapping.py` (new, pure):
+  - `HEADER_MAP`: §6 header → target, plus the round-1 aliases that don't conflict.
+  - Targets: store attributes, plus `status` / `status_fallback` / `screen_count` / `stick_numbers` / `venue_ids`,
+    `FIELDS` ("" = Other imported data) and `IGNORE` ("-").
+  - `detect_mapping(columns, saved)`: the saved choice first, then §6, else Other data; each target is taken by
+    one column, first wins.
+  - `check_mapping` for a client-sent mapping (used by S9) and `clean_mapping` before saving.
+  - `map_row` turns a sheet row into a `MappedRow`:
+    - typed `details` (blank cells keep defaults);
+    - IBC# normalised; state as a 2-letter code (`addresses.state_code`, new);
+    - street/city/state/zip parsed from one address column when the City/State/Zip cells are empty;
+    - sheet lat/lng; `installer_name` from Technician;
+    - status from `STATUS`, else `Shipment / Device status`; unknown values → Upcoming, flagged;
+    - screen rows: stick numbers and venue ids zipped and padded, else `max(1, No of Sticks)` rows
+      ("Only 1 Stick" → 1);
+    - ISO `source_date` (M/D/YYYY, M/D/YY, ISO, XLSX datetimes).
+  - Unusable values are listed in `problems` (attribute → message) and dropped from the typed value:
+    a bad phone/email/url, a non-numeric count, an unknown outlet status, a missing IBC# or store name.
+  - `mark_duplicates`: within the sheet, by normalised IBC# first, then by normalised address (rows without a
+    street are never address duplicates); sets `duplicate_of` / `duplicate_reason`.
+- `services/imports.py` rewritten around it:
+  - `parse(filename, raw, saved_mapping)` → `ParsedTable(columns, mapping, rows)`.
+  - `verify_row` geocodes the split address line.
+  - When Google fails and the sheet has coordinates, they are kept: `coordinates_source="sheet"`,
+    `needs_review`, never `invalid` (§6 assumption).
+  - The result adds `mapping`, `summary.duplicates`, and per row `external_id`, `details`, `screens`,
+    `problems`, `installer_name`, `coordinates_source`, `duplicate_of`, `duplicate_reason`.
+  - The job message mentions duplicates.
+- Saved mappings: `Project.import_mappings`.
+  - `ProjectCreate.import_mapping` and `AppendStops.import_mapping` are cleaned and saved (append merges).
+  - An import job for a project starts from the project's mapping; the worker now passes `projects` to
+    `ImportService`.
+- `parsing.py` keeps only `ADDRESS_ALIASES` (now with `store_address`, for the CSV comma repair). The other
+  header alias sets and `find_column` moved into the mapping.
+- Project-level dedupe (against stores already in the project) is S3, as the handoff splits it.
+
+**Tests:**
+- `tests/test_import_mapping.py` uses a fixture with the full 64-column sample header and 5 rows:
+  - every §6 header maps, and the 21 unlisted ones land in Other data;
+  - saved choices win, one column per target, unknown saved targets fall back;
+  - `check_mapping` / `clean_mapping`; screens from lists, from a count, or the 1-row minimum;
+  - duplicate precedence.
+- A full job run on the fixture checks:
+  - the STATUS vs fallback precedence; padded screens; typed details (date, counts, tri-states, bool, select,
+    multi-line);
+  - Other data; sheet coordinates kept on a geocode failure; both duplicate kinds;
+  - the flagged problems; summary and message.
+- The project's saved mapping beats §6 on its next sheet, and an ignored column disappears.
+- Create/append save the cleaned mapping; create stores details and screens.
+- Existing import tests moved to the new row shape.
+
+**Verified:** gates green (274 backend, 102 frontend). No Google key, so geocoding is faked throughout.

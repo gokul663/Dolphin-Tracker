@@ -75,7 +75,7 @@ def export_csv(project_id: str, service: ServiceDep, query: QueryDep) -> Respons
 
 @router.post("/append", response_model=AppendResult)
 def append_stores(project_id: str, body: AppendStops, service: ServiceDep) -> dict:
-    return service.append(project_id, body.stops, body.pa)
+    return service.append(project_id, body.stops, body.pa, body.import_mapping)
 
 
 @router.get("/{stop_uid}", response_model=Stop)

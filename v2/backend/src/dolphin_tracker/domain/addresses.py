@@ -75,3 +75,27 @@ def duplicate_key(stop: dict) -> str:
         return f"venue|{venue_code}"
     address = normalized_address_key(stop)
     return f"addr|{address}" if address else ""
+
+
+# Two-letter codes, as the store model stores `state` (STORE-MODEL §2). Includes DC.
+US_STATES: dict[str, str] = {
+    "AL": "Alabama", "AK": "Alaska", "AZ": "Arizona", "AR": "Arkansas", "CA": "California", "CO": "Colorado",
+    "CT": "Connecticut", "DE": "Delaware", "FL": "Florida", "GA": "Georgia", "HI": "Hawaii", "ID": "Idaho",
+    "IL": "Illinois", "IN": "Indiana", "IA": "Iowa", "KS": "Kansas", "KY": "Kentucky", "LA": "Louisiana",
+    "ME": "Maine", "MD": "Maryland", "MA": "Massachusetts", "MI": "Michigan", "MN": "Minnesota",
+    "MS": "Mississippi", "MO": "Missouri", "MT": "Montana", "NE": "Nebraska", "NV": "Nevada", "NH": "New Hampshire",
+    "NJ": "New Jersey", "NM": "New Mexico", "NY": "New York", "NC": "North Carolina", "ND": "North Dakota",
+    "OH": "Ohio", "OK": "Oklahoma", "OR": "Oregon", "PA": "Pennsylvania", "RI": "Rhode Island",
+    "SC": "South Carolina", "SD": "South Dakota", "TN": "Tennessee", "TX": "Texas", "UT": "Utah", "VT": "Vermont",
+    "VA": "Virginia", "WA": "Washington", "WV": "West Virginia", "WI": "Wisconsin", "WY": "Wyoming",
+    "DC": "District of Columbia",
+}
+STATE_CODES_BY_NAME = {name.lower(): code for code, name in US_STATES.items()}
+
+
+def state_code(value: object) -> str:
+    """"GA", "ga", "Georgia" → "GA". Anything unrecognised is returned trimmed, unchanged."""
+    text = clean_cell(value)
+    if text.upper() in US_STATES:
+        return text.upper()
+    return STATE_CODES_BY_NAME.get(" ".join(text.lower().split()), text)

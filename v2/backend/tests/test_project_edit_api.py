@@ -107,6 +107,13 @@ class AppendTests(ProjectApiTestCase):
         project = self.projects.get("p1")
         self.assertEqual((project.routing_status, project.routing_job_id), (RoutingStatus.READY, ""))  # released
 
+    def test_append_saves_the_import_mapping_on_the_project(self):
+        self.projects._items["p1"] = self.projects.get("p1").model_copy(update={"import_mappings": {"a": "dma"}})
+        mapping = {"notes": "installation_notes", "code": "nope", "store": "store_name"}
+        self.assertEqual(self.append([new_stop("N1", "1 New Rd")], import_mapping=mapping).status_code, 200)
+        saved = self.projects.get("p1").import_mappings
+        self.assertEqual(saved, {"a": "dma", "notes": "installation_notes", "store": "store_name"})  # merged, cleaned
+
     def test_append_releases_the_slot_when_it_fails(self):
         self.projects._items["p1"] = self.projects.get("p1").model_copy(update={"installers": []})
         self.assertEqual(self.append([new_stop("N", "1 Rd")]).status_code, 422)

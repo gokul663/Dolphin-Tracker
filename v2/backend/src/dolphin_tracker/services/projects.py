@@ -6,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from dolphin_tracker.domain.errors import NotFoundError, ValidationFailed
+from dolphin_tracker.domain.import_mapping import clean_mapping
 from dolphin_tracker.domain.kpi import KPI_ATTRIBUTES, kpi_summary
 from dolphin_tracker.domain.models import (
     FieldDef,
@@ -111,6 +112,7 @@ class ProjectService:
             fa_percentage=payload.fa_percentage,
             stops_per_day=payload.stops_per_day,
             field_schema=schema,
+            import_mappings=clean_mapping(payload.import_mapping),
             routing_status=RoutingStatus.BUILDING if job else RoutingStatus.READY,
             routing_job_id=job.id if job else "",
             stop_count=len(payload.stops),

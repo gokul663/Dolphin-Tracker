@@ -51,7 +51,7 @@ def default_deps() -> WorkerDeps:
 def _run_import(event: dict[str, Any], deps: WorkerDeps) -> None:
     geocoder = deps.geocoder_factory()
     try:
-        ImportService(deps.jobs, deps.files, geocoder).run(event["job_id"], event)
+        ImportService(deps.jobs, deps.files, geocoder, deps.projects).run(event["job_id"], event)
     finally:
         close = getattr(geocoder, "close", None)
         if close:

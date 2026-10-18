@@ -77,7 +77,7 @@ class ImportJobFlowTests(unittest.TestCase):
         self.assertEqual((job["status"], job["progress"]), ("succeeded", 100))
         self.assertEqual(job["result_url"], f"/api/jobs/{job_id}/result")
         result = self.client.get(job["result_url"]).json()
-        self.assertEqual(result["summary"], {"total": 2, "valid": 1, "needs_review": 0, "invalid": 1})
+        self.assertEqual(result["summary"], {"total": 2, "valid": 1, "needs_review": 0, "invalid": 1, "duplicates": 0})
         self.assertEqual(result["rows"][0]["addr"], "1 Main St")
 
     def test_create_validation(self):

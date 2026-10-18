@@ -1,113 +1,102 @@
-"""Spreadsheet import job: read the upload, map known columns, verify every address with Google, store the result.
+"""Spreadsheet import job: read the upload, map columns to store fields (STORE-MODEL §6), verify every address
+with Google, flag duplicates within the sheet, store the result.
 
-The result shape is AGENT-HANDOFF §3.4. Column-to-schema mapping happens in the review UI, so the job stays
-schema-agnostic: `fields` carries the alias-mapped venue columns plus every unknown column, keyed by header.
+The result shape is `api.schemas.ImportResult`. The mapping used is part of the result; for an append it starts
+from the project's saved `import_mappings`, so a second sheet of the same shape maps the same way.
 """
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 from aws_lambda_powertools import Logger
 
-from dolphin_tracker.domain.models import JobStatus, ScreenStatus, normalize_screen_status
-from dolphin_tracker.domain.parsing import (
-    ADDRESS_ALIASES,
-    DMA_ALIASES,
-    PA_ALIASES,
-    STATUS_COLUMN_ALIASES,
-    STORE_ALIASES,
-    VENUE_CODE_ALIASES,
-    VENUE_TYPE_ALIASES,
-    find_column,
-    read_table,
+from dolphin_tracker.domain.import_mapping import (
+    FIELDS,
+    MappedRow,
+    detect_mapping,
+    geocode_query,
+    map_row,
+    mark_duplicates,
 )
+from dolphin_tracker.domain.models import JobStatus
+from dolphin_tracker.domain.parsing import read_table
 from dolphin_tracker.repositories.files import FileStore, result_key
 from dolphin_tracker.repositories.jobs import JobRepository
+from dolphin_tracker.repositories.projects import ProjectRepository
 from dolphin_tracker.services.geocoding import Geocoder
 
 logger = Logger(child=True)
 
-CORE_ALIASES = (
-    ADDRESS_ALIASES
-    | STORE_ALIASES
-    | PA_ALIASES
-    | STATUS_COLUMN_ALIASES
-    | VENUE_TYPE_ALIASES
-    | DMA_ALIASES
-    | VENUE_CODE_ALIASES
-)
 GEOCODE_WORKERS = 8
 PROGRESS_EVERY = 10
 MAX_IMPORT_ROWS = 5000
 
 
 @dataclass
-class ParsedRow:
-    index: int
-    address: str
-    store_name: str = ""
-    pa: str = ""
-    status: str = ScreenStatus.UPCOMING.value
-    status_valid: bool = True
-    status_raw: str = ""
-    venue_type: str = ""
-    dma: str = ""
-    venue_code: str = ""
-    extra: dict[str, str] = field(default_factory=dict)  # columns outside the known aliases, keyed by header
-
-
-@dataclass
 class ParsedTable:
-    rows: list[ParsedRow]
     columns: list[str]
-    address_column: str
-    store_column: str | None
-    extra_columns: list[str]
-    venue_columns: list[str] = field(default_factory=list)  # which of venue_type/dma/venue_code the sheet has
+    mapping: dict[str, str]
+    rows: list[MappedRow]
+
+    def column_for(self, target: str) -> str | None:
+        return next((column for column, mapped in self.mapping.items() if mapped == target), None)
+
+    @property
+    def extra_columns(self) -> list[str]:
+        return [column for column, target in self.mapping.items() if target == FIELDS]
 
     @property
     def pa_names(self) -> list[str]:
         return sorted({row.pa for row in self.rows if row.pa})
 
 
-def verify_row(row: ParsedRow, geocoder: Geocoder) -> dict[str, Any]:
-    """Apply v1's status rules to one row. The route address always comes from geocoding, never from Places."""
-    fields: dict[str, Any] = {key: getattr(row, key) for key in ("venue_type", "dma", "venue_code")}
+def verify_row(row: MappedRow, geocoder: Geocoder) -> dict[str, Any]:
+    """Geocode one mapped row and apply the confidence rules. The route address always comes from geocoding,
+    never from Places. When geocoding fails, the sheet's own coordinates (if any) are kept and the row is
+    `needs_review` (STORE-MODEL §6, assumption)."""
     result: dict[str, Any] = {
         "index": row.index,
         "address": row.address,
         "store_name": row.store_name,
+        "external_id": row.external_id,
         "pa": row.pa,
         "status": "invalid",
         "confidence": 0,
         "verified_by": [],
         "formatted": "",
-        "addr": "",
-        "city": "",
-        "state": "",
-        "zip": "",
+        "addr": row.addr,
+        "city": row.city,
+        "state": row.state,
+        "zip": row.zip,
         "lat": None,
         "lng": None,
+        "coordinates_source": "",
         "place_name": "",
         "suggestions": [],
         "error": "",
-        "venue_status": row.status,
+        "venue_status": row.status.value,
         "venue_status_valid": row.status_valid,
         "venue_status_raw": row.status_raw,
-        "fields": {**fields, **row.extra},
+        "installer_name": row.installer_name,
+        "details": row.details,
+        "screens": row.screens,
+        "problems": row.problems,
+        "duplicate_of": None,
+        "duplicate_reason": "",
+        "fields": row.fields,
     }
-    address = row.address.strip()
-    if not address:
+    query = geocode_query(row)
+    if not row.addr.strip() or not query:
         result["error"] = "Missing address"
         return result
 
-    geo = geocoder.geocode(address)
+    geo = geocoder.geocode(query)
     # Places only confirms a geocoded address (§9 #3: it costs a request per row); a failed geocode has nothing
     # to confirm. Partial matches still get the call.
     place = (
-        geocoder.find_place(f"{row.store_name}, {address}" if row.store_name else address)
+        geocoder.find_place(f"{row.store_name}, {query}" if row.store_name else query)
         if geo.get("ok")
         else {"ok": False}
     )
@@ -116,12 +105,13 @@ def verify_row(row: ParsedRow, geocoder: Geocoder) -> dict[str, Any]:
     if geo.get("ok"):
         result.update(
             formatted=geo.get("formatted", ""),
-            addr=geo.get("addr") or address,
-            city=geo.get("city", ""),
-            state=geo.get("state", ""),
-            zip=geo.get("zip", ""),
+            addr=geo.get("addr") or row.addr,
+            city=geo.get("city") or row.city,
+            state=geo.get("state") or row.state,
+            zip=geo.get("zip") or row.zip,
             lat=geo.get("lat"),
             lng=geo.get("lng"),
+            coordinates_source="geocode",
             suggestions=geo.get("suggestions", []),
             place_name=(place.get("name") or "") if place.get("ok") else "",
         )
@@ -131,90 +121,70 @@ def verify_row(row: ParsedRow, geocoder: Geocoder) -> dict[str, Any]:
             result.update(status="valid", confidence=100 if place.get("ok") else 70)
         return result
 
+    error = geo.get("error") or "Could not geocode address"
+    if row.sheet_lat is not None:
+        result.update(lat=row.sheet_lat, lng=row.sheet_lng, coordinates_source="sheet")
+        error = f"{error}; the sheet's coordinates are used"
     result.update(
         status="needs_review",
         confidence=0,
-        suggestions=geo.get("suggestions") or geocoder.autocomplete(address),
-        error=geo.get("error") or "Could not geocode address",
+        suggestions=geo.get("suggestions") or geocoder.autocomplete(query),
+        error=error,
     )
     return result
 
 
 class ImportService:
     def __init__(
-        self, jobs: JobRepository | None = None, files: FileStore | None = None, geocoder: Geocoder | None = None
+        self,
+        jobs: JobRepository | None = None,
+        files: FileStore | None = None,
+        geocoder: Geocoder | None = None,
+        projects: ProjectRepository | None = None,
     ) -> None:
         self._jobs = jobs
         self._files = files
         self._geocoder = geocoder
+        self._projects = projects
 
     @staticmethod
-    def parse(filename: str, raw: bytes) -> ParsedTable:
-        """Read the sheet and map known columns. Raises ValueError when there is no address column."""
+    def parse(filename: str, raw: bytes, saved_mapping: dict[str, str] | None = None) -> ParsedTable:
+        """Read the sheet and map its columns. ValueError when no column is the store address."""
         table = read_table(filename, raw)
         columns = list(table[0].keys()) if table else []
-        address_column = find_column(columns, ADDRESS_ALIASES)
-        if not address_column:
+        mapping = detect_mapping(columns, saved_mapping)
+        if "addr" not in mapping.values():
             raise ValueError("Missing 'address' column")
-        store_column = find_column(columns, STORE_ALIASES)
-        pa_column = find_column(columns, PA_ALIASES)
-        status_column = find_column(columns, STATUS_COLUMN_ALIASES)
-        venue = {
-            "venue_type": find_column(columns, VENUE_TYPE_ALIASES),
-            "dma": find_column(columns, DMA_ALIASES),
-            "venue_code": find_column(columns, VENUE_CODE_ALIASES),
-        }
-        extra_columns = [column for column in columns if column not in CORE_ALIASES]
-
-        rows: list[ParsedRow] = []
-        for index, record in enumerate(table):
-            status_raw = record.get(status_column, "") if status_column else ""
-            status, status_valid = (
-                normalize_screen_status(status_raw) if status_column else (ScreenStatus.UPCOMING, True)
-            )
-            rows.append(
-                ParsedRow(
-                    index=index,
-                    address=record.get(address_column, ""),
-                    store_name=record.get(store_column, "") if store_column else "",
-                    pa=record.get(pa_column, "") if pa_column else "",
-                    status=status,
-                    status_valid=status_valid,
-                    status_raw=status_raw,
-                    venue_type=record.get(venue["venue_type"], "") if venue["venue_type"] else "",
-                    dma=record.get(venue["dma"], "") if venue["dma"] else "",
-                    venue_code=record.get(venue["venue_code"], "") if venue["venue_code"] else "",
-                    extra={column: record.get(column, "") for column in extra_columns},
-                )
-            )
         return ParsedTable(
-            rows=rows,
             columns=columns,
-            address_column=address_column,
-            store_column=store_column,
-            extra_columns=extra_columns,
-            venue_columns=[key for key, column in venue.items() if column],
+            mapping=mapping,
+            rows=[map_row(index, record, mapping) for index, record in enumerate(table)],
         )
 
     @staticmethod
     def build_result(table: ParsedTable, verified: list[dict[str, Any]]) -> dict[str, Any]:
         rows = sorted(verified, key=lambda row: row["index"])
-        for row in rows:  # only venue columns the sheet actually has
-            for key in ("venue_type", "dma", "venue_code"):
-                if key not in table.venue_columns:
-                    row["fields"].pop(key, None)
+        mark_duplicates(rows)
         counts = {
             status: sum(1 for row in rows if row["status"] == status) for status in ("valid", "needs_review", "invalid")
         }
+        duplicates = sum(1 for row in rows if row["duplicate_reason"])
         return {
             "columns": table.columns,
-            "address_column": table.address_column,
-            "store_column": table.store_column,
+            "mapping": table.mapping,
+            "address_column": table.column_for("addr") or "",
+            "store_column": table.column_for("store_name"),
             "extra_columns": table.extra_columns,
-            "summary": {"total": len(rows), **counts},
+            "summary": {"total": len(rows), **counts, "duplicates": duplicates},
             "pa_names": table.pa_names,
             "rows": rows,
         }
+
+    def _saved_mapping(self, project_id: str | None) -> dict[str, str]:
+        if not project_id or self._projects is None:
+            return {}
+        project = self._projects.get(project_id)
+        return dict(project.import_mappings) if project else {}
 
     def run(self, job_id: str, event: dict[str, Any]) -> None:
         """Worker entry point for an import_parse job. Every failure ends as a `failed` job with a message."""
@@ -229,7 +199,8 @@ class ImportService:
                 return
             self._jobs.set_status(job_id, JobStatus.RUNNING, progress=1, message="Reading file")
             raw = self._files.get_bytes(job.payload["upload_key"])
-            table = self.parse(job.payload.get("filename") or job.payload["upload_key"], raw)
+            filename = job.payload.get("filename") or job.payload["upload_key"]
+            table = self.parse(filename, raw, self._saved_mapping(job.project_id))
             total = len(table.rows)
             if total > MAX_IMPORT_ROWS:
                 raise ValueError(f"The sheet has {total} rows; the limit is {MAX_IMPORT_ROWS}")
@@ -253,6 +224,8 @@ class ImportService:
             self._files.put_json(key, result)
             summary = result["summary"]
             message = f"{summary['valid']} valid, {summary['needs_review']} to review, {summary['invalid']} invalid"
+            if summary["duplicates"]:
+                message += f", {summary['duplicates']} duplicate"
             if not getattr(self._geocoder, "enabled", True):  # local only: outside local, start() refuses
                 message += " (no Google key configured: addresses were not verified)"
                 logger.warning("Import ran without a Google key", extra={"job_id": job_id})

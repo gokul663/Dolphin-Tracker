@@ -9,13 +9,9 @@ from collections.abc import Iterable
 
 from openpyxl import load_workbook
 
-ADDRESS_ALIASES = {"address", "addr", "street_address", "site_address"}
-STORE_ALIASES = {"store_name", "store", "site_name", "name"}
-PA_ALIASES = {"pa", "pa_name", "principal_agent", "principal_agent_name"}
-STATUS_COLUMN_ALIASES = {"status", "venue_status", "installation_status", "site_status"}
-VENUE_TYPE_ALIASES = {"venue_type", "venue", "site_type", "location_type"}
-DMA_ALIASES = {"dma", "dma_name", "market", "market_name"}
-VENUE_CODE_ALIASES = {"venue_code", "site_code", "location_code", "venue_id"}
+# Header names of the store address (STORE-MODEL §6). The CSV reader uses them to repair unquoted commas;
+# the full header → field map lives in `domain/import_mapping.py`.
+ADDRESS_ALIASES = {"store_address", "address", "addr", "street_address", "site_address"}
 
 Row = dict[str, str]
 
@@ -118,7 +114,3 @@ def read_table(filename: str, raw: bytes) -> list[Row]:
     if lowered.endswith((".xlsx", ".xlsm", ".xltx", ".xltm")):
         return read_xlsx_table(raw)
     raise ValueError("Unsupported file type. Upload a .csv or .xlsx file.")
-
-
-def find_column(header: list[str], aliases: set[str]) -> str | None:
-    return next((column for column in header if column in aliases), None)

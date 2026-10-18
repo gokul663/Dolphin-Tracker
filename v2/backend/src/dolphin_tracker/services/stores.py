@@ -18,6 +18,7 @@ from typing import Any
 from dolphin_tracker.domain.addresses import duplicate_key
 from dolphin_tracker.domain.cursors import encode_cursor, offset_from_cursor
 from dolphin_tracker.domain.errors import ConflictError, NotFoundError, ValidationFailed
+from dolphin_tracker.domain.import_mapping import clean_mapping
 from dolphin_tracker.domain.models import (
     PROGRESS_FIELDS,
     Page,
@@ -280,7 +281,9 @@ class StoreService:
             }
         )
 
-    def append(self, project_id: str, stops: list[StopInput], pa: str = "") -> dict[str, Any]:
+    def append(
+        self, project_id: str, stops: list[StopInput], pa: str = "", import_mapping: dict[str, str] | None = None
+    ) -> dict[str, Any]:
         """Add stops without re-routing (v1 `append_project_stops`): skip duplicates by venue code or normalised
         address, then place each new stop greedily on the installer with the fewest stops, on a same-state day
         with room, else on a new day. Synchronous: no optimizer run."""
@@ -291,9 +294,9 @@ class StoreService:
         # Hold the slot for the whole append: a build enqueued after the check above gets a 409 instead of
         # computing over the old stop set (and a build claimed in between makes this claim 409).
         with sync_routing_slot(self._projects, project):
-            return self._append(project, stops, pa)
+            return self._append(project, stops, pa, clean_mapping(import_mapping or {}))
 
-    def _append(self, project: Project, stops: list[StopInput], pa: str) -> dict[str, Any]:
+    def _append(self, project: Project, stops: list[StopInput], pa: str, mapping: dict[str, str]) -> dict[str, Any]:
         """The append itself, run while holding the routing slot so a build cannot compute over the old stop set."""
         project_id = project.id
         installers = [name for name in project.installers if name]
@@ -369,8 +372,10 @@ class StoreService:
             pa_values |= {clean_cell(part) for part in pa.split(",") if clean_cell(part)}
             pa_values |= {value for stop in appended if (value := clean_cell(stop.fields.get("pa")))}
             assert self._projects is not None
-            self._projects.update(
-                project_id,
-                {"stop_count": len(existing) + len(appended), "pa": ", ".join(sorted(pa_values)) or project.pa},
-            )
+            changes: dict[str, Any] = {
+                "stop_count": len(existing) + len(appended), "pa": ", ".join(sorted(pa_values)) or project.pa
+            }
+            if mapping:  # the next sheet of this shape maps the same way
+                changes["import_mappings"] = {**project.import_mappings, **mapping}
+            self._projects.update(project_id, changes)
         return {"appended": len(appended), "skipped": skipped, "total": len(existing) + len(appended)}

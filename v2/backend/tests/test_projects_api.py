@@ -76,6 +76,17 @@ class ProjectApiTestCase(unittest.TestCase):
 
 
 class CreateProjectApiTests(ProjectApiTestCase):
+    def test_create_saves_the_import_mapping_and_store_details(self):
+        stop = {**stop_input(0), "external_id": " ibc-7 ", "dma": "ATL", "spot_visible": True,
+                "screens": [{"stick_number": "S1"}, {"stick_number": "S2", "status": "Shipped"}]}
+        created = self.create_project(stops=[stop], import_mapping={"ibc": "external_id", "x": "bogus"})
+        project = self.projects.get(created["project"]["id"])
+        self.assertEqual(project.import_mappings, {"ibc": "external_id"})
+        (saved,) = self.stores.list_all(project.id)
+        self.assertEqual((saved.external_id, saved.dma, saved.spot_visible), ("IBC-7", "ATL", True))
+        self.assertEqual([(s.stick_number, s.status) for s in saved.screens], [("S1", "Upcoming"), ("S2", "Shipped")])
+        self.assertEqual(saved.status, "Upcoming")  # derived: the least-progressed screen
+
     def test_create_with_stops_returns_202_and_routes_on_the_worker(self):
         response = self.client.post("/api/projects", json=project_body())
         self.assertEqual(response.status_code, 202, response.text)

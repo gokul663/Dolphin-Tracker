@@ -115,6 +115,9 @@ class Project(ApiModel):
     fa_percentage: float | None = None
     stops_per_day: int = Field(default=8, ge=1, le=50)
     field_schema: list[FieldDef] = Field(default_factory=list)
+    # The column → field mapping the last import confirmed, by normalised header (STORE-MODEL §6); the next
+    # sheet of the same shape starts from it.
+    import_mappings: dict[str, str] = Field(default_factory=dict)
     routing_status: RoutingStatus = RoutingStatus.READY
     routing_job_id: str = ""  # the routing job allowed to finish the current build (§3.2 fence); "" when idle
     stop_count: int = 0  # informational: incremented on create/append, never decremented; KPIs are authoritative
@@ -266,6 +269,7 @@ class ProjectCreate(ApiModel):
     stops_per_day: int = Field(default=8, ge=1, le=50)
     field_schema: list[FieldDef] | None = None  # None → DEFAULT_FIELD_SCHEMA
     stops: list[StopInput] = Field(default_factory=list, max_length=5000)
+    import_mapping: dict[str, str] = Field(default_factory=dict)  # the import's mapping, saved on the project
 
 
 class Job(ApiModel):

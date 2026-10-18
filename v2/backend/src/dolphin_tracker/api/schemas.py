@@ -105,6 +105,7 @@ class ProjectUpdate(ApiModel):
 class AppendStops(ApiModel):
     stops: list[StopInput] = Field(min_length=1, max_length=5000)
     pa: str = Field(default="", max_length=500)
+    import_mapping: dict[str, str] = Field(default_factory=dict)  # merged into project.import_mappings
 
 
 class SkippedStop(ApiModel):
@@ -150,6 +151,13 @@ class ImportSummary(ApiModel):
     valid: int
     needs_review: int
     invalid: int
+    duplicates: int = 0  # rows repeating an earlier row of the sheet (by IBC#, then address)
+
+
+class ImportScreen(ApiModel):
+    stick_number: str
+    venue_id: str
+    status: ScreenStatus
 
 
 class ImportRow(ApiModel):
@@ -158,6 +166,7 @@ class ImportRow(ApiModel):
     index: int
     address: str  # as uploaded
     store_name: str
+    external_id: str = ""  # IBC#, normalised
     pa: str
     status: Literal["valid", "needs_review", "invalid"]
     confidence: int
@@ -169,17 +178,25 @@ class ImportRow(ApiModel):
     zip: str
     lat: float | None
     lng: float | None
+    coordinates_source: Literal["", "geocode", "sheet"] = ""  # "sheet": geocoding failed, the sheet's lat/lng kept
     place_name: str
     suggestions: list[str]
     error: str
-    venue_status: ScreenStatus
+    venue_status: ScreenStatus  # the sheet's status (STATUS, else Shipment / Device status)
     venue_status_valid: bool
     venue_status_raw: str
-    fields: dict[str, str]  # keyed by normalised header; mapped to the schema in the review UI
+    installer_name: str = ""  # the sheet's Technician
+    details: dict[str, Any] = Field(default_factory=dict)  # first-class store attributes the sheet has (§2)
+    screens: list[ImportScreen] = Field(default_factory=list)
+    problems: dict[str, str] = Field(default_factory=dict)  # attribute → why the sheet value needs fixing
+    duplicate_of: int | None = None  # index of the earlier row this one repeats
+    duplicate_reason: Literal["", "external_id", "address"] = ""
+    fields: dict[str, str]  # unrecognised columns ("Other imported data"), keyed by normalised header
 
 
 class ImportResult(ApiModel):
     columns: list[str]
+    mapping: dict[str, str] = Field(default_factory=dict)  # column → field ("" other data, "-" ignored)
     address_column: str
     store_column: str | None
     extra_columns: list[str]

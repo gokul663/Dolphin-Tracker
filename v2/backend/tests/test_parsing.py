@@ -4,9 +4,6 @@ import unittest
 from openpyxl import Workbook
 
 from dolphin_tracker.domain.parsing import (
-    DMA_ALIASES,
-    VENUE_CODE_ALIASES,
-    VENUE_TYPE_ALIASES,
     clean_cell,
     normalize_column,
     read_csv_table,
@@ -46,9 +43,6 @@ class CsvParserTests(unittest.TestCase):
         )
 
     def test_optional_venue_headers_are_supported(self):
-        self.assertIn(normalize_column("Venue Type"), VENUE_TYPE_ALIASES)
-        self.assertIn(normalize_column("DMA Name"), DMA_ALIASES)
-        self.assertIn(normalize_column("Venue Code"), VENUE_CODE_ALIASES)
         rows = read_csv_table(
             b"address,store_name,pa,venue_type,dma,venue_code\n"
             b'"123 Main St, Dallas, TX 75201",Store A,PA 1,Retail,DFW,V-100\n'

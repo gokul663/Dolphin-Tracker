@@ -2,35 +2,36 @@ import tempfile
 import unittest
 
 from dolphin_tracker.api.schemas import ImportResult
+from dolphin_tracker.domain.import_mapping import MappedRow
 from dolphin_tracker.domain.models import Job, JobStatus, JobType
 from dolphin_tracker.repositories.files import LocalFileStore, result_key
 from dolphin_tracker.repositories.memory import InMemoryJobRepository
-from dolphin_tracker.services.imports import ImportService, ParsedRow, verify_row
+from dolphin_tracker.services.imports import ImportService, verify_row
 from tests.fakes import FakeGeocoder, geocode_ok
 
 
 class ImportServiceParseTests(unittest.TestCase):
     def test_maps_known_columns_and_keeps_extras(self):
         raw = (
-            b"Store Name,Address,PA,Status,Owner Phone\n"
-            b'Store A,"1 Main St, Dallas, TX 75201",North,complete,555-0100\n'
-            b"Store B,2 Elm St,North,weird,\n"
+            b"Store Name,Address,PA,Status,Owner Phone,Brand\n"
+            b'Store A,"1 Main St, Dallas, TX 75201",North,complete,555-0100,Acme\n'
+            b"Store B,2 Elm St,North,weird,,\n"
         )
         parsed = ImportService.parse("sites.csv", raw)
-        self.assertEqual(parsed.address_column, "address")
-        self.assertEqual(parsed.store_column, "store_name")
-        self.assertEqual(parsed.extra_columns, ["owner_phone"])
+        self.assertEqual(parsed.column_for("addr"), "address")
+        self.assertEqual(parsed.column_for("store_name"), "store_name")
+        self.assertEqual(parsed.extra_columns, ["brand"])
         self.assertEqual(parsed.pa_names, ["North"])
-        self.assertEqual(parsed.venue_columns, [])
         first, second = parsed.rows
+        self.assertEqual((first.addr, first.city, first.state, first.zip), ("1 Main St", "Dallas", "TX", "75201"))
         self.assertEqual((first.status, first.status_valid), ("Completed", True))
-        self.assertEqual(first.extra, {"owner_phone": "555-0100"})
+        self.assertEqual((first.details, first.fields), ({"owner_phone": "555-0100"}, {"brand": "Acme"}))
         self.assertEqual((second.status, second.status_valid, second.status_raw), ("Upcoming", False, "weird"))
 
-    def test_records_which_venue_columns_exist(self):
-        parsed = ImportService.parse("s.csv", b"address,dma,site_code\n1 Main St,ATL,V1\n")
-        self.assertEqual(parsed.venue_columns, ["dma", "venue_code"])
-        self.assertEqual((parsed.rows[0].dma, parsed.rows[0].venue_code), ("ATL", "V1"))
+    def test_saved_mapping_is_applied_first(self):
+        parsed = ImportService.parse("s.csv", b"address,code,brand\n1 Main St,IBC-1,Acme\n", {"code": "external_id"})
+        self.assertEqual(parsed.mapping, {"address": "addr", "code": "external_id", "brand": ""})
+        self.assertEqual(parsed.rows[0].external_id, "IBC-1")
 
     def test_missing_address_column_is_an_error(self):
         with self.assertRaises(ValueError):
@@ -40,8 +41,8 @@ class ImportServiceParseTests(unittest.TestCase):
 class VerifyRowTests(unittest.TestCase):
     """v1 status rules (AGENT-HANDOFF §3.4)."""
 
-    def row(self, address: str, store: str = "") -> ParsedRow:
-        return ParsedRow(index=3, address=address, store_name=store, dma="ATL")
+    def row(self, address: str, store: str = "") -> MappedRow:
+        return MappedRow(index=3, address=address, addr=address, store_name=store, details={"dma": "ATL"})
 
     def test_geocode_and_places_ok_is_valid_100(self):
         geocoder = FakeGeocoder(
@@ -55,7 +56,7 @@ class VerifyRowTests(unittest.TestCase):
         # The route address comes from geocoding, never from the Places hit.
         self.assertEqual(result["addr"], "1 Main St")
         self.assertEqual(result["formatted"], "1 Main St, Atlanta, GA 30303, USA")
-        self.assertEqual(result["fields"]["dma"], "ATL")
+        self.assertEqual(result["details"]["dma"], "ATL")
 
     def test_geocode_only_is_valid_70(self):
         result = verify_row(self.row("1 Main St"), FakeGeocoder(geocodes={"1 Main St": geocode_ok("1 Main St")}))
@@ -98,9 +99,10 @@ class VerifyRowTests(unittest.TestCase):
         self.assertEqual(
             keys,
             {
-                "index", "address", "store_name", "pa", "status", "confidence", "verified_by", "formatted", "addr",
-                "city", "state", "zip", "lat", "lng", "place_name", "suggestions", "error", "venue_status",
-                "venue_status_valid", "venue_status_raw", "fields",
+                "index", "address", "store_name", "external_id", "pa", "status", "confidence", "verified_by",
+                "formatted", "addr", "city", "state", "zip", "lat", "lng", "coordinates_source", "place_name",
+                "suggestions", "error", "venue_status", "venue_status_valid", "venue_status_raw", "installer_name",
+                "details", "screens", "problems", "duplicate_of", "duplicate_reason", "fields",
             },
         )
 
@@ -150,14 +152,16 @@ class ImportRunTests(unittest.TestCase):
 
         result = self.files.get_json(result_key(job_id))
         ImportResult.model_validate(result)  # the documented §3.4 contract the frontend type is generated from
-        self.assertEqual(result["summary"], {"total": 27, "valid": 25, "needs_review": 1, "invalid": 1})
+        self.assertEqual(
+            result["summary"], {"total": 27, "valid": 25, "needs_review": 1, "invalid": 1, "duplicates": 0}
+        )
         self.assertEqual(result["address_column"], "address")
         self.assertEqual(result["store_column"], "store_name")
-        self.assertEqual(result["extra_columns"], ["owner_phone"])
+        self.assertEqual(result["extra_columns"], [])  # DMA and Owner Phone are store attributes now
         self.assertEqual(result["pa_names"], ["North", "South"])
         self.assertEqual([row["index"] for row in result["rows"]], list(range(27)))  # input order kept
         first = result["rows"][0]
-        self.assertEqual(first["fields"], {"dma": "ATL", "owner_phone": "555-0100"})  # only present venue columns
+        self.assertEqual((first["details"], first["fields"]), ({"dma": "ATL", "owner_phone": "555-0100"}, {}))
         self.assertEqual((first["venue_status"], first["venue_status_valid"]), ("Completed", True))
         lost = result["rows"][26]
         status = (lost["venue_status"], lost["venue_status_valid"], lost["venue_status_raw"])

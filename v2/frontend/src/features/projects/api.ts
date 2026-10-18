@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useRef } from "react";
 import { keys } from "@/lib/api/keys";
 import { projectsApi } from "@/lib/api/resources";
 import type { Page, Project, ProjectSummary, ProjectUpdate } from "@/lib/api/types";
@@ -28,6 +29,22 @@ export function useProject(projectId: string) {
     queryFn: () => projectsApi.get(projectId),
     refetchInterval: (query) => (query.state.data?.routing_status === "building" ? 2_000 : false),
   });
+}
+
+/**
+ * A finished build changes routes, the stores list (installer/day columns), pins and the open drawer. When the
+ * project's routing_status leaves "building", invalidate everything under the project, whichever tab is open.
+ */
+export function useRefreshWhenRoutingFinishes(project: Project | undefined) {
+  const client = useQueryClient();
+  const previous = useRef(project?.routing_status);
+  useEffect(() => {
+    if (!project) return;
+    if (previous.current === "building" && project.routing_status !== "building") {
+      void client.invalidateQueries({ queryKey: keys.project(project.id) });
+    }
+    previous.current = project.routing_status;
+  }, [project?.routing_status, project?.id, client]);
 }
 
 export function useRoutes(projectId: string, enabled = true) {

@@ -7,6 +7,7 @@ import { StoresTab } from "@/features/stores/StoresTab";
 import { jsonError, mockApi, renderWithProviders } from "@/test/render";
 import { makeProject, makeStop } from "@/test/fixtures";
 import { useStoresUi } from "@/stores/ui";
+import { keys } from "@/lib/api/keys";
 import type { Stop } from "@/lib/api/types";
 
 const STOPS: Stop[] = [
@@ -35,7 +36,7 @@ function renderTab(routes: Parameters<typeof mockApi>[0] = {}) {
     "PATCH /api/projects/p1/stores/u1/progress": (_url, init) => write("u1", init),
     ...routes,
   });
-  renderWithProviders(
+  const { client } = renderWithProviders(
     <Routes>
       <Route path="projects/:projectId" element={<ProjectPage />}>
         <Route path="stores" element={<StoresTab />} />
@@ -43,7 +44,7 @@ function renderTab(routes: Parameters<typeof mockApi>[0] = {}) {
     </Routes>,
     { path: "/*", route: "/projects/p1/stores" },
   );
-  return api;
+  return { ...api, client, db };
 }
 
 /** Clicking the store name edits it inline; the address cell (or any other part of the row) opens the drawer. */
@@ -69,6 +70,22 @@ afterAll(() => {
 
 describe("StoresTab", () => {
   beforeEach(() => useStoresUi.setState({ projectId: null }));
+
+  it("refetches the list when a routing build finishes while Stores is open", async () => {
+    let routing: "building" | "ready" = "building";
+    const { calls, client, db } = renderTab({ "GET /api/projects/p1": () => makeProject({ routing_status: routing }) });
+    expect(await screen.findByText("Alpha Mart")).toBeTruthy();
+    const listCalls = () => calls.filter((call) => call.method === "GET" && call.url.pathname === "/api/projects/p1/stores").length;
+    const before = listCalls();
+
+    // The worker routes the stores and releases the slot; the next project poll sees "ready".
+    db.set("u1", { ...(db.get("u1") as Stop), installer: "Zed", day: 3 });
+    routing = "ready";
+    await act(() => client.refetchQueries({ queryKey: keys.project("p1"), exact: true }));
+
+    await waitFor(() => expect(listCalls()).toBeGreaterThan(before));
+    expect(await screen.findByText("Zed")).toBeTruthy();
+  });
 
   it("lists stores with schema columns and maps filters, search and sort onto the API", async () => {
     const { calls } = renderTab();

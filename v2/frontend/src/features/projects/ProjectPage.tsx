@@ -3,7 +3,7 @@ import { Link, NavLink, Outlet, useOutletContext, useParams } from "react-router
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { useProject } from "@/features/projects/api";
+import { useProject, useRefreshWhenRoutingFinishes } from "@/features/projects/api";
 import { RoutingBanner } from "@/features/projects/RoutingBanner";
 import { ApiError, type Project } from "@/lib/api/types";
 import { PROJECT_TYPE_LABELS } from "@/lib/status";
@@ -23,6 +23,7 @@ export function useProjectContext(): Project {
 export function ProjectPage() {
   const { projectId = "" } = useParams();
   const query = useProject(projectId);
+  useRefreshWhenRoutingFinishes(query.data);
 
   if (query.isPending) return <Card className="p-8 text-center font-mono text-slate-500">Loading project…</Card>;
   if (query.isError) {

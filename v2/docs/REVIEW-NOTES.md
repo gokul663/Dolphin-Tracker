@@ -1107,3 +1107,18 @@ need a Google Maps mock; not added (the helpers carry the logic).
 
 **Verified:** gates green (227 backend, 80 frontend). No browser check (no browser key; Chrome extension not
 connected in round 1 either).
+
+---
+
+## X2 · Stores tab refreshes when a routing build finishes
+
+**Changed**
+- `features/projects/api.ts` `useRefreshWhenRoutingFinishes(project)`: when `routing_status` leaves `building`,
+  invalidate `keys.project(id)`, which covers the stores list, pins, the open store, routes and the project
+  itself. `ProjectPage` calls it, so it runs whichever tab is open.
+- Removed the Routes-tab-only effect, which invalidated `keys.routes` alone.
+
+**Tests:** `StoresTab.test.tsx`: the project polls `building` → `ready` while Stores is open; the list refetches
+and the new installer shows. Confirmed the test fails with the hook call removed.
+
+**Verified:** gates green (227 backend, 81 frontend).

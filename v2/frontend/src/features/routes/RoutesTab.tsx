@@ -1,5 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
 import { Download, Loader2, RefreshCw, Shuffle } from "lucide-react";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -27,7 +26,6 @@ import {
 } from "@/features/routes/routeModel";
 import { SummaryTable } from "@/features/routes/SummaryTable";
 import { StoreDrawer } from "@/features/stores/StoreDrawer";
-import { keys } from "@/lib/api/keys";
 import type { Pin, Stop } from "@/lib/api/types";
 import { downloadText } from "@/lib/download";
 import { cn } from "@/lib/utils";
@@ -37,7 +35,6 @@ const ALL = "__all__";
 /** React port of the legacy route planner over the routes bundle. */
 export function RoutesTab() {
   const project = useProjectContext();
-  const client = useQueryClient();
   const routes = useRoutes(project.id);
   const job = useRoutingJob(project.id);
   const reassign = useReassignStop(project.id);
@@ -48,15 +45,6 @@ export function RoutesTab() {
   const [editing, setEditing] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<"rebalance" | "recluster" | null>(null);
   const [moving, setMoving] = useState<{ stop: Stop; to: string } | null>(null);
-
-  // A finished build changes every route: refetch the bundle when routing_status leaves "building".
-  const previous = useRef(project.routing_status);
-  useEffect(() => {
-    if (previous.current === "building" && project.routing_status !== "building") {
-      void client.invalidateQueries({ queryKey: keys.routes(project.id) });
-    }
-    previous.current = project.routing_status;
-  }, [project.routing_status, project.id, client]);
 
   const bundle = routes.data;
   const options = useMemo(() => (bundle ? filterOptions(bundle.routes) : null), [bundle]);

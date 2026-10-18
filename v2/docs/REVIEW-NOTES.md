@@ -1388,3 +1388,20 @@ claimed. Fakes: a rename completing between `add_installer`'s read and its claim
 whole-list write).
 
 **Verified:** gates green (238 backend, 102 frontend).
+
+---
+
+## Y6 · Append holds the routing slot
+
+**Changed**
+- `services/routing.py` `sync_routing_slot(projects, project)`: the `sync-*` slot context manager, lifted from
+  `RoutingService._sync_slot` (which now delegates to it) so `StoreService.append` can share it.
+- `StoreService.append` keeps the cheap `routing_status == building` check (with its clearer message), then runs
+  the whole append inside the slot. A build enqueued meanwhile gets 409; if a build claimed the slot between the
+  check and the claim, the append gets 409. The slot is released (previous status restored) on success and on
+  every error.
+
+**Tests:** a build enqueued while the append is writing gets `ConflictError`, and the slot is free afterwards; a
+422 append leaves `routing_job_id` empty.
+
+**Verified:** gates green (240 backend, 102 frontend).

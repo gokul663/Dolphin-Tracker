@@ -25,6 +25,7 @@ from dolphin_tracker.domain.schema import coerce_fields, validate_fields, valida
 from dolphin_tracker.repositories.projects import ProjectRepository
 from dolphin_tracker.repositories.stores import StoreRepository
 from dolphin_tracker.services.geocoding import Geocoder
+from dolphin_tracker.services.routing import sync_routing_slot
 
 SORT_KEYS = ("store_name", "addr", "status", "installer", "day", "updated_at", "display_id")
 ADDRESS_PARTS = ("addr", "city", "state", "zip")
@@ -273,6 +274,15 @@ class StoreService:
         project = self._project(project_id)
         if project.routing_status == RoutingStatus.BUILDING:
             raise ConflictError("Routing is in progress; append once it finishes")
+        assert self._projects is not None
+        # Hold the slot for the whole append: a build enqueued after the check above gets a 409 instead of
+        # computing over the old stop set (and a build claimed in between makes this claim 409).
+        with sync_routing_slot(self._projects, project):
+            return self._append(project, stops, pa)
+
+    def _append(self, project: Project, stops: list[StopInput], pa: str) -> dict[str, Any]:
+        """The append itself, run while holding the routing slot so a build cannot compute over the old stop set."""
+        project_id = project.id
         installers = [name for name in project.installers if name]
         if not installers:
             raise ValidationFailed("Project needs at least one installer before appending stops")

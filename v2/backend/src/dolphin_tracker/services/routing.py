@@ -50,6 +50,21 @@ SUPERSEDED = "Superseded by a newer routing job"
 TERMINAL = frozenset({JobStatus.SUCCEEDED, JobStatus.FAILED})
 
 
+@contextmanager
+def sync_routing_slot(projects: ProjectRepository, project: Project) -> Iterator[None]:
+    """Hold the routing slot (a `sync-*` token) for a short synchronous edit, so no build starts or finishes
+    underneath it; ConflictError while a build holds it. The previous status comes back afterwards (a `failed`
+    build stays visible as failed). Used by installer operations and by stop appends."""
+    token = f"sync-{uuid.uuid4().hex}"
+    previous = RoutingStatus.READY if project.routing_status == RoutingStatus.BUILDING else project.routing_status
+    stale_before = (datetime.now(UTC) - STALE_BUILD).isoformat()
+    projects.begin_routing(project.id, token, stale_before=stale_before)
+    try:
+        yield
+    finally:
+        projects.finish_routing(project.id, token, previous)
+
+
 def order_stops(stops: list[Stop]) -> list[Stop]:
     """Route order: installer, day, seq; display order breaks ties so the result is deterministic."""
     return sorted(stops, key=lambda stop: (stop.installer, stop.day, stop.seq, stop.display_id, stop.uid))
@@ -255,18 +270,9 @@ class RoutingService:
 
     # ---- synchronous operations (API side) ----------------------------------------------------------------
 
-    @contextmanager
-    def _sync_slot(self, project: Project) -> Iterator[None]:
-        """Hold the routing slot for a short synchronous edit, so no build starts (or runs) underneath it.
-        The previous status comes back afterwards (a `failed` build stays visible as failed)."""
+    def _sync_slot(self, project: Project):
         assert self._projects is not None
-        token = f"sync-{uuid.uuid4().hex}"
-        previous = RoutingStatus.READY if project.routing_status == RoutingStatus.BUILDING else project.routing_status
-        self._projects.begin_routing(project.id, token, stale_before=self._stale_before())
-        try:
-            yield
-        finally:
-            self._projects.finish_routing(project.id, token, previous)
+        return sync_routing_slot(self._projects, project)
 
     def add_installer(self, project_id: str, name: str) -> Job:
         project = self._project(project_id)

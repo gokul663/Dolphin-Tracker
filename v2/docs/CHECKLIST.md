@@ -109,7 +109,7 @@ Tracks delivery against [PLAN.md](./PLAN.md). Tick items as they land; add sub-i
 - [x] Y3 Unlisted-installer stops visible in /routes; reassign 404 not 500; migration derives installers
 - [x] Y4 DT_AWS_REGION wired for Lambda
 - [x] Y5 add_installer appends atomically
-- [ ] Y6 append holds the routing slot
+- [x] Y6 append holds the routing slot
 - [ ] Y7 rename installer_name writes threaded
 - [ ] Y8 cp1252 replace; empty CSV header → column_N
 - [ ] Y9 migration day/datetime normalisation

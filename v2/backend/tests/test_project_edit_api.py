@@ -1,6 +1,8 @@
+from dolphin_tracker.domain.errors import ConflictError
 from dolphin_tracker.domain.models import Project, ProjectType, RoutingStatus, Stop
 from dolphin_tracker.domain.schema import default_field_schema
-from tests.test_projects_api import ProjectApiTestCase
+from dolphin_tracker.services.routing import RoutingService
+from tests.test_projects_api import NoopInvoker, ProjectApiTestCase
 
 
 def existing_stop(uid: str, display: str, installer: str, day: int, seq: int, state: str = "GA", **extra) -> Stop:
@@ -86,6 +88,29 @@ class AppendTests(ProjectApiTestCase):
         self.assertEqual(self.client.post("/api/projects/nope/stores/append",
                                           json={"stops": [new_stop("N", "1 Rd")]}).status_code, 404)
 
+
+    def test_append_holds_the_routing_slot_against_a_build_enqueued_meanwhile(self):
+        routing = RoutingService(self.projects, self.stores, self.jobs, NoopInvoker())
+        original = self.stores.put_many
+        outcome = {}
+
+        def put_then_try_a_build(project_id, stops):
+            try:
+                routing.enqueue(project_id, "recluster")
+            except ConflictError as exc:
+                outcome["build"] = str(exc)
+            return original(project_id, stops)
+
+        self.stores.put_many = put_then_try_a_build
+        self.assertEqual(self.append([new_stop("N1", "1 New Rd")]).status_code, 200)
+        self.assertEqual(outcome["build"], "Routing is already in progress for this project")
+        project = self.projects.get("p1")
+        self.assertEqual((project.routing_status, project.routing_job_id), (RoutingStatus.READY, ""))  # released
+
+    def test_append_releases_the_slot_when_it_fails(self):
+        self.projects._items["p1"] = self.projects.get("p1").model_copy(update={"installers": []})
+        self.assertEqual(self.append([new_stop("N", "1 Rd")]).status_code, 422)
+        self.assertEqual(self.projects.get("p1").routing_job_id, "")
 
 class DeleteAndPatchTests(ProjectApiTestCase):
     def setUp(self):

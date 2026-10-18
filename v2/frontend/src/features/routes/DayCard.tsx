@@ -20,9 +20,8 @@ import {
   toCsv,
   uniqueCities,
 } from "@/features/routes/routeModel";
-import { useUpdateScreens, withStatus } from "@/features/stores/api";
 import { downloadText } from "@/lib/download";
-import { STOP_STATUSES, type Project, type Stop } from "@/lib/api/types";
+import type { Project, Stop } from "@/lib/api/types";
 import { STATUS_META } from "@/lib/status";
 import { cn } from "@/lib/utils";
 
@@ -42,7 +41,6 @@ interface Props {
 export function DayCard({ project, installer, color, day, totalDays, stops, collapsed, onToggle, onEdit, onReassign }: Props) {
   const [showAddresses, setShowAddresses] = useState(false);
   const [copied, setCopied] = useState(false);
-  const screens = useUpdateScreens(project.id);
   const active = routableStops(stops);
   const chunks = routeChunks(active);
   const counts = tally(stops);
@@ -117,26 +115,21 @@ export function DayCard({ project, installer, color, day, totalDays, stops, coll
                     </Button>
                   </div>
                   <div className="flex flex-wrap gap-1.5">
-                    <Select
-                      value={stop.status}
-                      onValueChange={(value) =>
-                        screens.mutate(
-                          { uid: stop.uid, screens: withStatus(stop, value as Stop["status"]) },
-                          { onError: (error) => toast.error(`Status not saved: ${error.message}`) },
-                        )
-                      }
+                    {/* Status is per screen: the chip opens the store at its screens editor (STORE-MODEL §4). */}
+                    <button
+                      type="button"
+                      onClick={() => onEdit(stop.uid)}
+                      aria-label={`Status of ${stop.store_name}: ${STATUS_META[stop.status].label}, ${stop.screens.length} ${stop.screens.length === 1 ? "screen" : "screens"} (edit screens)`}
+                      className={cn("inline-flex h-7 items-center gap-1.5 rounded-md border px-2 text-xs font-medium", STATUS_META[stop.status].chip)}
                     >
-                      <SelectTrigger size="sm" aria-label={`Status of ${stop.store_name}`} className={cn("h-7 border", STATUS_META[stop.status].chip)}>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {STOP_STATUSES.map((status) => (
-                          <SelectItem key={status} value={status}>
-                            {STATUS_META[status].label}
-                          </SelectItem>
+                      {STATUS_META[stop.status].label}
+                      <span className="flex gap-0.5" aria-hidden>
+                        {stop.screens.slice(0, 8).map((screen) => (
+                          <span key={screen.id} className="size-1.5 rounded-full" style={{ background: STATUS_META[screen.status].color }} />
                         ))}
-                      </SelectContent>
-                    </Select>
+                      </span>
+                      <span className="font-mono text-[10px] opacity-70">{stop.screens.length}</span>
+                    </button>
                     <Select value={installer} onValueChange={(value) => value !== installer && onReassign(stop, value)}>
                       <SelectTrigger size="sm" aria-label={`Installer for ${stop.store_name}`} className="h-7">
                         <SelectValue />

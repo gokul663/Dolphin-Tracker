@@ -1,11 +1,9 @@
 /**
- * Client copy of the backend field rules (domain/schema.py, task B1) so forms fail fast with the same messages.
- * The server stays the authority; these only avoid a round trip.
+ * Client copy of the backend schema rules (domain/schema.py) for the Settings schema editor, plus the store name
+ * rule for inline edits. Store attribute rules are in `storeFields.ts`. The server stays the authority.
  */
-import type { FieldDef, FieldDefInput, FieldType } from "@/lib/api/types";
+import type { FieldDefInput, FieldType } from "@/lib/api/types";
 
-export const PHONE_RE = /^[+()\d\s.-]{7,20}$/;
-export const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 export const KEY_RE = /^[a-z][a-z0-9_]{0,63}$/;
 /** Backend `schema.CORE_KEYS`: the stop's own attributes, including every first-class store field (STORE-MODEL §2). */
 export const CORE_KEYS = new Set([
@@ -26,30 +24,6 @@ export const FIELD_TYPES: { value: FieldType; label: string }[] = [
   { value: "phone", label: "Phone" },
   { value: "email", label: "Email" },
 ];
-
-export function isBlank(value: unknown): boolean {
-  return value === null || value === undefined || (typeof value === "string" && value.trim() === "");
-}
-
-/** Message for one value against its field definition, or null when it is fine. */
-export function fieldError(field: Pick<FieldDef, "label" | "type" | "required" | "options">, value: unknown): string | null {
-  if (isBlank(value)) return field.required ? `${field.label} is required` : null;
-  const text = String(value).trim();
-  switch (field.type) {
-    case "phone":
-      return PHONE_RE.test(text) ? null : `${field.label}: enter a valid phone number`;
-    case "email":
-      return EMAIL_RE.test(text) ? null : `${field.label}: enter a valid email`;
-    case "number":
-      return typeof value !== "boolean" && Number.isFinite(Number(text)) ? null : `${field.label}: must be a number`;
-    case "select":
-      return field.options.includes(text) ? null : `${field.label}: must be one of ${field.options.join(", ")}`;
-    case "date":
-      return /^\d{4}-\d{2}-\d{2}$/.test(text) && !Number.isNaN(Date.parse(text)) ? null : `${field.label}: use a YYYY-MM-DD date`;
-    default:
-      return null;
-  }
-}
 
 /** Store name and address are fixed and always required (B1 / §3.1). */
 export function coreError(key: "store_name" | "addr", value: string): string | null {

@@ -160,15 +160,19 @@ export function parseDays(value: string): number[] | null {
 
 const fieldText = (stop: Stop, key: string) => String(stop.fields[key] ?? "").trim();
 
+/** PA, DMA and venue type are store attributes since the store model v2; stops written before it carry them in
+ *  `fields`. */
+const storeText = (stop: Stop, key: "pa" | "dma" | "venue_type") => (stop[key] ?? "").trim() || fieldText(stop, key);
+
 /** PA may be a comma-separated list on a stop; a filter value matches any of them. */
 export function stopPAs(stop: Stop): string[] {
-  return fieldText(stop, "pa").split(",").map((pa) => pa.trim()).filter(Boolean);
+  return storeText(stop, "pa").split(",").map((pa) => pa.trim()).filter(Boolean);
 }
 
 export function matchesFilters(stop: Stop, filters: RouteFilters): boolean {
   if (filters.pa && !stopPAs(stop).includes(filters.pa)) return false;
-  if (filters.dma && fieldText(stop, "dma") !== filters.dma) return false;
-  if (filters.venueType && fieldText(stop, "venue_type") !== filters.venueType) return false;
+  if (filters.dma && storeText(stop, "dma") !== filters.dma) return false;
+  if (filters.venueType && storeText(stop, "venue_type") !== filters.venueType) return false;
   if (filters.state && canonicalState(stop.state) !== filters.state) return false;
   if (filters.city && titleCaseCity(stop.city) !== filters.city) return false;
   const q = filters.q.trim().toLowerCase();
@@ -206,8 +210,8 @@ export function filterOptions(routes: RoutesBundle["routes"]) {
   const sorted = (values: string[]) => [...new Set(values.filter(Boolean))].sort((a, b) => a.localeCompare(b));
   return {
     pa: sorted(stops.flatMap(stopPAs)),
-    dma: sorted(stops.map((stop) => fieldText(stop, "dma"))),
-    venueType: sorted(stops.map((stop) => fieldText(stop, "venue_type"))),
+    dma: sorted(stops.map((stop) => storeText(stop, "dma"))),
+    venueType: sorted(stops.map((stop) => storeText(stop, "venue_type"))),
     state: sorted(stops.map((stop) => canonicalState(stop.state))),
     city: sorted(stops.map((stop) => titleCaseCity(stop.city))),
   };
@@ -223,29 +227,36 @@ export function copyText(stops: Stop[]): string {
 
 type Cell = string | number;
 
+/** Route CSV columns (store model v2): identity and address, the derived status and the screen rows, what the
+ *  installer needs on site, progress, the project's extra fields, then the geocode. */
 function stopColumns(stop: Stop, schema: FieldDef[]): Cell[] {
   return [
-    stop.display_id, stop.store_name, stop.addr, stop.city.trim(), stop.state, stop.zip,
+    stop.external_id || stop.display_id, stop.store_name, stop.addr, stop.city.trim(), stop.state, stop.zip,
+    storeText(stop, "pa"), storeText(stop, "dma"), storeText(stop, "venue_type"),
+    STATUS_META[stop.status].label, stop.screens.length,
+    stop.screens.map((screen) => [screen.stick_number || "—", screen.venue_id || "—", STATUS_META[screen.status].label].join(" / ")).join("; "),
+    stop.onsite_contact_name, stop.onsite_contact_phone, stop.best_contact_time, stop.preferred_install_datetime,
+    stop.blocked_dates_notes, stop.installation_notes, stop.comment, stop.additional_task ? "Yes" : "No",
     ...schema.map((field) => fieldText(stop, field.key)),
-    STATUS_META[stop.status].label, stop.comment, stop.additional_task ? "Yes" : "No", stop.geocoded,
-    stop.lat ?? "", stop.lng ?? "",
+    stop.geocoded, stop.lat ?? "", stop.lng ?? "",
   ];
 }
 
 const STOP_HEADERS = (schema: FieldDef[]) => [
-  "ID", "Store Name", "Address", "City", "State", "ZIP", ...schema.map((field) => field.label),
-  "Status", "Comment", "Additional Task", "Geocoded Address", "Lat", "Lng",
+  "IBC#", "Store Name", "Address", "City", "State", "ZIP", "PA", "DMA", "Venue Type", "Status", "Screens", "Screen Rows",
+  "On-site Contact", "On-site Phone", "Best Contact Time", "Preferred Install Date/Time", "Blocked Dates / Notes",
+  "Installation Comments", "Comment", "Additional Task", ...schema.map((field) => field.label), "Geocoded Address", "Lat", "Lng",
 ];
 
 export function dayCsvRows(installer: string, day: number, stops: Stop[], schema: FieldDef[]): Cell[][] {
   return [
-    ["Day", "Stop #", "Route Owner", "Installer Name", ...STOP_HEADERS(schema)],
+    ["Day", "Stop #", "Route Owner", "Completed By", ...STOP_HEADERS(schema)],
     ...stops.map((stop, index) => [day, index + 1, installer, stop.installer_name || installer, ...stopColumns(stop, schema)]),
   ];
 }
 
 export function allCsvRows(bundle: RoutesBundle, filters: RouteFilters, schema: FieldDef[]): Cell[][] {
-  const rows: Cell[][] = [["Route Owner", "Installer Name", "Day", "Stop #", ...STOP_HEADERS(schema)]];
+  const rows: Cell[][] = [["Route Owner", "Completed By", "Day", "Stop #", ...STOP_HEADERS(schema)]];
   for (const installer of bundle.installers) {
     (bundle.routes[installer] ?? []).forEach((stops, dayIndex) =>
       stops.forEach((stop, stopIndex) => {

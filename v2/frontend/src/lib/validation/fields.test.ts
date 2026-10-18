@@ -1,29 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { coreError, fieldError, keyFromLabel, moveItem, schemaErrors } from "@/lib/validation/fields";
-import type { FieldDefInput } from "@/lib/api/types";
+import { coreError, keyFromLabel, moveItem, schemaErrors } from "@/lib/validation/fields";
 
-const def = (type: NonNullable<FieldDefInput["type"]>, extra: Partial<FieldDefInput> = {}) => ({
-  label: "Field", type, required: false, options: [] as string[], ...extra,
-});
-
-describe("fieldError (mirrors backend B1)", () => {
-  it("applies each type rule like domain/schema.py", () => {
-    expect(fieldError(def("phone"), "+1 (555) 010-0100")).toBeNull();
-    expect(fieldError(def("phone"), "12345")).toBe("Field: enter a valid phone number");
-    expect(fieldError(def("email"), "a@b.co")).toBeNull();
-    expect(fieldError(def("email"), "nope@")).toBe("Field: enter a valid email");
-    expect(fieldError(def("number"), "2.5")).toBeNull();
-    expect(fieldError(def("number"), "two")).toBe("Field: must be a number");
-    expect(fieldError(def("select", { options: ["Gold"] }), "Bronze")).toBe("Field: must be one of Gold");
-    expect(fieldError(def("date"), "2026-10-16")).toBeNull();
-    expect(fieldError(def("date"), "16/10/2026")).toBe("Field: use a YYYY-MM-DD date");
-  });
-
-  it("handles blanks and required", () => {
-    expect(fieldError(def("phone"), "  ")).toBeNull();
-    expect(fieldError(def("text", { required: true }), "")).toBe("Field is required");
-    expect(coreError("store_name", " ")).toBe("Store name is required");
-    expect(coreError("addr", "1 Main St")).toBeNull();
+describe("store name rule (inline edits)", () => {
+  it("requires a store name and an address", () => {
+    expect(coreError("store_name", "  ")).toBe("Store name is required");
+    expect(coreError("addr", "")).toBe("Address is required");
+    expect(coreError("store_name", "Alpha")).toBeNull();
   });
 });
 

@@ -20,11 +20,12 @@ import {
   uniqueCities,
 } from "@/features/routes/routeModel";
 import type { RoutesBundle, Stop } from "@/lib/api/types";
-import { makeStop } from "@/test/fixtures";
+import { makeScreen, makeStop } from "@/test/fixtures";
 import { DEFAULT_SCHEMA_FOR_TESTS as SCHEMA } from "@/test/schema";
 
+// DMA blank on the attribute: these stops carry PA/DMA/venue type in `fields`, as stops written before v2 do.
 const s = (uid: string, overrides: Partial<Stop> = {}) =>
-  makeStop({ uid, display_id: uid.toUpperCase(), store_name: `Store ${uid}`, addr: `${uid} Main St`, ...overrides });
+  makeStop({ uid, display_id: uid.toUpperCase(), store_name: `Store ${uid}`, addr: `${uid} Main St`, dma: "", ...overrides });
 
 describe("Google Maps links (v1 mapsUrlForStops / routeChunks)", () => {
   it("builds a search link for one stop and directions for several", () => {
@@ -118,11 +119,20 @@ describe("filters and summaries", () => {
 });
 
 describe("CSV export", () => {
-  it("writes schema-driven day and all-route rows", () => {
+  it("writes v2 day and all-route rows", () => {
     const day = dayCsvRows("Ann", 1, BUNDLE.routes.Ann?.[0] as Stop[], SCHEMA);
-    expect(day[0]?.slice(0, 6)).toEqual(["Day", "Stop #", "Route Owner", "Installer Name", "ID", "Store Name"]);
-    expect(day[0]).toContain("Owner Phone");
-    expect(day[1]?.slice(0, 5)).toEqual([1, 1, "Ann", "Ann", "A"]);
+    expect(day[0]?.slice(0, 6)).toEqual(["Day", "Stop #", "Route Owner", "Completed By", "IBC#", "Store Name"]);
+    for (const column of ["PA", "DMA", "Status", "Screens", "Screen Rows", "On-site Contact", "Installation Comments", "Owner Phone"]) {
+      expect(day[0]).toContain(column);
+    }
+    const header = day[0] as string[];
+    const first = day[1] as (string | number)[];
+    expect(first.slice(0, 5)).toEqual([1, 1, "Ann", "Ann", "IBC-1"]);
+    expect(first[header.indexOf("PA")]).toBe("North, South"); // from `fields`, as a pre-v2 stop
+    expect(first[header.indexOf("Screens")]).toBe(1);
+    expect(first[header.indexOf("Screen Rows")]).toBe("— / — / Upcoming");
+    const v2 = dayCsvRows("Ann", 1, [s("z", { pa: "East", dma: "MCN", screens: [makeScreen({ stick_number: "S9", venue_id: "V9", status: "Shipped" })] })], SCHEMA);
+    expect([v2[1]?.[header.indexOf("PA")], v2[1]?.[header.indexOf("DMA")], v2[1]?.[header.indexOf("Screen Rows")]]).toEqual(["East", "MCN", "S9 / V9 / Shipped"]);
     const all = allCsvRows(BUNDLE, { ...NO_FILTERS, state: "GA" }, SCHEMA);
     expect(all).toHaveLength(4); // header + Ann's three GA stops; Bo's AL stop filtered out
   });

@@ -1941,3 +1941,33 @@ chunk.
     back-to-upload.
 
 **Verified:** gates green (305 backend, 129 frontend).
+
+---
+
+## S10 · Routes tab follow-through
+
+**Changed**
+- Day cards: the one-click status select is replaced by the **derived status chip** with one dot per screen
+  and the screen count ("Status of Store a: Upcoming, 1 screen (edit screens)"). Clicking it opens the store
+  drawer, where status is edited per screen in the screens editor (§4). The installer reassign select stays.
+  The card's id line shows the IBC#.
+- Route model reads PA, DMA and venue type from the store attributes, falling back to `fields` for stops
+  written before v2 (`storeText`), for filters, options, CSV and the PA chips.
+- Route CSVs (day and all) use v2 columns:
+  - Route Owner, Completed By, Day, Stop #;
+  - IBC#, store name, address parts, PA, DMA, Venue Type, the derived Status, Screens, Screen Rows
+    (`stick / DD code / status` joined with "; ");
+  - the on-site contact and phone, best contact time, preferred install date/time, blocked dates, installation
+    comments;
+  - Comment, Additional Task, the project's extra fields, geocode, lat/lng.
+- "Route complete", active days and the routable stops were moved to the pending set in S4 (S5's frontend half).
+- Dead code removed now that nothing calls it:
+  - `withStatus` (the interim one-click status helper from S4);
+  - `lib/validation/fields.fieldError` and its phone/email regexes: extra-field values are no longer edited in
+    the UI, and store attributes use `storeFields.ts`.
+
+**Tests:** day-card chip label (derived status, screen count) and that it opens the screens editor; v2 day CSV
+header and values for a pre-v2 stop (PA from `fields`) and a v2 stop (attributes, screen rows); the all-routes
+CSV header in the Routes tab export test; a `coreError` test kept for the inline name rule.
+
+**Verified:** gates green (305 backend, 127 frontend).

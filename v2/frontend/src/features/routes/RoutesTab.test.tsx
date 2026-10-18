@@ -83,20 +83,12 @@ describe("RoutesTab", () => {
     expect(within(table).getAllByRole("link", { name: /Open \(1\)/ })).toHaveLength(3);
   });
 
-  it("updates a day-card status at once, before the bundle refetches, and rolls back on error", async () => {
-    let fail: () => void = () => {};
-    renderRoutes(makeProject(), {
-      "PUT /api/projects/p1/stores/a/screens": () =>
-        new Promise((resolve) => {
-          fail = () => resolve(new Response(JSON.stringify({ detail: "nope" }), { status: 500 }));
-        }),
-    });
-    const status = () => screen.getByRole("combobox", { name: "Status of Store a" }).textContent;
-    await userEvent.click(await screen.findByRole("combobox", { name: "Status of Store a" }));
-    await userEvent.click(await screen.findByRole("option", { name: "Completed" }));
-    await waitFor(() => expect(status()).toContain("Completed")); // the PATCH is still pending
-    fail();
-    await waitFor(() => expect(status()).toContain("Upcoming"));
+  it("day cards show the derived status and screen count; the chip opens the screens editor", async () => {
+    renderRoutes();
+    expect(await screen.findByRole("button", { name: "Status of Store b: Completed, 1 screen (edit screens)" })).toBeTruthy();
+    const chip = screen.getByRole("button", { name: /^Status of Store a: Upcoming, 1 screen/ });
+    await userEvent.click(chip);
+    expect(await screen.findByRole("region", { name: "Screen rows" })).toBeTruthy(); // status is edited per screen
   });
 
   it("reassigns a stop only after confirmation", async () => {
@@ -152,7 +144,7 @@ describe("RoutesTab", () => {
       reader.readAsText(created[0] as Blob);
     });
     expect(text.split("\r\n")).toHaveLength(5); // header + 4 stops
-    expect(text).toContain("Route Owner,Installer Name,Day,Stop #,ID,Store Name");
+    expect(text).toContain("Route Owner,Completed By,Day,Stop #,IBC#,Store Name");
 
     const day1 = screen.getByRole("region", { name: "Ann, day 1" });
     await userEvent.click(within(day1).getByRole("button", { name: /Copy addresses/ }));

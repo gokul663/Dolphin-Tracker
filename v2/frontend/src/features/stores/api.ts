@@ -8,7 +8,6 @@ import {
   type ProgressUpdate,
   type RoutesBundle,
   type ScreenInput,
-  type ScreenStatus,
   type Stop,
   type StoreDetailsUpdate,
 } from "@/lib/api/types";
@@ -160,11 +159,6 @@ export function useUpdateProgress(projectId: string) {
     onSuccess: (stop) => store(stop),
     onSettled: () => settle(client, projectId),
   });
-}
-
-/** Every screen of `stop` with `status` (the table's and day cards' one-click status, until the screens editor). */
-export function withStatus(stop: Pick<Stop, "screens">, status: ScreenStatus): ScreenInput[] {
-  return stop.screens.map((screen) => ({ ...screen, status }));
 }
 
 /** Replace a store's screen rows (PUT …/screens). Optimistic: the rows and the derived status show at once. */

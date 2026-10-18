@@ -1,3 +1,4 @@
+from dolphin_tracker.domain.errors import NotFoundError
 from dolphin_tracker.domain.models import JobStatus, Project, RoutingStatus, StopStatus
 from dolphin_tracker.services.routing import RoutingService
 from tests.test_projects_api import NoopInvoker, ProjectApiTestCase, stop_input
@@ -164,6 +165,36 @@ class InstallerOpsTests(ProjectApiTestCase):
         self.assertEqual(self.projects.get(self.pid).routing_job_id, "")
         uid = next(iter(self.layout()))
         self.assertEqual(self.post(f"/stops/{uid}/reassign", {"installer": "Zed"}).status_code, 422)
+
+    def strand_on_ghost(self) -> str:
+        """Leave one stop on an installer the project no longer lists (a rename that crashed half-way)."""
+        uid = next(u for u, (installer, _, _) in self.layout().items() if installer == "Ann")
+        self.stores.update_routing_many(self.pid, [(uid, {"installer": "Ghost"})])
+        return uid
+
+    def test_routes_show_stops_on_an_unlisted_installer(self):
+        uid = self.strand_on_ghost()
+        bundle = self.client.get(f"/api/projects/{self.pid}/routes").json()
+        self.assertEqual(bundle["installers"], ["Ann", "Bo", "Ghost"])
+        self.assertIn(uid, [stop["uid"] for day in bundle["routes"]["Ghost"] for stop in day])
+        self.assertEqual(bundle["stats"]["Ghost"]["total"], 1)
+        self.assertEqual(sum(stats["total"] for stats in bundle["stats"].values()), 24)  # nothing hidden
+
+    def test_reassign_moves_a_stop_off_an_unlisted_installer(self):
+        uid = self.strand_on_ghost()
+        response = self.post(f"/stops/{uid}/reassign", {"installer": "Bo"})
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()["old_installer"], "Ghost")
+        self.assertEqual(self.layout()[uid][0], "Bo")
+
+    def test_optimizer_stop_not_found_is_a_404(self):
+        uid = next(iter(self.layout()))
+        routing = RoutingService(self.projects, self.stores, self.jobs, NoopInvoker())
+        original = self.stores.list_all
+        self.stores.list_all = lambda pid: [stop for stop in original(pid) if stop.uid != uid]  # deleted meanwhile
+        with self.assertRaises(NotFoundError):
+            routing.reassign(self.pid, uid, "Bo")
+        self.assertEqual(self.projects.get(self.pid).routing_job_id, "")
 
     def test_sync_ops_keep_a_failed_status_visible(self):
         self.projects._items[self.pid] = self.projects.get(self.pid).model_copy(

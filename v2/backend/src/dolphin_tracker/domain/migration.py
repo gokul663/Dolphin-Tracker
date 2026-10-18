@@ -85,6 +85,8 @@ class ProjectReport:
     orphan_states: list[str] = field(default_factory=list)
     repaired_addresses: int = 0
     extra_fields: list[str] = field(default_factory=list)
+    derived_installers: bool = False  # the v1 doc had no installers list; it was rebuilt from the stops
+    unlisted_installer_stops: int = 0  # stops routed to an installer the project's list lacks
     old_kpi: Kpi | None = None
     new_kpi: Kpi | None = None
 
@@ -194,6 +196,12 @@ def transform_project(doc: Mapping[str, Any], states: Iterable[Mapping[str, Any]
     report.matched_states = len(matched)
     report.orphan_states = sorted(set(states_by_key) - matched)
 
+    installers = [name for name in (clean_cell(item) for item in doc.get("installers") or []) if name]
+    if not installers:  # v1 derived the list from the stops when the doc had none
+        installers = list(dict.fromkeys(stop.installer for stop in stops if stop.installer))
+        report.derived_installers = bool(installers)
+    report.unlisted_installer_stops = sum(1 for stop in stops if stop.installer and stop.installer not in installers)
+
     project_type = str(doc.get("project_type") or "")
     created_at = str(doc.get("created_at") or "") or None
     project = Project(
@@ -201,7 +209,7 @@ def transform_project(doc: Mapping[str, Any], states: Iterable[Mapping[str, Any]
         name=clean_cell(doc.get("name")) or project_id,
         pa=clean_cell(doc.get("pa")),
         project_type=ProjectType(project_type) if project_type in PROJECT_TYPES else ProjectType.NEW_INSTALLATION,
-        installers=[name for name in (clean_cell(item) for item in doc.get("installers") or []) if name],
+        installers=installers,
         field_agent=clean_cell(doc.get("field_agent")),
         partner_account=clean_cell(doc.get("partner_account")),
         pa_percentage=_percentage(doc.get("pa_percentage")),
@@ -242,6 +250,10 @@ def format_report(reports: Iterable[ProjectReport]) -> str:
             lines.append(f"    orphan state: {key}")
         if report.repaired_addresses:
             lines.append(f"    addresses repaired from geocoded text: {report.repaired_addresses}")
+        if report.derived_installers:
+            lines.append("    installers derived from stops (the v1 doc had none)")
+        if report.unlisted_installer_stops:
+            lines.append(f"    stops on unlisted installer: {report.unlisted_installer_stops}")
         if report.extra_fields:
             lines.append(f"    extra attributes kept as schema fields: {', '.join(report.extra_fields)}")
         for name in ("stops", "states", "matched_states"):

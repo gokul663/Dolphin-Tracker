@@ -55,6 +55,14 @@ def order_stops(stops: list[Stop]) -> list[Stop]:
     return sorted(stops, key=lambda stop: (stop.installer, stop.day, stop.seq, stop.display_id, stop.uid))
 
 
+def route_installers(installers: list[str], stops: list[Stop]) -> list[str]:
+    """The project's installers, then any other installer a stop is routed to (sorted), so no stop is hidden.
+
+    Unlisted installers appear after a crash between the two writes of a rename, or in migrated v1 data."""
+    listed = set(installers)
+    return [*installers, *sorted({stop.installer for stop in stops if stop.installer and stop.installer not in listed})]
+
+
 def group_routes(stops: list[Stop], installers: list[str]) -> dict[str, list[list[Stop]]]:
     """installer -> days (ascending day number, gaps collapsed as in v1) -> stops by seq."""
     by_installer: dict[str, dict[int, list[Stop]]] = {installer: defaultdict(list) for installer in installers}
@@ -138,7 +146,9 @@ class RoutingService:
     def routes(self, project_id: str) -> RoutesBundle:
         assert self._stores is not None
         project = self._project(project_id)
-        routes = group_routes(self._stores.list_all(project_id), project.installers)
+        stops = self._stores.list_all(project_id)
+        installers = route_installers(project.installers, stops)
+        routes = group_routes(stops, installers)
         stats = {}
         for installer, days in routes.items():
             total = sum(len(day) for day in days)
@@ -149,7 +159,7 @@ class RoutingService:
                 miles=round(sum(day_miles(day) for day in days), 1),
             )
         return RoutesBundle(
-            installers=project.installers,
+            installers=installers,
             stops_per_day=project.stops_per_day,
             routing_status=project.routing_status,
             routes=routes,
@@ -319,10 +329,15 @@ class RoutingService:
             if stop is None:
                 raise NotFoundError(f"Stop {stop_uid} not found")
             # Unassigned stops ride along under "" so they can be moved too; that bucket's layout is ignored.
-            routes = optimizer_routes(stops, [*project.installers, ""])
-            rerouted, _, old_installer = reassign_stop_preserving_days(
-                routes, stop_uid, installer, project.stops_per_day
-            )
+            routes = optimizer_routes(stops, [*route_installers(project.installers, stops), ""])
+            try:
+                rerouted, _, old_installer = reassign_stop_preserving_days(
+                    routes, stop_uid, installer, project.stops_per_day
+                )
+            except KeyError:  # target not in the routes; unreachable after the check above, kept distinct
+                raise
+            except LookupError as exc:  # the optimizer's "Stop not found"
+                raise NotFoundError(f"Stop {stop_uid} not found") from exc
             assignments = {
                 uid: assignment
                 for uid, assignment in self.assignments_from_routes(rerouted).items()

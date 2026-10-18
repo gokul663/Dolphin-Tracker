@@ -128,6 +128,20 @@ class TransformTests(unittest.TestCase):
         self.assertEqual((migrated.project.name, migrated.project.project_type.value), ("p", "new_installation"))
         self.assertEqual(migrated.stops[0].display_id, "S1")
 
+    def test_installers_derived_from_stops_when_the_doc_has_none(self):
+        migrated = transform_project({**V1_PROJECT, "installers": []}, STATES)
+        self.assertEqual(migrated.project.installers, ["Ann", "Bo"])  # order of first appearance
+        self.assertTrue(migrated.report.derived_installers)
+        self.assertEqual(migrated.report.unlisted_installer_stops, 0)
+        self.assertIn("installers derived from stops", format_report([migrated.report]))
+
+    def test_stops_on_unlisted_installer_are_reported(self):
+        migrated = transform_project({**V1_PROJECT, "installers": ["Ann"]}, STATES)
+        self.assertEqual(migrated.project.installers, ["Ann"])
+        self.assertFalse(migrated.report.derived_installers)
+        self.assertEqual(migrated.report.unlisted_installer_stops, 1)  # S3 on Bo
+        self.assertIn("stops on unlisted installer: 1", format_report([migrated.report]))
+
     def test_legacy_project_is_recognised(self):
         self.assertTrue(is_legacy("atlanta-default"))
         self.assertFalse(is_legacy("proj-1"))

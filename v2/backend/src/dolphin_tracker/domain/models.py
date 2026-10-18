@@ -179,7 +179,9 @@ class InstallerStats(ApiModel):
 
 
 class RoutesBundle(ApiModel):
-    """Whole-project payload for the Routes tab: per installer, days in order, stops by seq."""
+    """Whole-project payload for the Routes tab: per installer, days in order, stops by seq.
+
+    `installers` is the project's list followed by any installer a stop is routed to that the list lacks."""
 
     installers: list[str]
     stops_per_day: int

@@ -1045,3 +1045,25 @@ docs unchanged.
 `ValueError`.
 
 **Verified:** gates green (218 backend, 77 frontend).
+
+---
+
+## Y3 · Unlisted-installer stops visible; reassign 404; migration derives installers
+
+**Changed**
+- `services/routing.py` `route_installers(installers, stops)`: the project's list, then (sorted) any other
+  installer a stop is routed to. `routes()` groups and computes stats over it, and `RoutesBundle.installers`
+  returns it, so the Routes tab shows a card for the stray installer instead of hiding its stops.
+- `reassign` builds the optimizer layout over the same union, so a stop on an unlisted installer can be moved
+  off it. The optimizer's `LookupError("Stop not found")` becomes `NotFoundError` (404). The reassign *target*
+  must still be in `project.installers` (422 as before), and the reassign dropdown still lists only those.
+- `domain/migration.py`: when a v1 doc has no installers, the list is rebuilt from the stops (order of first
+  appearance), as v1 did. The parity report gains "installers derived from stops" and
+  "stops on unlisted installer: N" lines.
+- Not changed: rebalance/recluster still plan over `project.installers` only. Recluster reassigns every stop, so
+  it clears strays; rebalance keeps non-pending strays where they are.
+
+**Tests:** `/routes` with a stop on `Ghost` (card present, totals add up); reassign off `Ghost`; optimizer
+`LookupError` → `NotFoundError` with the slot released; migration with an empty and a partial installers list.
+
+**Verified:** gates green (223 backend, 77 frontend).

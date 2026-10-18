@@ -1,7 +1,8 @@
 import unittest
+from datetime import UTC, datetime
 
 from dolphin_tracker.domain.migration import format_report, is_legacy, legacy_keys, transform_project
-from dolphin_tracker.domain.models import StopStatus
+from dolphin_tracker.domain.models import StopStatus, now_iso
 
 V1_PROJECT = {
     "id": "proj-1",
@@ -141,6 +142,22 @@ class TransformTests(unittest.TestCase):
         self.assertFalse(migrated.report.derived_installers)
         self.assertEqual(migrated.report.unlisted_installer_stops, 1)  # S3 on Bo
         self.assertIn("stops on unlisted installer: 1", format_report([migrated.report]))
+
+    def test_day_accepts_float_strings(self):
+        first, second = V1_PROJECT["stops"][:2]
+        doc = {**V1_PROJECT, "stops": [{**first, "day": "2.0"}, {**second, "day": 3.0}]}
+        self.assertEqual([stop.day for stop in transform_project(doc, []).stops], [2, 3])
+        bad = {**V1_PROJECT, "stops": [{**V1_PROJECT["stops"][0], "day": "soon"}]}
+        self.assertEqual(transform_project(bad, []).stops[0].day, 1)
+
+    def test_mongo_datetimes_become_iso_with_timezone(self):
+        doc = {**V1_PROJECT, "created_at": datetime(2026, 5, 1, 9, 30), "updated_at": datetime(2026, 6, 2, tzinfo=UTC)}
+        states = [{**STATES[0], "updatedAt": datetime(2026, 6, 1, 10, 0, 5)}]
+        migrated = transform_project(doc, states)
+        self.assertEqual(migrated.project.created_at, "2026-05-01T09:30:00+00:00")
+        self.assertEqual(migrated.project.updated_at, "2026-06-02T00:00:00+00:00")
+        self.assertEqual(migrated.stops[0].updated_at, "2026-06-01T10:00:05+00:00")
+        self.assertLess(migrated.stops[0].updated_at, now_iso())  # sorts with values the app writes
 
     def test_legacy_project_is_recognised(self):
         self.assertTrue(is_legacy("atlanta-default"))

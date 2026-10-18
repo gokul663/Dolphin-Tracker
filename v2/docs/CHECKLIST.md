@@ -112,7 +112,7 @@ Tracks delivery against [PLAN.md](./PLAN.md). Tick items as they land; add sub-i
 - [x] Y6 append holds the routing slot
 - [x] Y7 rename installer_name writes threaded
 - [x] Y8 cp1252 replace; empty CSV header → column_N
-- [ ] Y9 migration day/datetime normalisation
+- [x] Y9 migration day/datetime normalisation
 - [x] Y10 invoker and cursor helpers out of services/dynamo coupling
 
 **Phase 5 — Store model v2 (§11)**

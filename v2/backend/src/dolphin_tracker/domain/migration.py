@@ -10,6 +10,7 @@ import uuid
 from collections import defaultdict
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import Any
 
 from dolphin_tracker.domain.addresses import apply_parsed_address
@@ -65,9 +66,18 @@ def _number(value: Any) -> float | None:
 
 def _day(value: Any) -> int:
     try:
-        return max(1, int(value))
-    except (TypeError, ValueError):
+        return max(1, int(float(value)))  # "2.0" and 2.0 are day 2, not the fallback
+    except (TypeError, ValueError, OverflowError):
         return 1
+
+
+def _iso(value: Any) -> str:
+    """A v1 timestamp as ISO 8601 with a timezone, so it sorts and compares with `now_iso()` values.
+
+    pymongo returns naive UTC datetimes; `str()` of those has a space and no offset. Strings pass through."""
+    if isinstance(value, datetime):
+        return (value if value.tzinfo else value.replace(tzinfo=UTC)).isoformat()
+    return str(value or "")
 
 
 def _percentage(value: Any) -> float | None:
@@ -189,7 +199,7 @@ def transform_project(doc: Mapping[str, Any], states: Iterable[Mapping[str, Any]
                 additional_task=bool(additional_task),
                 installer_name=clean_cell(state.get("installer_name")),
                 updated_by=clean_cell(state.get("updatedBy") or state.get("updated_by")),
-                **({"updated_at": str(state["updatedAt"])} if state.get("updatedAt") else {}),
+                **({"updated_at": _iso(state["updatedAt"])} if state.get("updatedAt") else {}),
             )
         )
     report.stops = len(stops)
@@ -203,7 +213,7 @@ def transform_project(doc: Mapping[str, Any], states: Iterable[Mapping[str, Any]
     report.unlisted_installer_stops = sum(1 for stop in stops if stop.installer and stop.installer not in installers)
 
     project_type = str(doc.get("project_type") or "")
-    created_at = str(doc.get("created_at") or "") or None
+    created_at = _iso(doc.get("created_at")) or None
     project = Project(
         id=project_id,
         name=clean_cell(doc.get("name")) or project_id,
@@ -221,7 +231,7 @@ def transform_project(doc: Mapping[str, Any], states: Iterable[Mapping[str, Any]
         routing_status=RoutingStatus.READY,
         stop_count=len(stops),
         **({"created_at": created_at} if created_at else {}),
-        **({"updated_at": str(doc["updated_at"])} if doc.get("updated_at") else {}),
+        **({"updated_at": _iso(doc["updated_at"])} if doc.get("updated_at") else {}),
     )
     report.new_kpi = kpi_summary(stop.model_dump(mode="json") for stop in stops)
     return Migrated(project=project, stops=stops, report=report)

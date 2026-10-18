@@ -1448,3 +1448,17 @@ The rename test checks one progress batch with only the stop whose `installer_na
   tests passing. The wrapper now exits with the gates' status. Y8's own changes were green.
 
 **Verified:** gates green (245 backend, 102 frontend).
+
+---
+
+## Y9 · Migration value handling
+
+**Changed** (`domain/migration.py`)
+- `_day` parses `int(float(value))`, so `"2.0"` / `2.0` are day 2 (they fell back to 1); garbage still → 1.
+- `_iso(value)`: Mongo `datetime`s (naive UTC from pymongo) become ISO 8601 with `+00:00`; strings pass
+  through. Used for the project's `created_at` / `updated_at` and each state's `updatedAt`, so they sort and
+  compare with `now_iso()` values.
+
+**Tests:** float-string days; naive and aware datetimes → ISO with offset, comparable with `now_iso()`.
+
+**Verified:** gates green (247 backend, 102 frontend).

@@ -92,7 +92,7 @@ Tracks delivery against [PLAN.md](./PLAN.md). Tick items as they land; add sub-i
 - [x] Places call skipped when geocoding fails; import start fails fast without a key outside local
 - [x] Schema field removal asks for confirmation when values exist
 - [x] CI drift check for the generated API client
-- [ ] Dashboard charts lazy-loaded
+- [x] Dashboard charts lazy-loaded
 
 **Review fixes (§10)**
 - [x] X1 Map fits bounds only when locations change

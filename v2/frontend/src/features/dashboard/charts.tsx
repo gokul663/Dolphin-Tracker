@@ -72,3 +72,22 @@ export function SitesBar({ data }: { data: { name: string; sites: number }[] }) 
     </ChartCard>
   );
 }
+
+/** The dashboard's chart row. The default export lets DashboardPage load Recharts lazily (§9 #9). */
+export default function ChartRow({
+  installers,
+  statuses,
+  sites,
+}: {
+  installers: { name: string; value: number }[];
+  statuses: { status: StopStatus; value: number }[];
+  sites: { name: string; sites: number }[];
+}) {
+  return (
+    <>
+      <InstallerPie data={installers} />
+      <StatusPie data={statuses} />
+      <SitesBar data={sites} />
+    </>
+  );
+}

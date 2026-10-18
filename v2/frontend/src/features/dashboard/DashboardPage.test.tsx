@@ -33,6 +33,15 @@ describe("DashboardPage", () => {
     expect(screen.getByText("Macon wave")).toBeTruthy();
   });
 
+  it("loads the chart row lazily after the page renders", async () => {
+    mockApi({ "GET /api/projects": () => ({ items: [makeSummary()], next_cursor: null }) });
+    renderWithProviders(<DashboardPage />);
+    await screen.findByText("Atlanta refresh");
+    expect(await screen.findByText("Sites by installer")).toBeTruthy();
+    expect(screen.getByText("Status breakdown")).toBeTruthy();
+    expect(screen.getByText("Sites per project")).toBeTruthy();
+  });
+
   it("narrows KPIs with the project filter", async () => {
     mockApi({ "GET /api/projects": () => ({ items: [makeSummary(), done], next_cursor: null }) });
     renderWithProviders(<DashboardPage />);

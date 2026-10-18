@@ -1303,3 +1303,21 @@ no PATCH; confirm saves. The existing schema test now mocks the usage call (paye
 **Verified:** gates green (236 backend, 89 frontend). Workflow parses (4 jobs). Locally: `make gen-api` twice
 leaves no diff (deterministic); adding a field to `MapsConfig` without committing the regenerated client makes
 the diff step exit 1. The workflow itself has not run on GitHub from here.
+
+---
+
+## D9 · §9 #9: dashboard charts lazy-loaded
+
+**Changed**
+- `features/dashboard/charts.tsx` gains a default-export `ChartRow` (the three charts). `DashboardPage` loads it
+  with `React.lazy` inside `Suspense`, with three pulsing card placeholders of the same height so the layout does
+  not jump.
+
+**Before / after** (`make frontend-build`): main chunk **1,103.46 kB → 700.68 kB** (gzip 333.64 → 217.55 kB);
+Recharts now ships in `charts-*.js` (399.78 kB, gzip 115.28 kB), fetched after the KPIs and project list.
+The remaining main chunk is mostly React, TanStack, Radix and the Maps loader; route-level splitting of the
+dashboard itself would be the next step if needed.
+
+**Tests:** the chart row appears after the page renders (`findByText` waits for the lazy chunk).
+
+**Verified:** gates green (236 backend, 90 frontend); `make frontend-build`.

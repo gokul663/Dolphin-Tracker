@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { lazy, Suspense, useMemo, useState } from "react";
 import { AlertTriangle, Briefcase, CheckCircle2, Clock, MapPin, Plus, Users, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -11,7 +11,6 @@ import {
   sitesPerProject,
   statusBreakdown,
 } from "@/features/dashboard/aggregate";
-import { InstallerPie, SitesBar, StatusPie } from "@/features/dashboard/charts";
 import { ProjectCard } from "@/features/dashboard/ProjectCard";
 import { ProjectFilter } from "@/features/dashboard/ProjectFilter";
 import { ImportWizard } from "@/features/imports/ImportWizard";
@@ -34,6 +33,16 @@ function KpiCard({ icon: Icon, label, value, color }: { icon: LucideIcon; label:
     </Card>
   );
 }
+
+// Recharts is the dashboard's largest dependency; it loads after the KPIs and project list render.
+const ChartRow = lazy(() => import("@/features/dashboard/charts"));
+const CHART_PLACEHOLDERS = (
+  <>
+    {["Sites by installer", "Status", "Sites per project"].map((label) => (
+      <Card key={label} aria-label={`${label} (loading)`} className="h-[300px] animate-pulse bg-slate-50" />
+    ))}
+  </>
+);
 
 export function DashboardPage() {
   const projectsQuery = useAllProjects();
@@ -75,9 +84,9 @@ export function DashboardPage() {
       </section>
 
       <section className="grid grid-cols-1 gap-5 lg:grid-cols-3">
-        <InstallerPie data={sitesByInstaller(scoped)} />
-        <StatusPie data={statusBreakdown(totals)} />
-        <SitesBar data={sitesPerProject(scoped)} />
+        <Suspense fallback={CHART_PLACEHOLDERS}>
+          <ChartRow installers={sitesByInstaller(scoped)} statuses={statusBreakdown(totals)} sites={sitesPerProject(scoped)} />
+        </Suspense>
       </section>
 
       <section className="space-y-3">

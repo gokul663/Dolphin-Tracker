@@ -1122,3 +1122,18 @@ connected in round 1 either).
 and the new installer shows. Confirmed the test fails with the hook call removed.
 
 **Verified:** gates green (227 backend, 81 frontend).
+
+---
+
+## X3 · Day-card status select optimistic
+
+**Changed**
+- `features/stores/cache.ts` `patchStopInRoutes(bundle, uid, patch)`: copy of the bundle with one stop patched;
+  other installers and days keep their identity.
+- `useUpdateProgress.onMutate` also cancels `keys.routes(id)`, snapshots the cached bundle and patches it;
+  `onError` restores it. The existing `onSettled` refetch of the bundle stays.
+
+**Tests:** `RoutesTab.test.tsx`: a DayCard status change shows the new value while the PATCH is pending and
+reverts when it fails (fails without the fix). `cache.test.ts`: `patchStopInRoutes` identity and no-op cases.
+
+**Verified:** gates green (227 backend, 84 frontend).

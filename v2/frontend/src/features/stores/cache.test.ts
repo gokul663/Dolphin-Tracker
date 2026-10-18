@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { patchPin, patchStopInPages, type StopPages } from "@/features/stores/cache";
-import type { Pin, Stop } from "@/lib/api/types";
+import { patchPin, patchStopInPages, patchStopInRoutes, type StopPages } from "@/features/stores/cache";
+import type { Pin, RoutesBundle, Stop } from "@/lib/api/types";
 
 const stop = (uid: string): Stop => ({
   uid, display_id: uid, store_name: uid, addr: "", city: "", state: "", zip: "", lat: null, lng: null,
@@ -32,5 +32,28 @@ describe("patchPin", () => {
   it("recolours on a status change and ignores other progress fields", () => {
     expect(patchPin(pins, "a", { status: "Complete" })?.[0]?.status).toBe("Complete");
     expect(patchPin(pins, "a", { comment: "x" })).toBe(pins);
+  });
+});
+
+describe("patchStopInRoutes", () => {
+  const bundle: RoutesBundle = {
+    installers: ["A", "B"],
+    stops_per_day: 8,
+    routing_status: "ready",
+    stats: {},
+    routes: { A: [[stop("a"), stop("b")], [stop("c")]], B: [[stop("d")]] },
+  };
+
+  it("patches the stop in place and keeps other installers and days identical", () => {
+    const next = patchStopInRoutes(bundle, "b", { status: "Complete" });
+    expect(next?.routes.A?.[0]?.[1]?.status).toBe("Complete");
+    expect(next?.routes.A?.[1]).toBe(bundle.routes.A?.[1]);
+    expect(next?.routes.B).toBe(bundle.routes.B);
+    expect(bundle.routes.A?.[0]?.[1]?.status).toBe("Incomplete");
+  });
+
+  it("returns the same bundle when the stop is not routed", () => {
+    expect(patchStopInRoutes(bundle, "zzz", { status: "Complete" })).toBe(bundle);
+    expect(patchStopInRoutes(undefined, "a", { status: "Complete" })).toBeUndefined();
   });
 });

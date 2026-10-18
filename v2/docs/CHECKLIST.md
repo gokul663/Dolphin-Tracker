@@ -97,7 +97,7 @@ Tracks delivery against [PLAN.md](./PLAN.md). Tick items as they land; add sub-i
 **Review fixes (§10)**
 - [x] X1 Map fits bounds only when locations change
 - [x] X2 Stores tab refreshes when a routing build finishes
-- [ ] X3 Day-card status select optimistic
+- [x] X3 Day-card status select optimistic
 - [ ] X4 Append retry does not resend a stale version
 - [ ] X5 Import wizard shows result/schema fetch errors
 - [ ] X6 Dashboard refreshes after append

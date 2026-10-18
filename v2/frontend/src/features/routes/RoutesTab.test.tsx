@@ -81,6 +81,22 @@ describe("RoutesTab", () => {
     expect(within(table).getAllByRole("link", { name: /Open \(1\)/ })).toHaveLength(3);
   });
 
+  it("updates a day-card status at once, before the bundle refetches, and rolls back on error", async () => {
+    let fail: () => void = () => {};
+    renderRoutes(makeProject(), {
+      "PATCH /api/projects/p1/stores/a/progress": () =>
+        new Promise((resolve) => {
+          fail = () => resolve(new Response(JSON.stringify({ detail: "nope" }), { status: 500 }));
+        }),
+    });
+    const status = () => screen.getByRole("combobox", { name: "Status of Store a" }).textContent;
+    await userEvent.click(await screen.findByRole("combobox", { name: "Status of Store a" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Complete" }));
+    await waitFor(() => expect(status()).toContain("Complete")); // the PATCH is still pending
+    fail();
+    await waitFor(() => expect(status()).toContain("Upcoming"));
+  });
+
   it("reassigns a stop only after confirmation", async () => {
     const { calls } = renderRoutes(makeProject(), {
       "POST /api/projects/p1/stops/a/reassign": () => ({ old_installer: "Ann", installer: "Bo", changed: ["a"] }),

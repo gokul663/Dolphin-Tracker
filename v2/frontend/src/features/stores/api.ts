@@ -1,8 +1,8 @@
 import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { keys } from "@/lib/api/keys";
 import { storesApi, type StoreFilters } from "@/lib/api/resources";
-import type { AppendStops, Pin, ProgressUpdate, Stop, StoreDetailsUpdate } from "@/lib/api/types";
-import { patchPin, patchStopInPages, type StopPages } from "@/features/stores/cache";
+import type { AppendStops, Pin, ProgressUpdate, RoutesBundle, Stop, StoreDetailsUpdate } from "@/lib/api/types";
+import { patchPin, patchStopInPages, patchStopInRoutes, type StopPages } from "@/features/stores/cache";
 
 export const STORE_PAGE_SIZE = 100;
 
@@ -57,7 +57,7 @@ export function useUpdateStoreDetails(projectId: string) {
   });
 }
 
-/** Progress edits are optimistic: lists, detail and pins update at once and roll back on error. */
+/** Progress edits are optimistic: lists, detail, pins and the routes bundle update at once and roll back on error. */
 export function useUpdateProgress(projectId: string) {
   const client = useQueryClient();
   const store = useStoreStopInCaches(projectId);
@@ -65,20 +65,26 @@ export function useUpdateProgress(projectId: string) {
     mutationFn: ({ uid, body }: { uid: string; body: ProgressUpdate }) =>
       storesApi.updateProgress(projectId, uid, body),
     onMutate: async ({ uid, body }) => {
-      await client.cancelQueries({ queryKey: keys.stores(projectId) });
+      await Promise.all([
+        client.cancelQueries({ queryKey: keys.stores(projectId) }),
+        client.cancelQueries({ queryKey: keys.routes(projectId) }),
+      ]);
       const lists = client.getQueriesData<StopPages>({ queryKey: [...keys.stores(projectId), "list"] });
       const pins = client.getQueriesData<Pin[]>({ queryKey: [...keys.stores(projectId), "pins"] });
       const detail = client.getQueryData<Stop>(keys.store(projectId, uid));
+      const routes = client.getQueryData<RoutesBundle>(keys.routes(projectId));
       const patch = Object.fromEntries(Object.entries(body).filter(([, value]) => value !== undefined)) as Partial<Stop>;
       for (const [key, data] of lists) client.setQueryData(key, patchStopInPages(data, uid, patch));
       for (const [key, data] of pins) client.setQueryData(key, patchPin(data, uid, patch));
       if (detail) client.setQueryData(keys.store(projectId, uid), { ...detail, ...patch });
-      return { lists, pins, detail };
+      if (routes) client.setQueryData(keys.routes(projectId), patchStopInRoutes(routes, uid, patch));
+      return { lists, pins, detail, routes };
     },
     onError: (_error, { uid }, context) => {
       for (const [key, data] of context?.lists ?? []) client.setQueryData(key, data);
       for (const [key, data] of context?.pins ?? []) client.setQueryData(key, data);
       if (context?.detail) client.setQueryData(keys.store(projectId, uid), context.detail);
+      if (context?.routes) client.setQueryData(keys.routes(projectId), context.routes);
     },
     onSuccess: (stop) => store(stop),
     onSettled: () =>

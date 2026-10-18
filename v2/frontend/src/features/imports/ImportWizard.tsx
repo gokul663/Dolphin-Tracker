@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useNavigate } from "react-router";
@@ -65,6 +65,7 @@ function WizardBody({ appendTo, onClose }: { appendTo: Project | null; onClose: 
   const [mapping, setMapping] = useState<ColumnMapping>({});
   const [dropInvalid, setDropInvalid] = useState(false);
   const [appended, setAppended] = useState<AppendResult | null>(null);
+  const savedProject = useRef<Project | null>(null); // the project as the last successful schema PATCH returned it
   const defaults = useDefaultFieldSchema();
   const schema: FieldDef[] = useMemo(() => appendTo?.field_schema ?? defaults.data ?? [], [appendTo, defaults.data]);
 
@@ -109,8 +110,11 @@ function WizardBody({ appendTo, onClose }: { appendTo: Project | null; onClose: 
     const stops = buildStops(rows, mapping, targetSchema, { dropInvalid });
     try {
       if (appendTo) {
-        if (targetSchema.length > schema.length) {
-          await updateSchema.mutateAsync({ field_schema: targetSchema, expected_version: appendTo.version });
+        // A retry after a failed append builds on the schema PATCH that already succeeded (its new version),
+        // instead of resending the dashboard's stale version and getting 409 forever.
+        const base = savedProject.current ?? appendTo;
+        if (targetSchema.length > base.field_schema.length) {
+          savedProject.current = await updateSchema.mutateAsync({ field_schema: targetSchema, expected_version: base.version });
         }
         const pa = rows.filter((row) => !row.excluded).map((row) => row.pa).filter(Boolean);
         setAppended(await append.mutateAsync({ stops, pa: [...new Set(pa)].join(", ") }));

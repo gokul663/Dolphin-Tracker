@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ImportWizard } from "@/features/imports/ImportWizard";
-import { mockApi, renderWithProviders } from "@/test/render";
+import { jsonError, mockApi, renderWithProviders } from "@/test/render";
 import { makeProject } from "@/test/fixtures";
 import { DEFAULT_SCHEMA_FOR_TESTS } from "@/test/schema";
 import type { ImportResult, ImportRow } from "@/lib/api/types";
@@ -108,6 +108,33 @@ describe("ImportWizard: new project", () => {
 });
 
 describe("ImportWizard: append", () => {
+  it("retries a failed append without re-sending the schema PATCH with a stale version", async () => {
+    const project = makeProject({ id: "p1", version: 4 });
+    let appendFails = true;
+    const { calls } = importRoutes({
+      "PATCH /api/projects/p1": (_url, init) => {
+        const body = JSON.parse(String(init.body)) as { expected_version: number; field_schema: unknown[] };
+        if (body.expected_version !== 4) return jsonError(409, "Project was modified concurrently");
+        return { ...project, version: 5, field_schema: body.field_schema };
+      },
+      "POST /api/projects/p1/stores/append": () =>
+        appendFails ? jsonError(409, "Routing is in progress") : { appended: 3, total: 6, skipped: [] },
+    });
+    renderWithProviders(<ImportWizard open appendTo={project} onClose={() => {}} />);
+    await uploadSheet();
+    await fixReviewRows();
+    await userEvent.click(screen.getByRole("button", { name: /Next: map columns/ }));
+    await userEvent.click(screen.getByRole("combobox", { name: "Field for column screens" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Add as a new field" }));
+    await userEvent.click(screen.getByRole("button", { name: "Append 3 stores" }));
+    await waitFor(() => expect(calls.filter((call) => call.url.pathname.endsWith("/stores/append"))).toHaveLength(1));
+
+    appendFails = false;
+    await userEvent.click(screen.getByRole("button", { name: "Append 3 stores" }));
+    expect(await screen.findByText(/Appended 3 stores; the project now has 6/)).toBeTruthy();
+    expect(calls.filter((call) => call.method === "PATCH")).toHaveLength(1); // the schema was saved once
+  });
+
   it("adds new fields to the project schema, appends and lists skipped duplicates", async () => {
     const project = makeProject({ id: "p1", version: 4 });
     const { calls } = importRoutes({

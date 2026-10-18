@@ -1137,3 +1137,17 @@ and the new installer shows. Confirmed the test fails with the hook call removed
 reverts when it fails (fails without the fix). `cache.test.ts`: `patchStopInRoutes` identity and no-op cases.
 
 **Verified:** gates green (227 backend, 84 frontend).
+
+---
+
+## X4 · Append retry does not resend a stale version
+
+**Changed**
+- `ImportWizard` keeps the project returned by a successful schema PATCH in a ref. A retry compares the target
+  schema against that project's `field_schema` and, if more fields were added meanwhile, PATCHes with its
+  `version`. Normally the retry skips the PATCH and only re-posts the append.
+
+**Tests:** `ImportWizard.test.tsx`: schema PATCH succeeds, append fails with 409, retry appends without a second
+PATCH (the fake 409s any PATCH with the old version). Fails without the fix.
+
+**Verified:** gates green (227 backend, 85 frontend).

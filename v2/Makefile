@@ -16,7 +16,7 @@ LOCAL_AWS := AWS_ACCESS_KEY_ID=local AWS_SECRET_ACCESS_KEY=local AWS_DEFAULT_REG
 .PHONY: help setup backend-setup infra-setup frontend-setup ddb-moto \
         backend-dev backend-test backend-lint build-lambda \
         frontend-dev frontend-build frontend-test frontend-typecheck \
-        infra-synth infra-diff infra-deploy ddb-up ddb-down ddb-table gen-api
+        infra-test infra-synth infra-diff infra-deploy ddb-up ddb-down ddb-table gen-api
 
 help:
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-18s %s\n", $$1, $$2}'
@@ -55,6 +55,9 @@ frontend-test: ## Run frontend unit tests
 
 frontend-typecheck: ## Type-check the frontend
 	cd $(FRONTEND) && $(NODE_SETUP); npm run typecheck
+
+infra-test: ## Unit-test the CDK config (no synth)
+	cd $(INFRA) && .venv/bin/python -m unittest discover -s tests
 
 infra-synth: build-lambda ## Synthesize CloudFormation for ENV (default dev)
 	cd $(INFRA) && $(NODE_SETUP); source .venv/bin/activate && $(CDK) synth -c env=$(ENV)

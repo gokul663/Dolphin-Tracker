@@ -38,6 +38,7 @@ class ApiStack(cdk.Stack):
         self, scope: Construct, construct_id: str, *, cfg: EnvConfig, table: dynamodb.ITableV2, **kwargs
     ) -> None:
         super().__init__(scope, construct_id, **kwargs)
+        cors_origins = cfg.allowed_origins()  # raises (fails synth) when empty or "*"
 
         files_bucket = s3.Bucket(
             self,
@@ -54,7 +55,7 @@ class ApiStack(cdk.Stack):
             cors=[
                 s3.CorsRule(
                     allowed_methods=[s3.HttpMethods.PUT, s3.HttpMethods.GET],
-                    allowed_origins=cfg.cors_origins or ["*"],
+                    allowed_origins=cors_origins,
                     allowed_headers=["*"],
                     max_age=3600,
                 )
@@ -73,7 +74,8 @@ class ApiStack(cdk.Stack):
             "DT_TABLE_NAME": table.table_name,
             "DT_FILES_BUCKET": files_bucket.bucket_name,
             "DT_GOOGLE_SERVER_KEY_PARAM": cfg.ssm_google_server_key,
-            "DT_CORS_ORIGINS": ",".join(cfg.cors_origins),
+            "DT_CORS_ORIGINS": ",".join(cors_origins),
+            "DT_GOOGLE_BROWSER_KEY": cfg.google_browser_key,
             "POWERTOOLS_SERVICE_NAME": "dolphin-tracker",
             "LOG_LEVEL": "INFO",
         }
@@ -117,7 +119,7 @@ class ApiStack(cdk.Stack):
             "HttpApi",
             api_name=f"dolphin-tracker-{cfg.name}",
             cors_preflight=apigwv2.CorsPreflightOptions(
-                allow_origins=cfg.cors_origins or ["*"],
+                allow_origins=cors_origins,
                 allow_methods=[apigwv2.CorsHttpMethod.ANY],
                 allow_headers=["authorization", "content-type"],
                 max_age=Duration.hours(1),

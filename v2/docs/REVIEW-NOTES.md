@@ -1200,3 +1200,26 @@ dashboard are separate routes, so the test checks the invalidation the dashboard
 `domain.cursors`.
 
 **Verified:** gates green (230 backend, 88 frontend).
+
+---
+
+## D1 · §9 #1: browser Maps key via infra config; CORS never `*`
+
+**Changed**
+- `infra/config.py` `EnvConfig`: `google_browser_key` (public, referrer-restricted) and `cloudfront_domain`.
+  Both can also come from CDK context (`-c google_browser_key=… -c cloudfront_domain=…`) so the key need not
+  be committed; `load(env, context)` applies only those two keys.
+- `EnvConfig.allowed_origins()`: `cors_origins` plus `https://` for `domain_name` and `cloudfront_domain`,
+  de-duplicated. Raises on `*` and on an empty list, so `cdk synth` fails instead of falling back.
+- `ApiStack` uses it for the S3 bucket CORS, the HTTP API preflight and `DT_CORS_ORIGINS`, and sets
+  `DT_GOOGLE_BROWSER_KEY`.
+- Prod still has `cors_origins=[]`, so **`cdk synth -c env=prod` now fails** with "no CORS origins" until a
+  domain or the CloudFront domain is configured. That is the decision as written; the CloudFront domain is only
+  known after the first Web deploy, so a first prod deploy needs `-c cloudfront_domain=…` or a `domain_name`.
+- New `make infra-test` (stdlib `unittest`, no synth) and `infra/tests/test_config.py`. Not part of the four
+  gates or CI.
+
+**Verified:** gates green (230 backend, 88 frontend); `make infra-test` (5 tests). `cdk synth -c env=dev
+-c google_browser_key=browser-test` (output to a scratch dir): bucket CORS, API CORS and both Lambdas'
+`DT_CORS_ORIGINS` are `http://localhost:5173`; `DT_GOOGLE_BROWSER_KEY` is set. `cdk synth -c env=prod` exits 1
+with the "no CORS origins" message.

@@ -4,14 +4,14 @@ import os
 
 import aws_cdk as cdk
 
-from config import load
+from config import CONTEXT_OVERRIDES, load
 from stacks.api_stack import ApiStack
 from stacks.data_stack import DataStack
 from stacks.web_stack import WebStack
 
 app = cdk.App()
 env_name = app.node.try_get_context("env") or "dev"
-cfg = load(env_name)
+cfg = load(env_name, {key: app.node.try_get_context(key) for key in CONTEXT_OVERRIDES})
 
 aws_env = cdk.Environment(
     account=os.environ.get("CDK_DEFAULT_ACCOUNT"),

@@ -184,16 +184,16 @@ class RoutingService:
     def _stale_before() -> str:
         return (datetime.now(UTC) - STALE_BUILD).isoformat()
 
-    def enqueue(self, project_id: str, mode: str, *, installers: list[str] | None = None, **payload: Any) -> Job:
+    def enqueue(self, project_id: str, mode: str, *, add_installer: str | None = None, **payload: Any) -> Job:
         """Claim the project's routing slot and start a build. ConflictError (409) while one is running.
 
-        `installers`, when given, replaces the project's installer list in the same conditional write."""
+        `add_installer`, when given, is appended to the installer list in the same conditional write."""
         assert self._projects is not None and self._jobs is not None
         job = self.new_job(project_id, mode, **payload)
         self._jobs.put(job)
         try:
             self._projects.begin_routing(
-                project_id, job.id, stale_before=self._stale_before(), installers=installers
+                project_id, job.id, stale_before=self._stale_before(), add_installer=add_installer
             )
         except Exception as exc:
             self._jobs.set_status(job.id, JobStatus.FAILED, message=str(exc))
@@ -275,9 +275,7 @@ class RoutingService:
             raise ValidationFailed("Installer name cannot be empty")
         if name in project.installers:
             raise ConflictError("Installer name already exists")
-        return self.enqueue(
-            project_id, "add_installer", installers=[*project.installers, name], new_installer=name
-        )
+        return self.enqueue(project_id, "add_installer", add_installer=name, new_installer=name)
 
     def rebalance(self, project_id: str) -> Job:
         project = self._project(project_id)

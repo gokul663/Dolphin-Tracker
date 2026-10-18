@@ -67,6 +67,20 @@ class InstallerOpsTests(ProjectApiTestCase):
         self.assert_fixed_stops_kept(done)
         self.check_caps(pending_only=True)
 
+    def test_add_installer_keeps_a_rename_that_lands_in_between(self):
+        routing = RoutingService(self.projects, self.stores, self.jobs, NoopInvoker())
+        original = self.projects.get
+
+        def get_then_rename(project_id):
+            project = original(project_id)  # add_installer reads ["Ann", "Bo"] here...
+            self.projects.get = original
+            routing.rename_installer(project_id, "Bo", "Bob")  # ...then a rename completes
+            return project
+
+        self.projects.get = get_then_rename
+        routing.add_installer(self.pid, "Cy")
+        self.assertEqual(self.projects.get(self.pid).installers, ["Ann", "Bob", "Cy"])
+
     def test_add_installer_validation(self):
         self.assertEqual(self.post("/installers", {"name": "Ann"}).status_code, 409)
         self.assertEqual(self.post("/installers", {"name": "   "}).status_code, 422)

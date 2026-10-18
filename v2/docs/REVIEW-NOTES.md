@@ -1370,3 +1370,21 @@ edit kind; `editedKeys`; 409 invalidation. Dashboard delete with a trailing spac
 error states were covered in X5.)
 
 **Verified:** gates green (236 backend, 102 frontend).
+
+---
+
+## Y5 · `add_installer` appends atomically
+
+**Changed**
+- `begin_routing(..., add_installer=name)` replaces `installers=[...]`. DynamoDB:
+  `SET installers = list_append(if_not_exists(installers, :empty), :new)` with `NOT contains(installers, :name)`
+  in the same condition as the slot claim. A rename that lands between the service's read and this write is
+  kept. On a failed condition the repository re-reads to say which rule failed ("Installer name already exists"
+  vs "Routing is already in progress"). The in-memory fake appends to its current list the same way.
+- `RoutingService.enqueue(..., add_installer=)` passes it through; `add_installer` no longer builds the list.
+
+**Tests:** moto: append onto a list that changed after the caller read it; duplicate → `ConflictError`, slot not
+claimed. Fakes: a rename completing between `add_installer`'s read and its claim survives (fails on the old
+whole-list write).
+
+**Verified:** gates green (238 backend, 102 frontend).

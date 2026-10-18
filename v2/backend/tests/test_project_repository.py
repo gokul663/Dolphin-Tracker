@@ -82,6 +82,17 @@ class DynamoProjectRepositoryTests(unittest.TestCase):
         with self.assertRaises(NotFoundError):
             self.repo.begin_routing("missing", "job-c", stale_before=long_ago)
 
+    def test_begin_routing_appends_an_installer_to_the_current_list(self):
+        self.repo.put(make_project("p1", "2026-10-01T00:00:00+00:00"))
+        long_ago = "2026-01-01T00:00:00+00:00"
+        self.repo.update("p1", {"installers": ["Ann", "Bob"]})  # a rename landed after the caller read the list
+        claimed = self.repo.begin_routing("p1", "job-a", stale_before=long_ago, add_installer="Cy")
+        self.assertEqual(claimed.installers, ["Ann", "Bob", "Cy"])
+        self.repo.finish_routing("p1", "job-a", RoutingStatus.READY)
+        with self.assertRaisesRegex(ConflictError, "already exists"):
+            self.repo.begin_routing("p1", "job-b", stale_before=long_ago, add_installer="Cy")
+        self.assertEqual(self.repo.get("p1").routing_job_id, "")  # the failed claim changed nothing
+
     def test_stale_build_can_be_taken_over(self):
         self.repo.put(make_project("p1", "2026-10-01T00:00:00+00:00"))
         self.repo.begin_routing("p1", "job-a", stale_before="2026-01-01T00:00:00+00:00")

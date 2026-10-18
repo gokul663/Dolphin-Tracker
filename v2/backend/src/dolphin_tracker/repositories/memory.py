@@ -51,7 +51,7 @@ class InMemoryProjectRepository:
         self._items.pop(project_id, None)
 
     def begin_routing(
-        self, project_id: str, job_id: str, *, stale_before: str, installers: list[str] | None = None
+        self, project_id: str, job_id: str, *, stale_before: str, add_installer: str | None = None
     ) -> Project:
         current = self._items.get(project_id)
         if current is None:
@@ -61,8 +61,10 @@ class InMemoryProjectRepository:
         changes: dict[str, Any] = {
             "routing_status": RoutingStatus.BUILDING, "routing_job_id": job_id, "updated_at": now_iso()
         }
-        if installers is not None:
-            changes["installers"] = list(installers)
+        if add_installer is not None:
+            if add_installer in current.installers:
+                raise ConflictError("Installer name already exists")
+            changes["installers"] = [*current.installers, add_installer]  # append to the current list, like Dynamo
         updated = current.model_copy(update=changes)
         self._items[project_id] = updated
         return updated.model_copy(deep=True)

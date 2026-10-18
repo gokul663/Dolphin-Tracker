@@ -29,11 +29,12 @@ class ProjectRepository(Protocol):
     def update(self, project_id: str, changes: dict[str, Any], *, expected_version: int | None = None) -> Project: ...
     def delete(self, project_id: str) -> None: ...
     def begin_routing(
-        self, project_id: str, job_id: str, *, stale_before: str, installers: list[str] | None = None
+        self, project_id: str, job_id: str, *, stale_before: str, add_installer: str | None = None
     ) -> Project:
         """Claim the routing slot for `job_id` (§3.2). ConflictError while another build is in progress, unless
-        that build's META has not been touched since `stale_before`. `installers`, when given, is set in the same
-        conditional write (adding an installer)."""
+        that build's META has not been touched since `stale_before`. `add_installer`, when given, is appended to
+        `installers` in the same conditional write (never a whole-list overwrite, so a concurrent rename is not
+        lost); ConflictError if the name is already listed."""
         ...
     def finish_routing(self, project_id: str, job_id: str, status: RoutingStatus) -> bool:
         """Release the slot if `job_id` still holds it. False means a newer job superseded this one."""
@@ -108,7 +109,7 @@ class DynamoProjectRepository:
         return self._from_item(response["Attributes"])
 
     def begin_routing(
-        self, project_id: str, job_id: str, *, stale_before: str, installers: list[str] | None = None
+        self, project_id: str, job_id: str, *, stale_before: str, add_installer: str | None = None
     ) -> Project:
         expression = "SET routing_status = :building, routing_job_id = :job, updated_at = :now"
         values: dict[str, Any] = {
@@ -117,22 +118,27 @@ class DynamoProjectRepository:
             ":now": now_iso(),
             ":stale": stale_before,
         }
-        if installers is not None:
-            expression += ", installers = :installers"
-            values[":installers"] = installers
+        condition = "attribute_exists(PK) AND (routing_status <> :building OR updated_at < :stale)"
+        if add_installer is not None:
+            expression += ", installers = list_append(if_not_exists(installers, :empty), :new_installer)"
+            condition += " AND NOT contains(installers, :name)"
+            values.update({":empty": [], ":new_installer": [add_installer], ":name": add_installer})
         try:
             response = self._table.update_item(
                 Key=Keys.project(project_id),
                 UpdateExpression=expression,
-                ConditionExpression="attribute_exists(PK) AND (routing_status <> :building OR updated_at < :stale)",
+                ConditionExpression=condition,
                 ExpressionAttributeValues=values,
                 ReturnValues="ALL_NEW",
             )
         except ClientError as exc:
             if exc.response["Error"]["Code"] != "ConditionalCheckFailedException":
                 raise
-            if self.get(project_id) is None:
+            current = self.get(project_id)
+            if current is None:
                 raise NotFoundError(f"Project {project_id} not found") from exc
+            if add_installer is not None and add_installer in current.installers:
+                raise ConflictError("Installer name already exists") from exc
             raise ConflictError("Routing is already in progress for this project") from exc
         return self._from_item(response["Attributes"])
 

@@ -99,7 +99,8 @@ export function useAppendStores(projectId: string) {
   const client = useQueryClient();
   return useMutation({
     mutationFn: (body: AppendStops) => storesApi.append(projectId, body),
-    onSuccess: () => client.invalidateQueries({ queryKey: keys.project(projectId) }),
+    // `keys.projects` is the prefix of both the dashboard list and everything under this project.
+    onSuccess: () => client.invalidateQueries({ queryKey: keys.projects }),
   });
 }
 

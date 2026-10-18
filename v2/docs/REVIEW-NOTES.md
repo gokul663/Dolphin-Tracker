@@ -1164,3 +1164,17 @@ PATCH (the fake 409s any PATCH with the old version). Fails without the fix.
 **Tests:** result fetch 500 → alert → retry → review table; default-schema 503 → alert → retry → alert gone.
 
 **Verified:** gates green (227 backend, 87 frontend).
+
+---
+
+## X6 · Dashboard refreshes after append
+
+**Changed**
+- `useAppendStores.onSuccess` invalidates `keys.projects` (`["projects"]`), the prefix of both the dashboard list
+  (`["projects","list",limit]`) and everything under the project, instead of `keys.project(id)` only.
+
+**Tests:** `features/stores/api.test.tsx` (new): after an append, the cached dashboard list and the project are
+both invalidated. **Deviation:** the handoff named "append → dashboard card total updates"; the wizard and the
+dashboard are separate routes, so the test checks the invalidation the dashboard depends on, at the hook.
+
+**Verified:** gates green (227 backend, 88 frontend).

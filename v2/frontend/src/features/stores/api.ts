@@ -34,6 +34,24 @@ export function usePins(projectId: string, filters: StoreFilters) {
   });
 }
 
+/** Values per filter with counts, under the other active filters (greys out filters with nothing to pick). */
+export function useFilterOptions(projectId: string, filters: StoreFilters) {
+  return useQuery({
+    queryKey: keys.storeFacets(projectId, filters),
+    queryFn: () => storesApi.filters(projectId, filters),
+    placeholderData: keepPreviousData,
+  });
+}
+
+/** Pending stores per state, top 10, under every active filter except State. */
+export function useStoresByState(projectId: string, filters: StoreFilters) {
+  return useQuery({
+    queryKey: keys.byState(projectId, { ...filters, state: [] }),
+    queryFn: () => storesApi.byState(projectId, { ...filters, state: [] }),
+    placeholderData: keepPreviousData,
+  });
+}
+
 export function useStore(projectId: string, uid: string | null) {
   return useQuery({
     queryKey: keys.store(projectId, uid ?? ""),

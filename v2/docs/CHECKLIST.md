@@ -123,6 +123,6 @@ Tracks delivery against [PLAN.md](./PLAN.md). Tick items as they land; add sub-i
 - [x] S5 Routing pending set on derived status
 - [x] S6 Migration v2 status mapping and parity
 - [x] S7 Store drawer and table v2
-- [ ] S8 Filters with greyed empties, top-states chart, KPIs
+- [x] S8 Filters with greyed empties, top-states chart, KPIs
 - [ ] S9 Import wizard v2: mapping override, duplicates, screens preview
 - [ ] S10 Routes tab follow-through

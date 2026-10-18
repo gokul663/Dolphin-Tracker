@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useProject, useRefreshWhenRoutingFinishes } from "@/features/projects/api";
+import { ProjectKpis } from "@/features/projects/ProjectKpis";
 import { RoutingBanner } from "@/features/projects/RoutingBanner";
 import { ApiError, type Project } from "@/lib/api/types";
 import { PROJECT_TYPE_LABELS } from "@/lib/status";
@@ -54,6 +55,9 @@ export function ProjectPage() {
             <span>· {project.stop_count} stores</span>
             <span>· {project.installers.length} installers</span>
             <span>· {project.stops_per_day} stops/day</span>
+          </div>
+          <div className="mt-2">
+            <ProjectKpis kpi={project.kpi} />
           </div>
         </div>
         <nav aria-label="Project sections" className="flex gap-1 rounded-lg border bg-white p-1">

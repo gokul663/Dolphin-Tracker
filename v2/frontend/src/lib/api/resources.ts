@@ -25,15 +25,26 @@ import type {
   ReassignResult,
   RoutesBundle,
   Stop,
+  StateCount,
   StoreFieldSpec,
+  StoreFilterOptions,
   StopStatus,
   StoreDetailsUpdate,
 } from "@/lib/api/types";
 
+/** The store list/pins/export/facet query (STORE-MODEL §5). Repeated values OR together; filters AND. */
 export interface StoreFilters {
   status?: StopStatus[];
   /** "" selects unassigned stops. */
   installer?: string[];
+  pa?: string[];
+  state?: string[];
+  city?: string[];
+  dma?: string[];
+  venue_type?: string[];
+  /** Any screen's venue id. */
+  dd_code?: string[];
+  screen_size?: string[];
   q?: string;
   sort?: string;
   dir?: "asc" | "desc";
@@ -45,6 +56,13 @@ function storeQuery(filters: StoreFilters) {
   return {
     status: filters.status,
     installer: filters.installer,
+    pa: filters.pa,
+    state: filters.state,
+    city: filters.city,
+    dma: filters.dma,
+    venue_type: filters.venue_type,
+    dd_code: filters.dd_code,
+    screen_size: filters.screen_size,
     q: filters.q || undefined,
     sort: filters.sort,
     dir: filters.dir,
@@ -69,7 +87,7 @@ export const placesApi = {
 export const projectsApi = {
   list: (params: { limit?: number; cursor?: string | null } = {}) =>
     api<Page<ProjectSummary>>("/projects", { query: { limit: params.limit, cursor: params.cursor } }),
-  get: (id: string) => api<Project>(`/projects/${enc(id)}`),
+  get: (id: string) => api<ProjectSummary>(`/projects/${enc(id)}`),
   create: (body: ProjectCreate) => api<ProjectCreated>("/projects", { method: "POST", body }),
   update: (id: string, body: ProjectUpdate) => api<Project>(`/projects/${enc(id)}`, { method: "PATCH", body }),
   remove: (id: string, confirm: string) =>
@@ -95,6 +113,10 @@ export const storesApi = {
     }),
   pins: (projectId: string, filters: StoreFilters = {}) =>
     api<Pin[]>(`/projects/${enc(projectId)}/stores/pins`, { query: storeQuery(filters) }),
+  filters: (projectId: string, filters: StoreFilters) =>
+    api<StoreFilterOptions>(`/projects/${enc(projectId)}/stores/filters`, { query: storeQuery(filters) }),
+  byState: (projectId: string, filters: StoreFilters, pending = true) =>
+    api<StateCount[]>(`/projects/${enc(projectId)}/stores/by-state`, { query: { ...storeQuery(filters), pending } }),
   fieldUsage: (projectId: string) => api<Record<string, number>>(`/projects/${enc(projectId)}/stores/field-usage`),
   /** A plain URL for an <a download> link: the browser streams the CSV itself. */
   exportUrl: (projectId: string, filters: StoreFilters) =>

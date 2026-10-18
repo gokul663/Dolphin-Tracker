@@ -1,5 +1,5 @@
 import { lazy, Suspense, useMemo, useState } from "react";
-import { AlertTriangle, Briefcase, CheckCircle2, Clock, MapPin, Plus, Users, type LucideIcon } from "lucide-react";
+import { AlertTriangle, Briefcase, CheckCircle2, Clock, MapPin, MonitorPlay, Plus, Users, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -20,7 +20,7 @@ import type { Project } from "@/lib/api/types";
 
 type TabValue = "all" | "ongoing" | "completed";
 
-function KpiCard({ icon: Icon, label, value, color }: { icon: LucideIcon; label: string; value: number; color: string }) {
+function KpiCard({ icon: Icon, label, value, color, detail }: { icon: LucideIcon; label: string; value: number; color: string; detail?: string }) {
   return (
     <Card role="group" aria-label={label} className="flex-row items-center gap-4 p-5 transition-all hover:border-brand/60 hover:shadow-md">
       <div className="rounded-xl p-3" style={{ background: `${color}1A`, color }}>
@@ -29,6 +29,7 @@ function KpiCard({ icon: Icon, label, value, color }: { icon: LucideIcon; label:
       <div>
         <div className="font-mono text-2xl font-bold leading-none">{value}</div>
         <div className="mt-1.5 text-[11px] uppercase tracking-wider text-slate-500">{label}</div>
+        {detail && <div className="mt-0.5 font-mono text-[10px] text-slate-400">{detail}</div>}
       </div>
     </Card>
   );
@@ -73,13 +74,20 @@ export function DashboardPage() {
           <h2 className="font-mono text-xs uppercase tracking-[2px] text-slate-500">Key performance indicators</h2>
           <ProjectFilter projects={projects} selected={selected} onChange={setSelected} />
         </div>
-        <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-6">
+        <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-7">
           <KpiCard icon={Briefcase} label="Total projects" value={totals.projects} color="#0F5B7C" />
           <KpiCard icon={MapPin} label="Total sites" value={totals.sites} color="#0891b2" />
           <KpiCard icon={Users} label="Total installers" value={totals.installers} color="#7c3aed" />
           <KpiCard icon={CheckCircle2} label="Completed" value={totals.complete} color="#16a34a" />
           <KpiCard icon={Clock} label="Upcoming" value={totals.pending} color="#d97706" />
           <KpiCard icon={AlertTriangle} label="Offline" value={totals.offline} color="#dc2626" />
+          <KpiCard
+            icon={MonitorPlay}
+            label="Screens"
+            value={totals.screens.total}
+            color="#4f46e5"
+            detail={`Dolphin ${totals.screens.actualDolphin}/${totals.screens.committedDolphin} · TVs ${totals.screens.actualTvs}/${totals.screens.committedTvs} committed`}
+          />
         </div>
       </section>
 

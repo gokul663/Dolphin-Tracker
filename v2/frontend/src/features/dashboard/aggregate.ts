@@ -11,6 +11,28 @@ export interface DashboardTotals {
   other: number;
   /** Stores by derived status, all eight (STORE-MODEL §5). */
   byStatus: Record<ScreenStatus, number>;
+  screens: ScreenTotals;
+}
+
+/** Screens across the selected projects: rows, and committed (sheet) vs actual (rows) per kind. */
+export interface ScreenTotals {
+  total: number;
+  committedDolphin: number;
+  actualDolphin: number;
+  committedTvs: number;
+  actualTvs: number;
+}
+
+export function screenTotals(kpis: Pick<ProjectSummary["kpi"], "screens_total" | "committed_dolphin_screens" | "actual_dolphin_screens" | "committed_store_tvs" | "actual_store_tvs">[]): ScreenTotals {
+  const totals: ScreenTotals = { total: 0, committedDolphin: 0, actualDolphin: 0, committedTvs: 0, actualTvs: 0 };
+  for (const kpi of kpis) {
+    totals.total += kpi.screens_total;
+    totals.committedDolphin += kpi.committed_dolphin_screens;
+    totals.actualDolphin += kpi.actual_dolphin_screens;
+    totals.committedTvs += kpi.committed_store_tvs;
+    totals.actualTvs += kpi.actual_store_tvs;
+  }
+  return totals;
 }
 
 const zeroStatuses = () => Object.fromEntries(STOP_STATUSES.map((status) => [status, 0])) as Record<ScreenStatus, number>;
@@ -20,6 +42,7 @@ export function aggregateTotals(projects: ProjectSummary[]): DashboardTotals {
   const installers = new Set<string>();
   const totals: DashboardTotals = {
     projects: projects.length, sites: 0, installers: 0, complete: 0, pending: 0, offline: 0, other: 0, byStatus: zeroStatuses(),
+    screens: screenTotals(projects.map((project) => project.kpi)),
   };
   for (const project of projects) {
     project.installers.forEach((name) => installers.add(name));

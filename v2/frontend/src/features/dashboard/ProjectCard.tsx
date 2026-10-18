@@ -115,6 +115,11 @@ export function ProjectCard({ project, onAppend, onEdit, onDelete }: Props) {
         <Stat value={kpi.pending} label="Upcoming" tone="border-amber-200 bg-amber-50 text-amber-700" />
         <Stat value={kpi.offline} label="Offline" tone="border-rose-200 bg-rose-50 text-rose-700" />
       </div>
+      <div className="grid grid-cols-3 gap-2" aria-label="Screens">
+        <Stat value={kpi.screens_total} label="Screens" tone="border-indigo-200 bg-indigo-50 text-indigo-700" />
+        <Stat value={`${kpi.actual_dolphin_screens}/${kpi.committed_dolphin_screens}`} label="Dolphin / committed" tone="border-sky-200 bg-sky-50 text-brand" />
+        <Stat value={`${kpi.actual_store_tvs}/${kpi.committed_store_tvs}`} label="TVs / committed" tone="border-slate-200 bg-slate-50 text-slate-700" />
+      </div>
       <div className="grid grid-cols-3 gap-2 [&_.font-mono]:font-sans [&_.font-mono]:text-xs">
         <Stat value={project.pa || "—"} label="PA" tone="border-violet-200 bg-violet-50 text-violet-700" />
         <Stat value={project.field_agent || "—"} label="Field agent" tone="border-cyan-200 bg-cyan-50 text-cyan-700" />

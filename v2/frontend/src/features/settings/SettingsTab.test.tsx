@@ -5,7 +5,7 @@ import { Route, Routes } from "react-router";
 import { ProjectPage } from "@/features/projects/ProjectPage";
 import { SettingsTab } from "@/features/settings/SettingsTab";
 import { jsonError, mockApi, renderWithProviders } from "@/test/render";
-import { makeProject } from "@/test/fixtures";
+import { makeProject, makeSummary } from "@/test/fixtures";
 import type { Project } from "@/lib/api/types";
 
 function renderProject(tab = "settings") {
@@ -26,7 +26,7 @@ function body(calls: { method: string; url: URL; body: unknown }[], method: stri
 
 describe("Project shell", () => {
   it("shows the building banner while routing runs", async () => {
-    mockApi({ "GET /api/projects/p1": () => makeProject({ routing_status: "building" }) });
+    mockApi({ "GET /api/projects/p1": () => makeSummary({ routing_status: "building" }) });
     renderProject("stores");
     expect(await screen.findByText(/Routing in progress/)).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Atlanta refresh" })).toBeTruthy();
@@ -35,7 +35,7 @@ describe("Project shell", () => {
 
   it("offers a rebuild after a failed build", async () => {
     const { calls } = mockApi({
-      "GET /api/projects/p1": () => makeProject({ routing_status: "failed" }),
+      "GET /api/projects/p1": () => makeSummary({ routing_status: "failed" }),
       "POST /api/projects/p1/routing/recluster": () => ({ job_id: "j1" }),
     });
     renderProject("stores");
@@ -53,7 +53,7 @@ describe("Project shell", () => {
 describe("Settings tab", () => {
   it("validates and saves the stops-per-day cap with the version", async () => {
     const { calls } = mockApi({
-      "GET /api/projects/p1": () => makeProject(),
+      "GET /api/projects/p1": () => makeSummary(),
       "PATCH /api/projects/p1": () => makeProject({ stops_per_day: 30, version: 2 }),
     });
     renderProject();
@@ -70,7 +70,7 @@ describe("Settings tab", () => {
 
   it("adds an installer as a job and renames one", async () => {
     const { calls } = mockApi({
-      "GET /api/projects/p1": () => makeProject(),
+      "GET /api/projects/p1": () => makeSummary(),
       "POST /api/projects/p1/installers": () => ({ job_id: "j1" }),
       "POST /api/projects/p1/installers/rename": () => makeProject({ installers: ["Anna", "Bo"] }),
     });
@@ -94,7 +94,7 @@ describe("Settings tab", () => {
   });
 
   it("pauses installer changes while routing runs", async () => {
-    mockApi({ "GET /api/projects/p1": () => makeProject({ routing_status: "building" }) });
+    mockApi({ "GET /api/projects/p1": () => makeSummary({ routing_status: "building" }) });
     renderProject();
     expect(await screen.findByText("Installer changes are paused while routing runs.")).toBeTruthy();
     expect((screen.getByRole("button", { name: "Rename Ann" }) as HTMLButtonElement).disabled).toBe(true);
@@ -102,7 +102,7 @@ describe("Settings tab", () => {
 
   it("edits the field schema with the backend's rules", async () => {
     const { calls } = mockApi({
-      "GET /api/projects/p1": () => makeProject(),
+      "GET /api/projects/p1": () => makeSummary(),
       "PATCH /api/projects/p1": (_url, init) => {
         const sent = JSON.parse(String(init.body)) as { field_schema: Project["field_schema"] };
         return makeProject({ field_schema: sent.field_schema, version: 2 });
@@ -139,7 +139,7 @@ describe("Settings tab", () => {
 
   it("asks before removing a field that stores have values for, with the count", async () => {
     const { calls } = mockApi({
-      "GET /api/projects/p1": () => makeProject(),
+      "GET /api/projects/p1": () => makeSummary(),
       "GET /api/projects/p1/stores/field-usage": () => ({ payee_name: 3 }),
       "PATCH /api/projects/p1": () => makeProject({ version: 2 }),
     });

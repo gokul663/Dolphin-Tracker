@@ -27,6 +27,9 @@ describe("DashboardPage", () => {
     expect(kpi("Total sites")).toBe("13");
     expect(kpi("Total installers")).toBe("3");
     expect(kpi("Completed")).toBe("7");
+    const screens = screen.getByRole("group", { name: "Screens" });
+    expect(within(screens).getByText("24")).toBeTruthy(); // 12 + 12 screen rows
+    expect(within(screens).getByText("Dolphin 20/22 · TVs 4/6 committed")).toBeTruthy();
 
     await userEvent.click(screen.getByRole("tab", { name: /Completed \(1\)/ }));
     expect(screen.queryByText("Atlanta refresh")).toBeNull();

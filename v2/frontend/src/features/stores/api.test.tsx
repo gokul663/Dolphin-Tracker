@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook } from "@testing-library/react";
 import { editedKeys, useAppendStores, useUpdateStoreDetails } from "@/features/stores/api";
 import { useUpdateProject } from "@/features/projects/api";
-import { makeProject, makeStop } from "@/test/fixtures";
+import { makeProject, makeStop, makeSummary } from "@/test/fixtures";
 import { jsonError } from "@/test/render";
 import { keys } from "@/lib/api/keys";
 import { mockApi } from "@/test/render";
@@ -71,5 +71,16 @@ describe("useUpdateProject", () => {
     await act(() => result.current.mutateAsync({ name: "X", expected_version: 1 }).catch(() => undefined));
     expect(client.getQueryState(keys.project("p1"))?.isInvalidated).toBe(true);
     expect(client.getQueryState(keys.projectList(200))?.isInvalidated).toBe(true);
+  });
+});
+
+describe("useUpdateProject keeps the cached KPIs", () => {
+  it("merges the PATCH answer (META only) into the cached summary", async () => {
+    mockApi({ "PATCH /api/projects/p1": () => makeProject({ name: "Renamed", version: 2 }) });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    client.setQueryData(keys.project("p1"), makeSummary());
+    const { result } = renderHook(() => useUpdateProject("p1"), { wrapper: wrapperWith(client) });
+    await act(() => result.current.mutateAsync({ name: "Renamed", expected_version: 1 }));
+    expect(client.getQueryData(keys.project("p1"))).toMatchObject({ name: "Renamed", version: 2, kpi: { total: 10 } });
   });
 });

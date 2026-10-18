@@ -5,7 +5,7 @@ import { Route, Routes } from "react-router";
 import { ProjectPage } from "@/features/projects/ProjectPage";
 import { RoutesTab } from "@/features/routes/RoutesTab";
 import { mockApi, renderWithProviders } from "@/test/render";
-import { makeProject, makeStop } from "@/test/fixtures";
+import { makeKpi, makeProject, makeStop } from "@/test/fixtures";
 import { STORE_FIELDS_FOR_TESTS } from "@/test/storeFields";
 import type { RoutesBundle, Stop } from "@/lib/api/types";
 
@@ -31,7 +31,7 @@ const BUNDLE: RoutesBundle = {
 
 function renderRoutes(project = makeProject(), extra: Parameters<typeof mockApi>[0] = {}) {
   const api = mockApi({
-    "GET /api/projects/p1": () => project,
+    "GET /api/projects/p1": () => ({ kpi: makeKpi(), ...project }),
     "GET /api/projects/p1/routes": () => BUNDLE,
     "GET /api/config/maps": () => ({ google_maps_browser_key: "" }),
     "GET /api/projects/p1/stores/a": () => BUNDLE.routes.Ann?.[0]?.[0],

@@ -72,7 +72,8 @@ export function useUpdateProject(projectId: string) {
   return useMutation({
     mutationFn: (body: ProjectUpdate) => projectsApi.update(projectId, body),
     onSuccess: (project: Project) => {
-      client.setQueryData(keys.project(projectId), project);
+      // PATCH answers with META only; keep the cached KPIs until the refetch brings fresh ones.
+      client.setQueryData<ProjectSummary>(keys.project(projectId), (cached) => (cached ? { ...cached, ...project } : cached));
       return client.invalidateQueries({ queryKey: keys.projects });
     },
     // A 409 means our expected_version is stale: refetch so the retry sends the current one. `keys.projects`

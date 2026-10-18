@@ -6,7 +6,7 @@ import { Route, Routes } from "react-router";
 import { ProjectPage } from "@/features/projects/ProjectPage";
 import { StoresTab } from "@/features/stores/StoresTab";
 import { jsonError, mockApi, renderWithProviders } from "@/test/render";
-import { makeProject, makeStop } from "@/test/fixtures";
+import { makeStop, makeSummary } from "@/test/fixtures";
 import { useStoresUi } from "@/stores/ui";
 import { keys } from "@/lib/api/keys";
 import { deriveStatus, type ScreenInput, type Stop } from "@/lib/api/types";
@@ -20,6 +20,18 @@ const STOPS: Stop[] = [
   }),
 ];
 
+const FILTER_OPTIONS = {
+  status: [{ value: "Upcoming", count: 1 }, { value: "Completed", count: 1 }],
+  installer: [{ value: "Ann", count: 1 }, { value: "Bo", count: 1 }],
+  pa: [{ value: "North", count: 1 }, { value: "South", count: 1 }],
+  state: [{ value: "GA", count: 2 }],
+  city: [{ value: "Atlanta", count: 1 }, { value: "Decatur", count: 1 }],
+  dma: [{ value: "ATL", count: 2 }],
+  venue_type: [],
+  dd_code: [],
+  screen_size: [],
+};
+
 /** A tiny stateful fake: successful PATCHes change what later GETs return, like the real API. */
 function renderTab(routes: Parameters<typeof mockApi>[0] = {}, onRender?: () => void) {
   const db = new Map(STOPS.map((stop) => [stop.uid, { ...stop }]));
@@ -31,7 +43,7 @@ function renderTab(routes: Parameters<typeof mockApi>[0] = {}, onRender?: () => 
     return next;
   };
   const api = mockApi({
-    "GET /api/projects/p1": () => makeProject(),
+    "GET /api/projects/p1": () => makeSummary(),
     "GET /api/projects/p1/stores": () => ({ items: [...db.values()], next_cursor: null }),
     "GET /api/projects/p1/stores/pins": () =>
       [...db.values()].map(({ uid, lat, lng, status, store_name, installer, day }) => ({ uid, lat, lng, status, store_name, installer, day })),
@@ -47,6 +59,8 @@ function renderTab(routes: Parameters<typeof mockApi>[0] = {}, onRender?: () => 
       return next;
     },
     "GET /api/config/store-fields": () => STORE_FIELDS_FOR_TESTS,
+    "GET /api/projects/p1/stores/filters": () => FILTER_OPTIONS,
+    "GET /api/projects/p1/stores/by-state": () => [{ state: "GA", count: 2 }, { state: "TN", count: 1 }],
     ...routes,
   });
   const { client } = renderWithProviders(
@@ -104,7 +118,7 @@ describe("StoresTab", () => {
 
   it("refetches the list when a routing build finishes while Stores is open", async () => {
     let routing: "building" | "ready" = "building";
-    const { calls, client, db } = renderTab({ "GET /api/projects/p1": () => makeProject({ routing_status: routing }) });
+    const { calls, client, db } = renderTab({ "GET /api/projects/p1": () => makeSummary({ routing_status: routing }) });
     expect(await screen.findByText("Alpha Mart")).toBeTruthy();
     const listCalls = () => calls.filter((call) => call.method === "GET" && call.url.pathname === "/api/projects/p1/stores").length;
     const before = listCalls();
@@ -131,7 +145,9 @@ describe("StoresTab", () => {
     expect(screen.getByText("2 / —")).toBeTruthy(); // committed Dolphin / store TVs
     expect(screen.getByText(/no Google Maps browser key/)).toBeTruthy(); // map degrades, table works
 
-    await userEvent.click(screen.getByRole("button", { name: "Completed" }));
+    await userEvent.click(within(screen.getByRole("group", { name: "Filters" })).getByRole("button", { name: "Status" }));
+    await userEvent.click(await screen.findByRole("menuitemcheckbox", { name: /Completed/ }));
+    await userEvent.keyboard("{Escape}");
     await waitFor(() => expect(lastList(calls)?.searchParams.getAll("status")).toEqual(["Completed"]));
     await userEvent.type(screen.getByLabelText("Search stores"), "oak");
     await waitFor(() => expect(lastList(calls)?.searchParams.get("q")).toBe("oak"), { timeout: 2000 });
@@ -272,5 +288,47 @@ describe("StoresTab", () => {
     const bodies = calls.filter((call) => call.url.pathname.endsWith("/progress")).map((call) => call.body);
     expect(bodies).toEqual([{ additional_task: true }, { comment: "Left a note" }]);
     expect(calls.some((call) => call.method === "PATCH" && call.url.pathname === "/api/projects/p1/stores/u1")).toBe(false);
+  });
+
+  it("filter bar: STORE-MODEL §5 order, counts, greyed-out empties, and every filter reaches the list and map", async () => {
+    const { calls } = renderTab();
+    await screen.findByText("Alpha Mart");
+    const bar = screen.getByRole("group", { name: "Filters" });
+    expect(within(bar).getAllByRole("button").map((button) => button.textContent?.replace("no values", "").trim())).toEqual([
+      "Status", "Installer", "PA", "State", "City", "DMA", "Venue type", "DD code", "Screen size",
+    ]);
+    for (const name of ["Venue type (no values)", "DD code (no values)", "Screen size (no values)"]) {
+      expect(within(bar).getByRole("button", { name }).hasAttribute("disabled")).toBe(true);
+    }
+    await userEvent.click(within(bar).getByRole("button", { name: "City" }));
+    expect(await screen.findByRole("menuitemcheckbox", { name: /Decatur\s*1/ })).toBeTruthy();
+    await userEvent.click(screen.getByRole("menuitemcheckbox", { name: /Decatur/ }));
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() => expect(lastList(calls)?.searchParams.getAll("city")).toEqual(["Decatur"]));
+    const pins = [...calls].reverse().find((call) => call.url.pathname.endsWith("/pins"))?.url;
+    expect(pins?.searchParams.getAll("city")).toEqual(["Decatur"]);
+    const facets = [...calls].reverse().find((call) => call.url.pathname.endsWith("/filters"))?.url;
+    expect(facets?.searchParams.getAll("city")).toEqual(["Decatur"]); // options are counted under the selection
+    expect(within(bar).getByRole("button", { name: "City: Decatur" })).toBeTruthy();
+  });
+
+  it("top states: a bar selects its state alone, a second click clears it, other filters are kept", async () => {
+    const { calls } = renderTab();
+    await screen.findByText("Alpha Mart");
+    await userEvent.click(within(screen.getByRole("group", { name: "Filters" })).getByRole("button", { name: "DMA" }));
+    await userEvent.click(await screen.findByRole("menuitemcheckbox", { name: /ATL/ }));
+    await userEvent.keyboard("{Escape}");
+    const chart = await screen.findByRole("region", { name: "Top states by upcoming installs" });
+    const ga = within(chart).getByRole("button", { name: "GA 2" });
+    await userEvent.click(ga);
+    await waitFor(() => expect(lastList(calls)?.searchParams.getAll("state")).toEqual(["GA"]));
+    expect(lastList(calls)?.searchParams.getAll("dma")).toEqual(["ATL"]);
+    expect(within(chart).getByRole("button", { name: "GA 2" }).getAttribute("aria-pressed")).toBe("true");
+    const byState = [...calls].reverse().find((call) => call.url.pathname.endsWith("/by-state"))?.url;
+    expect(byState?.searchParams.getAll("state")).toEqual([]); // the chart never filters itself by state
+    expect(byState?.searchParams.get("pending")).toBe("true");
+    await userEvent.click(within(chart).getByRole("button", { name: "GA 2" }));
+    await waitFor(() => expect(lastList(calls)?.searchParams.getAll("state")).toEqual([]));
+    expect(lastList(calls)?.searchParams.getAll("dma")).toEqual(["ATL"]);
   });
 });

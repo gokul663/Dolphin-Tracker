@@ -1834,3 +1834,50 @@ was not re-run; the transform is covered by the fixture tests and the writer is 
 
 **Verified:** gates green (302 backend, 115 frontend). No browser check (no map key; Chrome extension not
 connected).
+
+---
+
+## S8 · Filters with greyed-out empties, top-states chart, KPIs
+
+**Changed**
+- UI store (`stores/ui.ts`): the status/installer filters become one `facets` map over the nine STORE-MODEL §5
+  filters, with `toggleFacet` and `toggleState`. `toggleState` is the chart's: a bar selects that state alone,
+  and clicking the selected bar clears State; every other facet is untouched.
+- `StoreFilters` / `storeQuery` carry all nine filters to list, pins, export, `/filters` and `/by-state`. New
+  hooks `useFilterOptions` and `useStoresByState`; their query keys live under the project prefix, so X2's
+  invalidation covers them.
+- `FilterBar.tsx` (pure helpers in `filters.ts`): one checkbox dropdown per filter in §5 order.
+  - Each value shows its count under the other filters (from `/filters`).
+  - A filter whose option list is empty is disabled, with a "no values" hint and title, unless something is
+    still selected in it.
+  - A selected value the server no longer lists stays visible at count 0, so it can be unticked.
+  - Status options carry their colour dot; the unassigned installer reads "Unassigned".
+- The toolbar keeps search, "Only stores in map view", Clear and CSV; the status chips and installer dropdown
+  moved into the filter bar.
+- `TopStatesChart.tsx` (lazy, like the dashboard charts) sits under the map: a horizontal bar chart of
+  `/by-state?pending=true`, which always queries without State, so all bars stay.
+  - The selected bar is highlighted and the others greyed.
+  - The same states are a row of `aria-pressed` buttons under the chart: keyboard- and screen-reader-usable,
+    and testable in jsdom, where Recharts draws nothing.
+- KPIs:
+  - `GET /projects/{id}` is typed as `ProjectSummary`; the project header shows `ProjectKpis`: stores and
+    pending, non-zero status chips, and "N screens · Dolphin actual/committed · TVs actual/committed".
+  - Dashboard: a "Screens" KPI card with committed vs actual totals (`screenTotals`); each project card gets a
+    screens row.
+- **Bug fixed on the way:** `useUpdateProject` wrote the PATCH answer (META only, no `kpi`) over the cached
+  summary, which would have crashed the new header after any Settings save. It now merges into the cached
+  summary until the refetch.
+
+**Tests:**
+- UI store: facet toggling and the chart's toggle rule (one state, second click clears, other filters kept).
+- `filters.test.ts`: greying (including "selected keeps it enabled" and "not loaded yet"), missing selected
+  values, labels, summary, query.
+- Stores tab:
+  - the filter bar order, the three empty filters disabled with "no values", and a city pick reaching the
+    list, pins and `/filters`;
+  - the chart button selects GA alone with DMA kept, `/by-state` queried without state and `pending=true`,
+    and a second click clears.
+- `ProjectKpis` render; the dashboard Screens card; the `useUpdateProject` merge.
+
+**Verified:** gates green (302 backend, 124 frontend); `make frontend-build` shows `TopStatesChart` in its own
+chunk.

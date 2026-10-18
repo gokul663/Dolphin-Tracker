@@ -90,7 +90,7 @@ Tracks delivery against [PLAN.md](./PLAN.md). Tick items as they land; add sub-i
 - [x] Browser Maps key and Map ID via infra config; S3/API CORS never `*`; prod synth fails on empty origins
 - [x] `LambdaInvoker` moved out of `services/`
 - [x] Places call skipped when geocoding fails; import start fails fast without a key outside local
-- [ ] Schema field removal asks for confirmation when values exist
+- [x] Schema field removal asks for confirmation when values exist
 - [ ] CI drift check for the generated API client
 - [ ] Dashboard charts lazy-loaded
 

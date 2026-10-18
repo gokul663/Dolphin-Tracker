@@ -1271,3 +1271,21 @@ decremented, and that KPIs are authoritative. No behaviour change. (§9 #5 and #
 without a key; #7 is the Phase 5 cutover run.)
 
 **Verified:** gates green (235 backend, 88 frontend).
+
+---
+
+## D6 · §9 #6: confirm removing a field that has values
+
+**Changed**
+- `GET /projects/{id}/stores/field-usage` (new, whole-project like pins) → `{field_key: stores with a non-empty
+  value}`. `StoreService.field_usage` reads the `fields` projection only. Client regenerated.
+- Settings → Store fields: saving with removed saved fields first fetches the usage. If any removed field has
+  values, a confirmation dialog lists "Label: N stores have a value" and saves only on "Remove and save".
+  With no values in use it saves directly. The amber "values stay stored" hint is unchanged.
+- **Additive endpoint**, not in the handoff's §4 list; it is the smallest way to get the counts without loading
+  every store in the browser.
+
+**Tests:** API: counts ignore blanks, 404 for an unknown project. Settings: dialog shows the count; Cancel sends
+no PATCH; confirm saves. The existing schema test now mocks the usage call (payee name unused → no dialog).
+
+**Verified:** gates green (236 backend, 89 frontend).

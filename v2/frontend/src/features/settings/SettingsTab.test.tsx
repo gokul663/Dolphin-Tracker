@@ -107,6 +107,7 @@ describe("Settings tab", () => {
         const sent = JSON.parse(String(init.body)) as { field_schema: Project["field_schema"] };
         return makeProject({ field_schema: sent.field_schema, version: 2 });
       },
+      "GET /api/projects/p1/stores/field-usage": () => ({ owner_phone: 4 }), // nobody has a payee name
     });
     renderProject();
     await userEvent.click(await screen.findByRole("button", { name: "Add field" }));
@@ -134,5 +135,24 @@ describe("Settings tab", () => {
     expect(sent.field_schema.find((field) => field.key === "screen_tier")).toMatchObject({ options: ["Gold", "Silver"], required: true });
     const table = screen.getByRole("table");
     expect(within(table).getByText("owner_phone")).toBeTruthy(); // saved keys shown, not editable inputs
+  });
+
+  it("asks before removing a field that stores have values for, with the count", async () => {
+    const { calls } = mockApi({
+      "GET /api/projects/p1": () => makeProject(),
+      "GET /api/projects/p1/stores/field-usage": () => ({ payee_name: 3 }),
+      "PATCH /api/projects/p1": () => makeProject({ version: 2 }),
+    });
+    renderProject();
+    await userEvent.click(await screen.findByRole("button", { name: "Remove Payee Name" }));
+    await userEvent.click(screen.getByRole("button", { name: "Save fields" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("Payee Name: 3 stores have a value")).toBeTruthy();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    expect(calls.some((call) => call.method === "PATCH")).toBe(false);
+
+    await userEvent.click(screen.getByRole("button", { name: "Save fields" }));
+    await userEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Remove and save" }));
+    await waitFor(() => expect(body(calls, "PATCH", "/api/projects/p1")).toBeTruthy());
   });
 });

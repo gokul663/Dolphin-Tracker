@@ -6,8 +6,10 @@ import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { SectionTitle } from "@/features/settings/DetailsSection";
 import { useUpdateProject } from "@/features/projects/api";
+import { storesApi } from "@/lib/api/resources";
 import type { FieldDefInput, FieldType, Project } from "@/lib/api/types";
 import { FIELD_TYPES, keyFromLabel, moveItem, schemaErrors } from "@/lib/validation/fields";
 
@@ -38,6 +40,8 @@ export function SchemaEditor({ project }: { project: Project }) {
   const [rows, setRows] = useState<Row[]>(() => toRows(project));
   const [baseline, setBaseline] = useState(project.version);
   const update = useUpdateProject(project.id);
+  const [checking, setChecking] = useState(false);
+  const [confirmRemoval, setConfirmRemoval] = useState<{ label: string; count: number }[] | null>(null);
   if (baseline !== project.version && update.isIdle) {
     // The project changed elsewhere (another tab, import mapping): start again from the server's schema.
     setRows(toRows(project));
@@ -67,13 +71,32 @@ export function SchemaEditor({ project }: { project: Project }) {
         options: [], source_column: null, saved: false, optionsText: "" },
     ]);
 
-  const save = async () => {
+  const commit = async () => {
     try {
       await update.mutateAsync({ field_schema: schema, expected_version: project.version });
       setBaseline(project.version + 1);
+      setConfirmRemoval(null);
       toast.success("Field schema saved");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Save failed");
+    }
+  };
+
+  /** §9 #6: removing a field that stores still hold values for asks first, with the counts. */
+  const save = async () => {
+    if (removedSaved.length === 0) return commit();
+    setChecking(true);
+    try {
+      const usage = await storesApi.fieldUsage(project.id);
+      const inUse = removedSaved
+        .map((field) => ({ label: field.label, count: usage[field.key] ?? 0 }))
+        .filter((field) => field.count > 0);
+      if (inUse.length) setConfirmRemoval(inUse);
+      else await commit();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not check field usage");
+    } finally {
+      setChecking(false);
     }
   };
 
@@ -174,11 +197,28 @@ export function SchemaEditor({ project }: { project: Project }) {
           <Button variant="ghost" disabled={!dirty} onClick={() => setRows(toRows(project))}>
             Discard
           </Button>
-          <Button onClick={save} disabled={!dirty || invalid || update.isPending}>
-            {update.isPending && <Loader2 className="animate-spin" />} Save fields
+          <Button onClick={save} disabled={!dirty || invalid || update.isPending || checking}>
+            {(update.isPending || checking) && <Loader2 className="animate-spin" />} Save fields
           </Button>
         </div>
       </div>
+      <ConfirmDialog
+        open={confirmRemoval !== null}
+        title="Remove fields that have values?"
+        confirmLabel="Remove and save"
+        busy={update.isPending}
+        onConfirm={() => void commit()}
+        onCancel={() => setConfirmRemoval(null)}
+      >
+        <ul className="list-disc space-y-0.5 pl-5">
+          {confirmRemoval?.map((field) => (
+            <li key={field.label}>
+              {field.label}: {field.count} {field.count === 1 ? "store has" : "stores have"} a value
+            </li>
+          ))}
+        </ul>
+        <p className="mt-2">The values stay stored but are hidden from the Stores tab and the CSV export.</p>
+      </ConfirmDialog>
     </Card>
   );
 }

@@ -54,6 +54,12 @@ def list_pins(project_id: str, service: ServiceDep, query: QueryDep) -> list[dic
         raise _bad_request(exc) from exc
 
 
+@router.get("/field-usage", response_model=dict[str, int])
+def field_usage(project_id: str, service: ServiceDep) -> dict[str, int]:
+    """Stores with a value, per extra-field key (whole project, like pins)."""
+    return service.field_usage(project_id)
+
+
 @router.get("/export.csv", response_class=Response, responses={200: {"content": {"text/csv": {}}}})
 def export_csv(project_id: str, service: ServiceDep, query: QueryDep) -> Response:
     try:

@@ -156,6 +156,16 @@ class StoreService:
             if stop.lat is not None and stop.lng is not None
         ]
 
+    def field_usage(self, project_id: str) -> dict[str, int]:
+        """How many stores hold a non-empty value per `fields` key (Settings warns before a field is removed)."""
+        self._project(project_id)
+        counts: dict[str, int] = {}
+        for row in self._stores.list_projected(project_id, ("fields",)):
+            for key, value in (row.get("fields") or {}).items():
+                if value not in (None, ""):
+                    counts[key] = counts.get(key, 0) + 1
+        return counts
+
     def export_csv(self, project_id: str, query: StoreQuery | None = None) -> str:
         """Core columns, then schema columns by label, then progress. Same filters and order as the list."""
         project = self._project(project_id)

@@ -92,6 +92,7 @@ export const storesApi = {
     }),
   pins: (projectId: string, filters: StoreFilters = {}) =>
     api<Pin[]>(`/projects/${enc(projectId)}/stores/pins`, { query: storeQuery(filters) }),
+  fieldUsage: (projectId: string) => api<Record<string, number>>(`/projects/${enc(projectId)}/stores/field-usage`),
   /** A plain URL for an <a download> link: the browser streams the CSV itself. */
   exportUrl: (projectId: string, filters: StoreFilters) =>
     apiUrl(`/projects/${enc(projectId)}/stores/export.csv`, storeQuery(filters)),

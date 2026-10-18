@@ -120,6 +120,11 @@ class StoresApiTests(unittest.TestCase):
         self.assertEqual([p["uid"] for p in self.client.get("/api/projects/p1/stores/pins",
                                                             params={"status": "Complete"}).json()], ["a"])
 
+    def test_field_usage_counts_stores_with_a_value(self):
+        self.stores.update_fields("p1", "d", {"fields.dma": ""})  # blank values don't count
+        self.assertEqual(self.client.get("/api/projects/p1/stores/field-usage").json(), {"dma": 3, "screens": 2})
+        self.assertEqual(self.client.get("/api/projects/nope/stores/field-usage").status_code, 404)
+
     def test_get_one(self):
         self.assertEqual(self.client.get("/api/projects/p1/stores/a").json()["store_name"], "Bravo Mart")
         self.assertEqual(self.client.get("/api/projects/p1/stores/zzz").status_code, 404)

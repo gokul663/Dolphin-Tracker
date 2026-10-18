@@ -1022,3 +1022,26 @@ docs unchanged.
 `[queued, running, succeeded]` / `[queued, running, failed]`, and the import geocodes once.
 
 **Verified:** gates green (214 backend, 77 frontend).
+
+---
+
+## Y2 · Wrong-shape cursor → 400
+
+**Changed**
+- `decode_cursor` raises `ValueError` unless the decoded JSON is an object.
+- `offset_from_cursor` (new, in `repositories/dynamo.py` until Y10 moves it) is the one place that reads
+  `{"offset": n}` cursors; it rejects non-int, bool and negative offsets. `StoreService.list` and the in-memory
+  fakes use it.
+- `query_page(table, kwargs, cursor, key_attributes)` checks that a decoded start key has exactly the query's key
+  attributes (`PK, SK` for stops; plus `GSI1PK, GSI1SK` for the project list) with string values before it
+  reaches DynamoDB. A botocore `ValidationException` on a query that had a start key is also mapped to
+  `ValueError`, as the handoff asked.
+- **Deviation:** the shape check was added on top of the handoff's "translate `ValidationException`". moto does
+  not raise `ValidationException` for a bad start key (it crashes with a `TypeError`), so the mapping alone could
+  not be tested; the explicit check is testable and behaves the same against real DynamoDB.
+
+**Tests:** base64 of `[1]`, `"str"`, `5`, and bad offsets → 400 on `/projects` and `/projects/{id}/stores`;
+`decode_cursor`/`offset_from_cursor` unit tests; moto: wrong-shape start keys on both Dynamo list methods raise
+`ValueError`.
+
+**Verified:** gates green (218 backend, 77 frontend).

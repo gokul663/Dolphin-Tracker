@@ -11,9 +11,9 @@ from dolphin_tracker.domain.models import ROUTING_FIELDS, Page, Stop, now_iso
 from dolphin_tracker.repositories.dynamo import (
     Keys,
     build_set_expression,
-    decode_cursor,
     encode_cursor,
     from_ddb,
+    query_page,
     strip_internal,
     to_ddb,
 )
@@ -82,10 +82,7 @@ class DynamoStoreRepository:
 
     def list(self, project_id: str, *, limit: int = 50, cursor: str | None = None) -> Page[Stop]:
         kwargs = {**self._query_kwargs(project_id), "Limit": limit}
-        start_key = decode_cursor(cursor)
-        if start_key:
-            kwargs["ExclusiveStartKey"] = start_key
-        response = self._table.query(**kwargs)
+        response = query_page(self._table, kwargs, cursor)
         items = [self._from_item(item) for item in response.get("Items", [])]
         return Page(items=items, next_cursor=encode_cursor(response.get("LastEvaluatedKey")))
 

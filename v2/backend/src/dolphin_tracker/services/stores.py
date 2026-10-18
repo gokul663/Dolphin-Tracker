@@ -21,7 +21,7 @@ from dolphin_tracker.domain.models import PROGRESS_FIELDS, Page, Project, Routin
 from dolphin_tracker.domain.parsing import clean_cell
 from dolphin_tracker.domain.route_optimizer import state_key
 from dolphin_tracker.domain.schema import coerce_fields, validate_fields, validate_stop_inputs
-from dolphin_tracker.repositories.dynamo import decode_cursor, encode_cursor
+from dolphin_tracker.repositories.dynamo import encode_cursor, offset_from_cursor
 from dolphin_tracker.repositories.projects import ProjectRepository
 from dolphin_tracker.repositories.stores import StoreRepository
 from dolphin_tracker.services.geocoding import Geocoder
@@ -126,9 +126,7 @@ class StoreService:
         self, project_id: str, query: StoreQuery | None = None, *, limit: int = 50, cursor: str | None = None
     ) -> Page[Stop]:
         project = self._project(project_id)
-        offset = int((decode_cursor(cursor) or {}).get("offset", 0))
-        if offset < 0:
-            raise ValueError("Invalid cursor")
+        offset = offset_from_cursor(cursor)
         stops = self._query(project, query or StoreQuery())
         window = stops[offset : offset + limit]
         next_cursor = encode_cursor({"offset": offset + limit}) if offset + limit < len(stops) else None

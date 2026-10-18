@@ -6,6 +6,7 @@ from dolphin_tracker.api.app import create_app
 from dolphin_tracker.api.deps import get_db_probe, get_project_repository, get_store_repository
 from dolphin_tracker.domain.models import Project, ProjectType
 from dolphin_tracker.repositories.memory import InMemoryProjectRepository, InMemoryStoreRepository
+from tests.test_dynamo import wrong_shape
 
 
 class ApiTests(unittest.TestCase):
@@ -47,6 +48,10 @@ class ApiTests(unittest.TestCase):
     def test_bad_cursor_and_limit_are_rejected(self):
         self.assertEqual(self.client.get("/api/projects", params={"cursor": "!!"}).status_code, 400)
         self.assertEqual(self.client.get("/api/projects", params={"limit": 500}).status_code, 422)
+        for payload in ([1], "str", 5, {"offset": [1]}):
+            with self.subTest(payload=payload):
+                response = self.client.get("/api/projects", params={"cursor": wrong_shape(payload)})
+                self.assertEqual(response.status_code, 400)
 
     def test_get_project(self):
         self._seed(1)

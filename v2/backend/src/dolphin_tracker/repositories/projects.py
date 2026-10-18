@@ -9,11 +9,12 @@ from dolphin_tracker.domain.errors import ConflictError, NotFoundError
 from dolphin_tracker.domain.models import Page, Project, RoutingStatus, now_iso
 from dolphin_tracker.repositories.dynamo import (
     GSI1,
+    GSI1_KEY,
     PROJECT_LIST_GSI1PK,
     Keys,
-    decode_cursor,
     encode_cursor,
     from_ddb,
+    query_page,
     strip_internal,
     to_ddb,
 )
@@ -73,10 +74,7 @@ class DynamoProjectRepository:
             "ScanIndexForward": False,  # newest first
             "Limit": limit,
         }
-        start_key = decode_cursor(cursor)
-        if start_key:
-            kwargs["ExclusiveStartKey"] = start_key
-        response = self._table.query(**kwargs)
+        response = query_page(self._table, kwargs, cursor, GSI1_KEY)
         items = [self._from_item(item) for item in response.get("Items", [])]
         return Page(items=items, next_cursor=encode_cursor(response.get("LastEvaluatedKey")))
 

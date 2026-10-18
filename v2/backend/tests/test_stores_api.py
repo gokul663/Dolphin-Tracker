@@ -10,6 +10,7 @@ from dolphin_tracker.domain.models import FieldDef, FieldType, Project, ProjectT
 from dolphin_tracker.domain.schema import default_field_schema
 from dolphin_tracker.repositories.memory import InMemoryProjectRepository, InMemoryStoreRepository
 from tests.fakes import FakeGeocoder, geocode_ok
+from tests.test_dynamo import wrong_shape
 
 SCHEMA = [*default_field_schema(), FieldDef(key="screens", label="Screens", type=FieldType.NUMBER)]
 
@@ -100,6 +101,10 @@ class StoresApiTests(unittest.TestCase):
         self.assertEqual([s["uid"] for s in second["items"]], ["d"])
         self.assertIsNone(second["next_cursor"])
         self.assertEqual(self.client.get("/api/projects/p1/stores", params={"cursor": "%%"}).status_code, 400)
+        for payload in ([1], "str", 5, {"offset": "x"}, {"offset": -1}):
+            with self.subTest(payload=payload):
+                response = self.client.get("/api/projects/p1/stores", params={"cursor": wrong_shape(payload)})
+                self.assertEqual(response.status_code, 400)
         self.assertEqual(self.client.get("/api/projects/p1/stores", params={"limit": 0}).status_code, 422)
 
     def test_unknown_project_is_404(self):

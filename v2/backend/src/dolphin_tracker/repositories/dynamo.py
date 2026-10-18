@@ -8,6 +8,7 @@ from typing import Any
 
 import boto3
 from botocore.config import Config
+from botocore.exceptions import ClientError
 
 from dolphin_tracker.config import Settings
 
@@ -68,9 +69,42 @@ def decode_cursor(cursor: str | None) -> dict[str, Any] | None:
         return None
     padded = cursor + "=" * (-len(cursor) % 4)
     try:
-        return to_ddb(json.loads(base64.urlsafe_b64decode(padded.encode())))
+        payload = json.loads(base64.urlsafe_b64decode(padded.encode()))
     except (ValueError, json.JSONDecodeError) as exc:
         raise ValueError("Invalid cursor") from exc
+    if not isinstance(payload, dict):  # decodable but not a key we issued (a list, string, number)
+        raise ValueError("Invalid cursor")
+    return to_ddb(payload)
+
+
+def offset_from_cursor(cursor: str | None) -> int:
+    """The offset in an `{"offset": n}` cursor (services that page in memory). Anything else is a bad cursor."""
+    offset = (decode_cursor(cursor) or {}).get("offset", 0)
+    if isinstance(offset, bool) or not isinstance(offset, int) or offset < 0:
+        raise ValueError("Invalid cursor")
+    return offset
+
+
+TABLE_KEY = frozenset({"PK", "SK"})
+GSI1_KEY = TABLE_KEY | {"GSI1PK", "GSI1SK"}
+
+
+def query_page(
+    table: Any, kwargs: dict[str, Any], cursor: str | None, key_attributes: frozenset[str] = TABLE_KEY
+) -> dict[str, Any]:
+    """Run a Query starting after `cursor`. A start key that is not this query's key shape is a bad cursor (400),
+    never a botocore error (500). DynamoDB's own ValidationException is mapped the same way as a backstop."""
+    start_key = decode_cursor(cursor)
+    if start_key:
+        if set(start_key) != key_attributes or not all(isinstance(value, str) for value in start_key.values()):
+            raise ValueError("Invalid cursor")
+        kwargs = {**kwargs, "ExclusiveStartKey": start_key}
+    try:
+        return table.query(**kwargs)
+    except ClientError as exc:
+        if start_key and exc.response.get("Error", {}).get("Code") == "ValidationException":
+            raise ValueError("Invalid cursor") from exc
+        raise
 
 
 def build_set_expression(changes: dict[str, Any]) -> tuple[str, dict[str, str], dict[str, Any]]:

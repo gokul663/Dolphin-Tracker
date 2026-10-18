@@ -5,13 +5,13 @@ from typing import Any
 
 from dolphin_tracker.domain.errors import ConflictError, NotFoundError
 from dolphin_tracker.domain.models import Job, JobStatus, Page, Project, RoutingStatus, Stop, now_iso
-from dolphin_tracker.repositories.dynamo import decode_cursor, encode_cursor
+from dolphin_tracker.repositories.dynamo import encode_cursor, offset_from_cursor
 from dolphin_tracker.repositories.projects import IMMUTABLE_FIELDS
 from dolphin_tracker.repositories.stores import IMMUTABLE_STOP_FIELDS, RoutingChange, check_routing_change
 
 
 def _offset_page(items: list, limit: int, cursor: str | None) -> tuple[list, str | None]:
-    start = int((decode_cursor(cursor) or {}).get("offset", 0))
+    start = offset_from_cursor(cursor)
     window = items[start : start + limit]
     next_cursor = encode_cursor({"offset": start + limit}) if start + limit < len(items) else None
     return window, next_cursor

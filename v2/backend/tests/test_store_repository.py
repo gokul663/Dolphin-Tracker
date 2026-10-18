@@ -5,7 +5,7 @@ from moto import mock_aws
 
 from dolphin_tracker.domain.errors import NotFoundError
 from dolphin_tracker.domain.models import Stop, StopStatus
-from dolphin_tracker.repositories.dynamo import TABLE_DEFINITION
+from dolphin_tracker.repositories.dynamo import TABLE_DEFINITION, encode_cursor
 from dolphin_tracker.repositories.memory import InMemoryStoreRepository
 from dolphin_tracker.repositories.stores import DynamoStoreRepository
 
@@ -145,6 +145,12 @@ class DynamoStoreRepositoryTests(StoreRepositoryContract, unittest.TestCase):
         self.repo.put_many("p1", make_stops(3))
         self.assertEqual(self.repo.delete_all("p1"), 3)
         self.assertIn("Item", self.table.get_item(Key={"PK": "PROJECT#p1", "SK": "META"}))
+
+    def test_cursor_of_the_wrong_key_shape_is_a_value_error(self):
+        self.repo.put_many("p1", make_stops(2))
+        for key in ({"offset": 3}, {"PK": "PROJECT#p1", "SK": 5}, {"PK": "PROJECT#p1"}):
+            with self.subTest(key=key), self.assertRaisesRegex(ValueError, "Invalid cursor"):
+                self.repo.list("p1", cursor=encode_cursor(key))
 
 
 class InMemoryStoreRepositoryTests(StoreRepositoryContract, unittest.TestCase):

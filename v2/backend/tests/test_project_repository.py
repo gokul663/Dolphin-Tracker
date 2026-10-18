@@ -5,7 +5,7 @@ from moto import mock_aws
 
 from dolphin_tracker.domain.errors import ConflictError, NotFoundError
 from dolphin_tracker.domain.models import Project, ProjectType, RoutingStatus
-from dolphin_tracker.repositories.dynamo import TABLE_DEFINITION
+from dolphin_tracker.repositories.dynamo import TABLE_DEFINITION, encode_cursor
 from dolphin_tracker.repositories.projects import DynamoProjectRepository
 
 
@@ -47,6 +47,13 @@ class DynamoProjectRepositoryTests(unittest.TestCase):
         second = self.repo.list(limit=2, cursor=first.next_cursor)
         self.assertEqual([p.id for p in second.items], ["p0"])
         self.assertIsNone(second.next_cursor)
+
+    def test_cursor_dynamodb_rejects_is_a_value_error(self):
+        self.repo.put(make_project("p1", "2026-10-01T00:00:00+00:00"))
+        with self.assertRaisesRegex(ValueError, "Invalid cursor"):
+            self.repo.list(cursor=encode_cursor({"offset": 3}))  # a dict, but not this index's key
+        with self.assertRaisesRegex(ValueError, "Invalid cursor"):
+            self.repo.list(cursor=encode_cursor({"PK": "PROJECT#p1", "SK": "META"}))  # table key, not GSI1 key
 
     def test_update_bumps_version_and_fences_on_expected_version(self):
         self.repo.put(make_project("p1", "2026-10-01T00:00:00+00:00"))

@@ -1,7 +1,21 @@
+import base64
+import json
 import unittest
 from decimal import Decimal
 
-from dolphin_tracker.repositories.dynamo import Keys, decode_cursor, encode_cursor, from_ddb, to_ddb
+from dolphin_tracker.repositories.dynamo import (
+    Keys,
+    decode_cursor,
+    encode_cursor,
+    from_ddb,
+    offset_from_cursor,
+    to_ddb,
+)
+
+
+def wrong_shape(payload) -> str:
+    """A cursor that decodes as JSON but is not a key we issued."""
+    return base64.urlsafe_b64encode(json.dumps(payload).encode()).decode().rstrip("=")
 
 
 class SerializerTests(unittest.TestCase):
@@ -25,6 +39,18 @@ class SerializerTests(unittest.TestCase):
     def test_invalid_cursor_raises(self):
         with self.assertRaises(ValueError):
             decode_cursor("not-base64!!")
+
+    def test_decodable_cursor_of_the_wrong_shape_raises(self):
+        for payload in ([1], "str", 5, None, True):
+            with self.subTest(payload=payload), self.assertRaises(ValueError):
+                decode_cursor(wrong_shape(payload))
+
+    def test_offset_cursor_rejects_non_integer_offsets(self):
+        self.assertEqual(offset_from_cursor(None), 0)
+        self.assertEqual(offset_from_cursor(encode_cursor({"offset": 7})), 7)
+        for offset in (-1, "3", [1], 2.5, True):
+            with self.subTest(offset=offset), self.assertRaises(ValueError):
+                offset_from_cursor(encode_cursor({"offset": offset}))
 
     def test_keys(self):
         self.assertEqual(Keys.project("p1"), {"PK": "PROJECT#p1", "SK": "META"})

@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     google_server_key: str = ""  # direct value for local dev
     google_server_key_param: str = ""  # SSM SecureString name, used in Lambda when the direct value is empty
     google_browser_key: str = ""
+    google_map_id: str = ""  # created by the user in Google Cloud; public, like the browser key
 
     @property
     def cors_origin_list(self) -> list[str]:

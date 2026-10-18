@@ -849,6 +849,11 @@ export interface components {
         MapsConfig: {
             /** Google Maps Browser Key */
             google_maps_browser_key: string;
+            /**
+             * Google Map Id
+             * @default
+             */
+            google_map_id: string;
         };
         /** Page[ProjectSummary] */
         Page_ProjectSummary_: {
@@ -1110,6 +1115,8 @@ export interface components {
         /**
          * RoutesBundle
          * @description Whole-project payload for the Routes tab: per installer, days in order, stops by seq.
+         *
+         *     `installers` is the project's list followed by any installer a stop is routed to that the list lacks.
          */
         RoutesBundle: {
             /** Installers */

@@ -17,7 +17,7 @@ ServiceDep = Annotated[PlacesService, Depends(get_places_service)]
 @router.get("/config/maps", response_model=MapsConfig)
 def maps_config(settings: SettingsDep) -> MapsConfig:
     # The browser key is referrer-restricted in Google Cloud; the server key never leaves the backend.
-    return MapsConfig(google_maps_browser_key=settings.google_browser_key)
+    return MapsConfig(google_maps_browser_key=settings.google_browser_key, google_map_id=settings.google_map_id)
 
 
 @router.get("/config/field-schema", response_model=list[FieldDef])

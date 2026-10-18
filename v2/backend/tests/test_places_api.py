@@ -18,7 +18,8 @@ class PlacesApiTests(unittest.TestCase):
         )
         self.app = create_app()
         self.app.dependency_overrides[get_geocoder] = lambda: self.geocoder
-        self.app.dependency_overrides[get_settings] = lambda: Settings(app_env="test", google_browser_key="browser-k")
+        settings = Settings(app_env="test", google_browser_key="browser-k", google_map_id="map-1")
+        self.app.dependency_overrides[get_settings] = lambda: settings
         self.client = TestClient(self.app)
 
     def test_validate_success(self):
@@ -48,7 +49,7 @@ class PlacesApiTests(unittest.TestCase):
 
     def test_maps_config_returns_browser_key_only(self):
         body = self.client.get("/api/config/maps").json()
-        self.assertEqual(body, {"google_maps_browser_key": "browser-k"})
+        self.assertEqual(body, {"google_maps_browser_key": "browser-k", "google_map_id": "map-1"})
 
     def test_default_field_schema(self):
         body = self.client.get("/api/config/field-schema").json()

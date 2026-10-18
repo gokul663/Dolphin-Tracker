@@ -1223,3 +1223,22 @@ dashboard are separate routes, so the test checks the invalidation the dashboard
 -c google_browser_key=browser-test` (output to a scratch dir): bucket CORS, API CORS and both Lambdas'
 `DT_CORS_ORIGINS` are `http://localhost:5173`; `DT_GOOGLE_BROWSER_KEY` is set. `cdk synth -c env=prod` exits 1
 with the "no CORS origins" message.
+
+---
+
+## D10 · §9 #10: Map ID from `GET /config/maps`
+
+**Changed**
+- `Settings.google_map_id` (`DT_GOOGLE_MAP_ID`); `MapsConfig.google_map_id` (default `""`); infra
+  `EnvConfig.google_map_id` (also `-c google_map_id=…`) → `DT_GOOGLE_MAP_ID` on both Lambdas. Client
+  regenerated (`make gen-api`).
+- `MapView` passes `mapId` to the map when the config has one. The cluster threshold stays at zoom ≤ 11.
+- **Deviation / follow-up:** the decision names the env var `VITE_GOOGLE_MAP_ID` but also says it is served by
+  `GET /config/maps`; I followed the API route (no build-time variable), like the browser key.
+- **Not done:** markers are still classic `google.maps.Marker`. Switching to `AdvancedMarkerElement` (which needs
+  the Map ID) changes how icons are drawn and how the clusterer is fed, and I can't check it in a browser here.
+  It's a contained change in `Markers` once a Map ID exists.
+
+**Tests:** `/config/maps` returns both values; infra context override for `google_map_id`.
+
+**Verified:** gates green (230 backend, 88 frontend); `make infra-test`.

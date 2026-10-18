@@ -30,8 +30,9 @@ class AllowedOriginsTests(unittest.TestCase):
                          ["https://d9.cloudfront.net"])
 
     def test_context_overrides_only_known_keys(self):
-        cfg = load("dev", {"google_browser_key": "browser-k", "retain_data": "yes", "cloudfront_domain": None})
-        self.assertEqual(cfg.google_browser_key, "browser-k")
+        cfg = load("dev", {"google_browser_key": "browser-k", "google_map_id": "map-1", "retain_data": "yes",
+                           "cloudfront_domain": None})
+        self.assertEqual((cfg.google_browser_key, cfg.google_map_id), ("browser-k", "map-1"))
         self.assertFalse(cfg.retain_data)
         self.assertIsNone(cfg.cloudfront_domain)
 

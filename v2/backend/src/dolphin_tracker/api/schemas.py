@@ -11,6 +11,7 @@ from dolphin_tracker.domain.models import FieldDef, Project, ProjectType, StopIn
 
 class MapsConfig(ApiModel):
     google_maps_browser_key: str
+    google_map_id: str = ""  # Google Cloud Map ID (vector map, advanced markers); "" uses the default raster map
 
 
 class GeocodeResult(ApiModel):

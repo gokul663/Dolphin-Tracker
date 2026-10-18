@@ -47,6 +47,7 @@ export function MapView({ pins, selectedId, hoveredId, onSelect, onBoundsChange,
   const counts = statusCounts(pins);
   const stacked = groups.filter((group) => group.pins.length > 1);
   const key = config.data?.google_maps_browser_key ?? "";
+  const mapId = config.data?.google_map_id || undefined; // a vector map when the user has created a Map ID
 
   return (
     <div className={cn("flex min-h-[360px] flex-col overflow-hidden rounded-xl border bg-white", className)}>
@@ -83,6 +84,7 @@ export function MapView({ pins, selectedId, hoveredId, onSelect, onBoundsChange,
         ) : (
           <APIProvider apiKey={key}>
             <Map
+              mapId={mapId}
               defaultCenter={US_CENTER}
               defaultZoom={4}
               gestureHandling="greedy"

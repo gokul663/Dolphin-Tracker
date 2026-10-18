@@ -76,6 +76,7 @@ class ApiStack(cdk.Stack):
             "DT_GOOGLE_SERVER_KEY_PARAM": cfg.ssm_google_server_key,
             "DT_CORS_ORIGINS": ",".join(cors_origins),
             "DT_GOOGLE_BROWSER_KEY": cfg.google_browser_key,
+            "DT_GOOGLE_MAP_ID": cfg.google_map_id,
             "POWERTOOLS_SERVICE_NAME": "dolphin-tracker",
             "LOG_LEVEL": "INFO",
         }

@@ -87,7 +87,7 @@ Tracks delivery against [PLAN.md](./PLAN.md). Tick items as they land; add sub-i
 ## Round 2 (see AGENT-HANDOFF.md §9–§11, STORE-MODEL.md)
 
 **Decisions applied (§9)**
-- [ ] Browser Maps key and Map ID via infra config; S3/API CORS never `*`; prod synth fails on empty origins
+- [x] Browser Maps key and Map ID via infra config; S3/API CORS never `*`; prod synth fails on empty origins
 - [x] `LambdaInvoker` moved out of `services/`
 - [ ] Places call skipped when geocoding fails; import start fails fast without a key outside local
 - [ ] Schema field removal asks for confirmation when values exist

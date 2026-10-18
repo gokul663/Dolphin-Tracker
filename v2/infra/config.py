@@ -14,6 +14,7 @@ class EnvConfig:
     # Public by design (Maps JS runs in the browser); restrict it by HTTP referrer in Google Cloud. Not a secret,
     # but it can also come from `-c google_browser_key=...` so it need not be committed.
     google_browser_key: str = ""
+    google_map_id: str = ""  # Google Cloud Map ID (public); the user creates it
 
     @property
     def prefix(self) -> str:
@@ -55,7 +56,7 @@ ENVIRONMENTS: dict[str, EnvConfig] = {
 }
 
 
-CONTEXT_OVERRIDES = ("google_browser_key", "cloudfront_domain")
+CONTEXT_OVERRIDES = ("google_browser_key", "google_map_id", "cloudfront_domain")
 
 
 def load(env_name: str, context: dict[str, str] | None = None) -> EnvConfig:

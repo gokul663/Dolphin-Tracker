@@ -8,7 +8,7 @@ from botocore.exceptions import ClientError
 
 from dolphin_tracker.domain.cursors import encode_cursor
 from dolphin_tracker.domain.errors import NotFoundError
-from dolphin_tracker.domain.models import ROUTING_FIELDS, Page, Stop, now_iso
+from dolphin_tracker.domain.models import PROGRESS_FIELDS, ROUTING_FIELDS, Page, Stop, now_iso
 from dolphin_tracker.repositories.dynamo import Keys, build_set_expression, from_ddb, query_page, strip_internal, to_ddb
 
 IMMUTABLE_STOP_FIELDS = {"uid"}
@@ -33,6 +33,10 @@ class StoreRepository(Protocol):
     def update_routing_many(self, project_id: str, changes: list[RoutingChange]) -> int:
         """Apply installer/day/seq diffs. Stops deleted meanwhile are skipped. Returns how many were written."""
         ...
+    def update_progress_many(self, project_id: str, changes: list[RoutingChange]) -> int:
+        """Apply progress-field changes (e.g. `installer_name` on a rename) to many stops, in parallel like the
+        routing writes. Keys outside PROGRESS_FIELDS are rejected. Returns how many were written."""
+        ...
     def delete_all(self, project_id: str) -> int: ...
     def list_projected(self, project_id: str, attributes: tuple[str, ...]) -> list[dict[str, Any]]:
         """Whole project, only `attributes` per stop (cheap reads for KPIs). Plain dicts, no Decimals."""
@@ -43,6 +47,12 @@ def check_routing_change(changes: dict[str, Any]) -> None:
     extra = set(changes) - ROUTING_FIELDS
     if extra:
         raise ValueError(f"Routing writes may only touch installer/day/seq, got {sorted(extra)}")
+
+
+def check_progress_change(changes: dict[str, Any]) -> None:
+    extra = set(changes) - PROGRESS_FIELDS
+    if extra:
+        raise ValueError(f"Progress writes may only touch progress fields, got {sorted(extra)}")
 
 
 class DynamoStoreRepository:
@@ -111,7 +121,7 @@ class DynamoStoreRepository:
             raise NotFoundError(f"Stop {stop_uid} not found") from exc
         return self._from_item(response["Attributes"])
 
-    def _write_routing(self, project_id: str, stop_uid: str, changes: dict[str, Any], updated_at: str) -> bool:
+    def _write_partial(self, project_id: str, stop_uid: str, changes: dict[str, Any], updated_at: str) -> bool:
         # Clients are thread-safe, resource objects are not. The resource's client still applies boto3's
         # DynamoDB type transformation, so plain Python values go in here.
         expression, names, values = build_set_expression({**changes, "updated_at": updated_at})
@@ -138,7 +148,19 @@ class DynamoStoreRepository:
         updated_at = now_iso()
         with ThreadPoolExecutor(max_workers=ROUTING_WRITE_WORKERS) as pool:
             results = pool.map(
-                lambda entry: self._write_routing(project_id, entry[0], entry[1], updated_at), changes
+                lambda entry: self._write_partial(project_id, entry[0], entry[1], updated_at), changes
+            )
+            return sum(1 for written in results if written)
+
+    def update_progress_many(self, project_id: str, changes: list[RoutingChange]) -> int:
+        for _, change in changes:
+            check_progress_change(change)
+        if not changes:
+            return 0
+        updated_at = now_iso()
+        with ThreadPoolExecutor(max_workers=ROUTING_WRITE_WORKERS) as pool:
+            results = pool.map(
+                lambda entry: self._write_partial(project_id, entry[0], entry[1], updated_at), changes
             )
             return sum(1 for written in results if written)
 

@@ -122,6 +122,15 @@ class StoreRepositoryContract:
         self.assertEqual(len(self.repo.list_all("p2")), 2)
         self.assertEqual(self.repo.delete_all("p1"), 0)
 
+    def test_update_progress_many_writes_only_progress_fields(self):
+        self.repo.put_many("p1", make_stops(40))
+        changes = [(f"u{i:03d}", {"installer_name": "Anna"}) for i in range(40)] + [("ghost", {"installer_name": "x"})]
+        self.assertEqual(self.repo.update_progress_many("p1", changes), 40)  # the deleted stop is skipped
+        self.assertTrue(all(stop.installer_name == "Anna" for stop in self.repo.list_all("p1")))
+        with self.assertRaisesRegex(ValueError, "progress fields"):
+            self.repo.update_progress_many("p1", [("u000", {"installer": "Bo"})])
+        self.assertEqual(self.repo.update_progress_many("p1", []), 0)
+
 
 class DynamoStoreRepositoryTests(StoreRepositoryContract, unittest.TestCase):
     def setUp(self):

@@ -133,6 +133,9 @@ class InstallerOpsTests(ProjectApiTestCase):
         routing_writes = []
         original_many = self.stores.update_routing_many
         self.stores.update_routing_many = lambda p, ch: routing_writes.extend(ch) or original_many(p, ch)
+        progress_batches = []
+        original_progress = self.stores.update_progress_many
+        self.stores.update_progress_many = lambda p, ch: progress_batches.append(ch) or original_progress(p, ch)
 
         response = self.post("/installers/rename", {"old_name": "Ann", "new_name": "Anna"})
         self.assertEqual(response.status_code, 200, response.text)
@@ -145,6 +148,7 @@ class InstallerOpsTests(ProjectApiTestCase):
         self.assertIn({"installer_name"}, writes)
         self.assertTrue(all(w in ({"installer"}, {"installer_name"}) for w in writes), writes)
         self.assertEqual({tuple(change) for _, change in routing_writes}, {("installer",)})
+        self.assertEqual(progress_batches, [[(ann[0].uid, {"installer_name": "Anna"})]])  # one threaded batch
 
     def test_rename_validation(self):
         self.assertEqual(self.post("/installers/rename", {"old_name": "Nope", "new_name": "X"}).status_code, 404)

@@ -316,9 +316,9 @@ class RoutingService:
             self._stores.update_routing_many(
                 project_id, [(stop.uid, {"installer": new_name}) for stop in stops if stop.installer == old_name]
             )
-            for stop in stops:
-                if stop.installer_name == old_name:
-                    self._stores.update_fields(project_id, stop.uid, {"installer_name": new_name})
+            # The progress group goes out as its own (threaded) write, separate from the routing one (rule 5).
+            completed_by = [stop.uid for stop in stops if stop.installer_name == old_name]
+            self._stores.update_progress_many(project_id, [(uid, {"installer_name": new_name}) for uid in completed_by])
         return self._project(project_id)
 
     def reassign(self, project_id: str, stop_uid: str, installer: str) -> dict[str, Any]:

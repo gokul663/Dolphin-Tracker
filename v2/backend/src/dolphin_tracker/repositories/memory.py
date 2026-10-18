@@ -7,7 +7,12 @@ from dolphin_tracker.domain.cursors import encode_cursor, offset_from_cursor
 from dolphin_tracker.domain.errors import ConflictError, NotFoundError
 from dolphin_tracker.domain.models import Job, JobStatus, Page, Project, RoutingStatus, Stop, now_iso
 from dolphin_tracker.repositories.projects import IMMUTABLE_FIELDS
-from dolphin_tracker.repositories.stores import IMMUTABLE_STOP_FIELDS, RoutingChange, check_routing_change
+from dolphin_tracker.repositories.stores import (
+    IMMUTABLE_STOP_FIELDS,
+    RoutingChange,
+    check_progress_change,
+    check_routing_change,
+)
 
 
 def _offset_page(items: list, limit: int, cursor: str | None) -> tuple[list, str | None]:
@@ -124,6 +129,16 @@ class InMemoryStoreRepository:
     def update_routing_many(self, project_id: str, changes: list[RoutingChange]) -> int:
         for _, change in changes:
             check_routing_change(change)
+        written = 0
+        for stop_uid, change in changes:
+            if stop_uid in self._items.get(project_id, {}):
+                self.update_fields(project_id, stop_uid, change)
+                written += 1
+        return written
+
+    def update_progress_many(self, project_id: str, changes: list[RoutingChange]) -> int:
+        for _, change in changes:
+            check_progress_change(change)
         written = 0
         for stop_uid, change in changes:
             if stop_uid in self._items.get(project_id, {}):

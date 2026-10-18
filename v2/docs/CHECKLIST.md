@@ -110,7 +110,7 @@ Tracks delivery against [PLAN.md](./PLAN.md). Tick items as they land; add sub-i
 - [x] Y4 DT_AWS_REGION wired for Lambda
 - [x] Y5 add_installer appends atomically
 - [x] Y6 append holds the routing slot
-- [ ] Y7 rename installer_name writes threaded
+- [x] Y7 rename installer_name writes threaded
 - [ ] Y8 cp1252 replace; empty CSV header → column_N
 - [ ] Y9 migration day/datetime normalisation
 - [x] Y10 invoker and cursor helpers out of services/dynamo coupling

@@ -1405,3 +1405,19 @@ whole-list write).
 422 append leaves `routing_job_id` empty.
 
 **Verified:** gates green (240 backend, 102 frontend).
+
+---
+
+## Y7 · Rename writes `installer_name` threaded
+
+**Changed**
+- `StoreRepository.update_progress_many(project_id, [(uid, changes)])`: rejects keys outside `PROGRESS_FIELDS`
+  (`check_progress_change`), then writes on the same 16-worker pool as `update_routing_many` (the shared
+  writer is renamed `_write_partial`). Stops deleted meanwhile are skipped.
+- `rename_installer` sends the matching `installer_name` updates as one `update_progress_many` batch instead of
+  one `update_fields` per stop on the request path. Routing and progress stay separate writes (rule 5).
+
+**Tests:** repository contract (moto and fake): 40 stops + a missing one → 40 written; a routing key is rejected.
+The rename test checks one progress batch with only the stop whose `installer_name` matched.
+
+**Verified:** gates green (242 backend, 102 frontend).

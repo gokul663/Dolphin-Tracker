@@ -84,7 +84,7 @@ class Project(ApiModel):
     field_schema: list[FieldDef] = Field(default_factory=list)
     routing_status: RoutingStatus = RoutingStatus.READY
     routing_job_id: str = ""  # the routing job allowed to finish the current build (§3.2 fence); "" when idle
-    stop_count: int = 0
+    stop_count: int = 0  # informational: incremented on create/append, never decremented; KPIs are authoritative
     version: int = 1
     created_at: str = Field(default_factory=now_iso)
     updated_at: str = Field(default_factory=now_iso)

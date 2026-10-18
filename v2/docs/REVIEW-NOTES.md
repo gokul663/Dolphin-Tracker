@@ -1261,3 +1261,13 @@ with the "no CORS origins" message.
 422 with the job still queued, local start without a key → 202; local run message carries the warning.
 
 **Verified:** gates green (235 backend, 88 frontend).
+
+---
+
+## D4 · §9 #4: `stop_count` is informational
+
+**Changed:** one-line comment on `Project.stop_count` saying it is incremented on create/append, never
+decremented, and that KPIs are authoritative. No behaviour change. (§9 #5 and #7 need no code: #5 keeps the 422
+without a key; #7 is the Phase 5 cutover run.)
+
+**Verified:** gates green (235 backend, 88 frontend).

@@ -18,6 +18,7 @@ INTERNAL_ATTRIBUTES = {"PK", "SK", "GSI1PK", "GSI1SK", "entity"}
 
 class Keys:
     STOP_PREFIX = "STOP#"
+    EXTERNAL_ID_PREFIX = "EXT#"
 
     @staticmethod
     def project(project_id: str) -> dict[str, str]:
@@ -26,6 +27,11 @@ class Keys:
     @staticmethod
     def stop(project_id: str, stop_uid: str) -> dict[str, str]:
         return {"PK": f"PROJECT#{project_id}", "SK": f"{Keys.STOP_PREFIX}{stop_uid}"}
+
+    @staticmethod
+    def external_id(project_id: str, normalised: str) -> dict[str, str]:
+        """Uniqueness marker for a store's IBC# within its project (STORE-MODEL §2)."""
+        return {"PK": f"PROJECT#{project_id}", "SK": f"{Keys.EXTERNAL_ID_PREFIX}{normalised}"}
 
     @staticmethod
     def job(job_id: str) -> dict[str, str]:

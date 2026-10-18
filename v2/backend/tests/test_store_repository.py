@@ -4,8 +4,8 @@ import boto3
 from moto import mock_aws
 
 from dolphin_tracker.domain.cursors import encode_cursor
-from dolphin_tracker.domain.errors import NotFoundError
-from dolphin_tracker.domain.models import ScreenStatus, Stop
+from dolphin_tracker.domain.errors import ConflictError, NotFoundError
+from dolphin_tracker.domain.models import Screen, ScreenStatus, Stop
 from dolphin_tracker.repositories.dynamo import TABLE_DEFINITION
 from dolphin_tracker.repositories.memory import InMemoryStoreRepository
 from dolphin_tracker.repositories.stores import DynamoStoreRepository
@@ -29,6 +29,10 @@ def make_stops(count: int, *, prefix: str = "u") -> list[Stop]:
         )
         for index in range(count)
     ]
+
+
+def with_ids(stops: list[Stop], prefix: str = "IBC-") -> list[Stop]:
+    return [stop.model_copy(update={"external_id": f"{prefix}{index}"}) for index, stop in enumerate(stops)]
 
 
 class StoreRepositoryContract:
@@ -132,6 +136,39 @@ class StoreRepositoryContract:
             self.repo.update_progress_many("p1", [("u000", {"installer": "Bo"})])
         self.assertEqual(self.repo.update_progress_many("p1", []), 0)
 
+    def test_external_id_is_unique_per_project(self):
+        self.repo.put_many("p1", with_ids(make_stops(3)))
+        self.repo.put_many("p1", with_ids(make_stops(1)))  # re-putting the same stop is fine
+        clash = make_stops(1, prefix="x")[0].model_copy(update={"external_id": "IBC-2"})
+        with self.assertRaisesRegex(ConflictError, "IBC-2 already exists"):
+            self.repo.put_many("p1", [clash])
+        self.assertIsNone(self.repo.get("p1", "x000"))  # the stop and its marker go together or not at all
+        self.repo.put_many("p2", [clash])  # another project may use the same IBC#
+        twice = [clash.model_copy(update={"uid": uid}) for uid in ("y1", "y2")]
+        with self.assertRaisesRegex(ConflictError, "twice"):
+            self.repo.put_many("p3", twice)
+
+    def test_external_id_cannot_be_edited(self):
+        self.repo.put_many("p1", with_ids(make_stops(1)))
+        self.assertEqual(self.repo.update_fields("p1", "u000", {"external_id": "NEW"}).external_id, "IBC-0")
+
+    def test_update_screens_writes_screens_and_the_derived_status(self):
+        self.repo.put_many("p1", make_stops(1))
+        before = self.repo.get("p1", "u000")
+        screens = [Screen(status=ScreenStatus.COMPLETED), Screen(status=ScreenStatus.DELIVERED, venue_id="V9")]
+        after = self.repo.update_screens("p1", "u000", screens, updated_by="tech@x")
+        self.assertEqual([(s.id, s.status) for s in after.screens], [(s.id, s.status) for s in screens])
+        self.assertEqual((after.status, after.updated_by), (ScreenStatus.DELIVERED, "tech@x"))
+        self.assertEqual(after.model_dump(exclude={"screens", "status", "updated_at", "updated_by"}),
+                         before.model_dump(exclude={"screens", "status", "updated_at", "updated_by"}))
+        with self.assertRaises(NotFoundError):
+            self.repo.update_screens("p1", "ghost", screens)
+
+    def test_delete_all_frees_the_external_ids(self):
+        self.repo.put_many("p1", with_ids(make_stops(2)))
+        self.assertEqual(self.repo.delete_all("p1"), 2)
+        self.repo.put_many("p1", [make_stops(1, prefix="n")[0].model_copy(update={"external_id": "IBC-0"})])
+
 
 class DynamoStoreRepositoryTests(StoreRepositoryContract, unittest.TestCase):
     def setUp(self):
@@ -162,6 +199,28 @@ class DynamoStoreRepositoryTests(StoreRepositoryContract, unittest.TestCase):
         for key in ({"offset": 3}, {"PK": "PROJECT#p1", "SK": 5}, {"PK": "PROJECT#p1"}):
             with self.subTest(key=key), self.assertRaisesRegex(ValueError, "Invalid cursor"):
                 self.repo.list("p1", cursor=encode_cursor(key))
+
+    def test_markers_are_items_written_with_the_stop(self):
+        self.repo.put_many("p1", with_ids(make_stops(120)))  # 3 transactions of up to 50 stops
+        marker = self.table.get_item(Key={"PK": "PROJECT#p1", "SK": "EXT#IBC-7"})["Item"]
+        self.assertEqual((marker["entity"], marker["stop_uid"]), ("EXT", "u007"))
+        self.assertEqual(len(self.repo.list_all("p1")), 120)  # markers are not stops
+        clash = make_stops(1, prefix="x")[0].model_copy(update={"external_id": "IBC-119"})
+        batch = [*with_ids(make_stops(3, prefix="z"), prefix="NEW-"), clash]  # one transaction
+        with self.assertRaisesRegex(ConflictError, "IBC-119"):
+            self.repo.put_many("p1", batch)
+        self.assertIsNone(self.repo.get("p1", "z000"))  # the whole transaction was cancelled
+        self.repo.delete_all("p1")
+        remaining = self.table.query(KeyConditionExpression="PK = :pk", ExpressionAttributeValues={":pk": "PROJECT#p1"})
+        self.assertEqual(remaining["Items"], [])
+
+    def test_update_screens_touches_only_its_attributes(self):
+        self.repo.put_many("p1", make_stops(1))
+        before = self.table.get_item(Key={"PK": "PROJECT#p1", "SK": "STOP#u000"})["Item"]
+        self.repo.update_screens("p1", "u000", [Screen(status=ScreenStatus.SHIPPED)])
+        after = self.table.get_item(Key={"PK": "PROJECT#p1", "SK": "STOP#u000"})["Item"]
+        changed = {key for key in after if after[key] != before.get(key)}
+        self.assertEqual(changed, {"screens", "status", "updated_at"})
 
 
 class InMemoryStoreRepositoryTests(StoreRepositoryContract, unittest.TestCase):

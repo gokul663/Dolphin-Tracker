@@ -1586,3 +1586,52 @@ v2 vocabulary through a `status_write` helper (bare `status` writes are now over
 - Existing import tests moved to the new row shape.
 
 **Verified:** gates green (274 backend, 102 frontend). No Google key, so geocoding is faked throughout.
+
+---
+
+## S3 · Repository: external_id uniqueness markers, screens write, address dedupe
+
+**Changed**
+- `Keys.external_id(project, id)` → `SK=EXT#<normalised IBC#>`.
+- `DynamoStoreRepository.put_many`:
+  - Stops with an IBC# go in `TransactWriteItems` with their marker: 50 stops (100 items) per transaction, and
+    the marker condition is `attribute_not_exists(PK) OR stop_uid = :uid`, so re-putting the same stop
+    (e.g. a migration re-run) is fine.
+  - A cancelled transaction becomes `ConflictError("IBC# X already exists in this project")`, naming the stop
+    from `CancellationReasons`. A repeated IBC# inside one write is a `ConflictError` before anything is
+    written.
+  - Stops without an IBC# still use the batch writer.
+- `external_id` joins `IMMUTABLE_STOP_FIELDS`: `update_fields` never changes it (§7 #5).
+- `update_screens(project, uid, screens, updated_by=)` writes `screens`, the derived `status` and `updated_*`
+  only, through `screens_write()`.
+- `delete_all` also removes the project's `EXT#` items (it still returns the number of stops).
+- The in-memory fake mirrors all of it with a per-project marker map.
+- Services:
+  - Create and append dedupe with `import_mapping.split_duplicates`: by normalised IBC#, then normalised
+    address, against stores already in the project and earlier stops of the same request. The venue-code rule
+    is retired (§9).
+  - `SkippedStop` is now `{index, external_id, store_name, addr, reason: "external_id" | "address"}`;
+    `ProjectCreated` gains `skipped`, and create counts only the kept stops.
+- `validate_stop_inputs` applies the store field rules: IBC#, name and address required, plus phone, email,
+  url, select and counts. A stop without an IBC# is now a 422 on create/append.
+- **Race:** two appends can't interleave (Y6's slot), so a marker conflict means a real duplicate the service
+  check missed; it is a 409 for that transaction. Earlier transactions of the same append have committed by
+  then. That is acceptable for a case the pre-check makes rare, but not atomic across >50 stops.
+
+**Tests:**
+- Repository contract (fake and moto):
+  - an IBC# is unique per project, a re-put is fine, the same IBC# may exist in another project, a repeat
+    inside one write is rejected;
+  - the IBC# can't be edited;
+  - `update_screens` changes only its attributes and 404s on a missing stop;
+  - `delete_all` frees the IBC#s.
+- moto only: 120 stops across 3 transactions with marker items; a conflicting transaction is cancelled whole;
+  nothing is left after `delete_all`; the raw item diff after `update_screens` is exactly
+  `{screens, status, updated_at}`.
+- API:
+  - create skips an IBC# and an address duplicate and reports them, and a blank IBC# → 422 "IBC# is required";
+  - the append dedupe test is rewritten for IBC#-then-address, within and against the project, and a venue
+    code match no longer dedupes.
+
+**Verified:** gates green (285 backend, 102 frontend). Not run against DynamoDB Local (moto implements
+`TransactWriteItems` with cancellation reasons).

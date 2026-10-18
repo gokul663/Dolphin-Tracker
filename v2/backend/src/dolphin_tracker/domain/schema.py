@@ -11,6 +11,7 @@ from datetime import date
 from typing import Any
 
 from dolphin_tracker.domain.models import FieldDef, FieldType
+from dolphin_tracker.domain.validation import FIELDS_BY_NAME, normalize_external_id, validate_store_values
 
 PHONE_RE = re.compile(r"[+()\d\s.-]{7,20}")
 EMAIL_RE = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
@@ -134,18 +135,17 @@ def coerce_fields(schema: Iterable[FieldDef], fields: Mapping[str, Any]) -> dict
 
 
 def validate_stop_inputs(schema: Iterable[FieldDef], stops: Iterable[Any]) -> list[dict[str, Any]]:
-    """Per-row problems for submitted stops (create, append): required name and address, schema fields.
+    """Per-row problems for submitted stops (create, append): the store field rules (IBC#, name and address
+    required; phone, email, url, select, counts), then the project's schema fields.
 
     Returns `[{"index": i, "errors": [...]}]` for the bad rows only.
     """
     schema = list(schema)
     bad = []
     for index, stop in enumerate(stops):
-        problems = []
-        if not stop.store_name.strip():
-            problems.append("Store name is required")
-        if not stop.addr.strip():
-            problems.append("Address is required")
+        values = {name: getattr(stop, name) for name in FIELDS_BY_NAME}
+        values["external_id"] = normalize_external_id(stop.external_id)
+        problems = list(validate_store_values(values).values())  # IBC#, name, address required; field rules
         problems.extend(validate_fields(schema, stop.fields))
         if problems:
             bad.append({"index": index, "errors": problems})

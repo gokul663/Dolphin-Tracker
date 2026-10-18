@@ -5,13 +5,14 @@ from typing import Any
 
 from dolphin_tracker.domain.cursors import encode_cursor, offset_from_cursor
 from dolphin_tracker.domain.errors import ConflictError, NotFoundError
-from dolphin_tracker.domain.models import Job, JobStatus, Page, Project, RoutingStatus, Stop, now_iso
+from dolphin_tracker.domain.models import Job, JobStatus, Page, Project, RoutingStatus, Screen, Stop, now_iso
 from dolphin_tracker.repositories.projects import IMMUTABLE_FIELDS
 from dolphin_tracker.repositories.stores import (
     IMMUTABLE_STOP_FIELDS,
     RoutingChange,
     check_progress_change,
     check_routing_change,
+    screens_write,
 )
 
 
@@ -87,11 +88,20 @@ class InMemoryProjectRepository:
 class InMemoryStoreRepository:
     def __init__(self) -> None:
         self._items: dict[str, dict[str, Stop]] = {}
+        self._markers: dict[str, dict[str, str]] = {}  # project → IBC# → stop uid, like the EXT# items
 
     def put_many(self, project_id: str, stops: list[Stop]) -> None:
+        markers = self._markers.setdefault(project_id, {})
+        ids = [stop.external_id for stop in stops if stop.external_id]
+        if len(set(ids)) != len(ids):
+            raise ConflictError("IBC# appears twice in this write")
         bucket = self._items.setdefault(project_id, {})
-        for stop in stops:
+        for stop in stops:  # per stop, stop + marker together (Dynamo commits 50 at a time)
+            if stop.external_id and markers.get(stop.external_id, stop.uid) != stop.uid:
+                raise ConflictError(f"IBC# {stop.external_id} already exists in this project")
             bucket[stop.uid] = stop.model_copy(deep=True)
+            if stop.external_id:
+                markers[stop.external_id] = stop.uid
 
     def get(self, project_id: str, stop_uid: str) -> Stop | None:
         stop = self._items.get(project_id, {}).get(stop_uid)
@@ -146,7 +156,11 @@ class InMemoryStoreRepository:
                 written += 1
         return written
 
+    def update_screens(self, project_id: str, stop_uid: str, screens: list[Screen], *, updated_by: str = "") -> Stop:
+        return self.update_fields(project_id, stop_uid, screens_write(screens, updated_by))
+
     def delete_all(self, project_id: str) -> int:
+        self._markers.pop(project_id, None)
         return len(self._items.pop(project_id, {}))
 
     def list_projected(self, project_id: str, attributes: tuple[str, ...]) -> list[dict[str, Any]]:

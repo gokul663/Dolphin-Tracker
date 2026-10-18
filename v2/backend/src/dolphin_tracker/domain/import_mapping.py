@@ -288,6 +288,41 @@ def mark_duplicates(rows: list[dict[str, Any]]) -> None:
                 first_by_address[address] = row["index"]
 
 
+def split_duplicates(existing: Iterable[Any], incoming: list[Any]) -> tuple[list[int], list[dict[str, Any]]]:
+    """Which of `incoming` (submitted stops) to keep: a stop is skipped when its IBC# or, failing that, its
+    normalised address matches a store already in the project or an earlier kept stop (STORE-MODEL §1.4).
+
+    Returns (indexes to keep, skipped rows with `index`, `external_id`, `store_name`, `addr`, `reason`)."""
+    known_ids: set[str] = set()
+    known_addresses: set[str] = set()
+    def address_of(stop: Any) -> str:
+        return dedupe_key_address({"addr": stop.addr, "city": stop.city, "state": stop.state, "zip": stop.zip})
+
+    for stop in existing:
+        if stop.external_id:
+            known_ids.add(normalize_external_id(stop.external_id))
+        if address := address_of(stop):
+            known_addresses.add(address)
+    keep: list[int] = []
+    skipped: list[dict[str, Any]] = []
+    for index, stop in enumerate(incoming):
+        external_id = normalize_external_id(stop.external_id)
+        address = address_of(stop)
+        reason = "external_id" if external_id and external_id in known_ids else (
+            "address" if address and address in known_addresses else ""
+        )
+        if reason:
+            skipped.append({"index": index, "external_id": external_id, "store_name": stop.store_name,
+                            "addr": stop.addr, "reason": reason})
+            continue
+        keep.append(index)
+        if external_id:
+            known_ids.add(external_id)
+        if address:
+            known_addresses.add(address)
+    return keep, skipped
+
+
 ADDRESS_LINE_RE = re.compile(r"\s+")
 
 

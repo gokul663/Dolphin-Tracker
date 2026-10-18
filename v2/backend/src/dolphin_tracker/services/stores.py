@@ -15,10 +15,9 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Any
 
-from dolphin_tracker.domain.addresses import duplicate_key
 from dolphin_tracker.domain.cursors import encode_cursor, offset_from_cursor
 from dolphin_tracker.domain.errors import ConflictError, NotFoundError, ValidationFailed
-from dolphin_tracker.domain.import_mapping import clean_mapping
+from dolphin_tracker.domain.import_mapping import clean_mapping, split_duplicates
 from dolphin_tracker.domain.models import (
     PROGRESS_FIELDS,
     Page,
@@ -269,18 +268,6 @@ class StoreService:
 
     # ---- append -------------------------------------------------------------------------------------------
 
-    @staticmethod
-    def _identity(stop: Stop | StopInput) -> str:
-        return duplicate_key(
-            {
-                "venue_code": stop.fields.get("venue_code", ""),
-                "addr": stop.addr,
-                "city": stop.city,
-                "state": stop.state,
-                "zip": stop.zip,
-            }
-        )
-
     def append(
         self, project_id: str, stops: list[StopInput], pa: str = "", import_mapping: dict[str, str] | None = None
     ) -> dict[str, Any]:
@@ -307,19 +294,8 @@ class StoreService:
             raise ValidationFailed(f"{len(bad)} stop(s) need fixing", errors=[], stops=bad)
 
         existing = self._stores.list_all(project_id)
-        known = {key for key in (self._identity(stop) for stop in existing) if key}
-        skipped: list[dict[str, str]] = []
-        candidates: list[StopInput] = []
-        for stop in stops:
-            key = self._identity(stop)
-            if key and key in known:
-                skipped.append(
-                    {"addr": stop.addr, "venue_code": str(stop.fields.get("venue_code", "")), "reason": "duplicate"}
-                )
-                continue
-            if key:
-                known.add(key)
-            candidates.append(stop)
+        keep, skipped = split_duplicates(existing, stops)  # by IBC#, then address; within and against the project
+        candidates = [stops[index] for index in keep]
 
         max_number = max(
             (int(match.group(1)) for stop in existing if (match := re.fullmatch(r"S(\d+)", stop.display_id))),

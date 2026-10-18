@@ -7,18 +7,31 @@ from typing import Any, Protocol
 from botocore.exceptions import ClientError
 
 from dolphin_tracker.domain.cursors import encode_cursor
-from dolphin_tracker.domain.errors import NotFoundError
-from dolphin_tracker.domain.models import PROGRESS_FIELDS, ROUTING_FIELDS, Page, Stop, now_iso
+from dolphin_tracker.domain.errors import ConflictError, NotFoundError
+from dolphin_tracker.domain.models import (
+    PROGRESS_FIELDS,
+    ROUTING_FIELDS,
+    Page,
+    Screen,
+    Stop,
+    derive_store_status,
+    now_iso,
+)
 from dolphin_tracker.repositories.dynamo import Keys, build_set_expression, from_ddb, query_page, strip_internal, to_ddb
 
-IMMUTABLE_STOP_FIELDS = {"uid"}
+IMMUTABLE_STOP_FIELDS = {"uid", "external_id"}  # the IBC# is set on create/append only (STORE-MODEL §7 #5)
 ROUTING_WRITE_WORKERS = 16
+STOPS_PER_TRANSACTION = 50  # stop + marker = 2 items; DynamoDB allows 100 per TransactWriteItems
 
 RoutingChange = tuple[str, dict[str, Any]]  # uid, {installer?, day?, seq?}
 
 
 class StoreRepository(Protocol):
-    def put_many(self, project_id: str, stops: list[Stop]) -> None: ...
+    def put_many(self, project_id: str, stops: list[Stop]) -> None:
+        """Write stops. A stop with an `external_id` is written together with its `EXT#` marker in one
+        transaction; ConflictError if another stop of the project already holds that IBC# (re-putting the same
+        stop is fine)."""
+        ...
     def get(self, project_id: str, stop_uid: str) -> Stop | None: ...
     def list(self, project_id: str, *, limit: int = 50, cursor: str | None = None) -> Page[Stop]: ...
     def list_all(self, project_id: str) -> list[Stop]:
@@ -37,10 +50,26 @@ class StoreRepository(Protocol):
         """Apply progress-field changes (e.g. `installer_name` on a rename) to many stops, in parallel like the
         routing writes. Keys outside PROGRESS_FIELDS are rejected. Returns how many were written."""
         ...
-    def delete_all(self, project_id: str) -> int: ...
+    def update_screens(self, project_id: str, stop_uid: str, screens: list[Screen], *, updated_by: str = "") -> Stop:
+        """Replace the screen rows; writes `screens`, the derived `status` and `updated_*` only."""
+        ...
+    def delete_all(self, project_id: str) -> int:
+        """Every stop of the project and its IBC# markers. Returns the number of stops."""
+        ...
     def list_projected(self, project_id: str, attributes: tuple[str, ...]) -> list[dict[str, Any]]:
         """Whole project, only `attributes` per stop (cheap reads for KPIs). Plain dicts, no Decimals."""
         ...
+
+
+def screens_write(screens: list[Screen], updated_by: str = "") -> dict[str, Any]:
+    """The attributes a screens write sets: the rows, their derived summary, and who changed them."""
+    changes: dict[str, Any] = {
+        "screens": [screen.model_dump(mode="json") for screen in screens],
+        "status": derive_store_status(screens).value,
+    }
+    if updated_by:
+        changes["updated_by"] = updated_by
+    return changes
 
 
 def check_routing_change(changes: dict[str, Any]) -> None:
@@ -68,19 +97,53 @@ class DynamoStoreRepository:
         return Stop.model_validate(from_ddb(strip_internal(item)))
 
     def put_many(self, project_id: str, stops: list[Stop]) -> None:
+        keyed = [stop for stop in stops if stop.external_id]
+        ids = [stop.external_id for stop in keyed]
+        if len(set(ids)) != len(ids):
+            duplicate = next(external_id for external_id in ids if ids.count(external_id) > 1)
+            raise ConflictError(f"IBC# {duplicate} appears twice in this write")
         # batch_writer sends 25 items per BatchWriteItem and resubmits UnprocessedItems itself.
         with self._table.batch_writer(overwrite_by_pkeys=["PK", "SK"]) as batch:
             for stop in stops:
-                batch.put_item(Item=self._to_item(project_id, stop))
+                if not stop.external_id:
+                    batch.put_item(Item=self._to_item(project_id, stop))
+        for start in range(0, len(keyed), STOPS_PER_TRANSACTION):
+            self._put_with_markers(project_id, keyed[start : start + STOPS_PER_TRANSACTION])
+
+    def _put_with_markers(self, project_id: str, stops: list[Stop]) -> None:
+        """Each stop and its `EXT#` marker in one transaction. The marker must be new, or already this stop's."""
+        items = []
+        for stop in stops:
+            marker = {**Keys.external_id(project_id, stop.external_id), "entity": "EXT", "stop_uid": stop.uid}
+            items.append({"Put": {"TableName": self._table.name, "Item": self._to_item(project_id, stop)}})
+            items.append({
+                "Put": {
+                    "TableName": self._table.name,
+                    "Item": marker,
+                    "ConditionExpression": "attribute_not_exists(PK) OR stop_uid = :uid",
+                    "ExpressionAttributeValues": {":uid": stop.uid},
+                }
+            })
+        try:
+            self._table.meta.client.transact_write_items(TransactItems=items)
+        except ClientError as exc:
+            if exc.response["Error"]["Code"] != "TransactionCanceledException":
+                raise
+            reasons = exc.response.get("CancellationReasons") or []
+            failed = next(
+                (index for index, reason in enumerate(reasons) if reason.get("Code") == "ConditionalCheckFailed"), None
+            )
+            external_id = stops[failed // 2].external_id if failed is not None else "?"
+            raise ConflictError(f"IBC# {external_id} already exists in this project") from exc
 
     def get(self, project_id: str, stop_uid: str) -> Stop | None:
         item = self._table.get_item(Key=Keys.stop(project_id, stop_uid)).get("Item")
         return self._from_item(item) if item else None
 
-    def _query_kwargs(self, project_id: str) -> dict[str, Any]:
+    def _query_kwargs(self, project_id: str, prefix: str = Keys.STOP_PREFIX) -> dict[str, Any]:
         return {
             "KeyConditionExpression": "PK = :pk AND begins_with(SK, :prefix)",
-            "ExpressionAttributeValues": {":pk": Keys.project(project_id)["PK"], ":prefix": Keys.STOP_PREFIX},
+            "ExpressionAttributeValues": {":pk": Keys.project(project_id)["PK"], ":prefix": prefix},
         }
 
     def list(self, project_id: str, *, limit: int = 50, cursor: str | None = None) -> Page[Stop]:
@@ -89,8 +152,8 @@ class DynamoStoreRepository:
         items = [self._from_item(item) for item in response.get("Items", [])]
         return Page(items=items, next_cursor=encode_cursor(response.get("LastEvaluatedKey")))
 
-    def _iter_items(self, project_id: str, **extra: Any):
-        kwargs = {**self._query_kwargs(project_id), **extra}
+    def _iter_items(self, project_id: str, prefix: str = Keys.STOP_PREFIX, **extra: Any):
+        kwargs = {**self._query_kwargs(project_id, prefix), **extra}
         while True:
             response = self._table.query(**kwargs)
             yield from response.get("Items", [])
@@ -171,12 +234,16 @@ class DynamoStoreRepository:
         )  # aliased: `status` is a DynamoDB reserved word
         return [from_ddb(item) for item in items]
 
+    def update_screens(self, project_id: str, stop_uid: str, screens: list[Screen], *, updated_by: str = "") -> Stop:
+        return self.update_fields(project_id, stop_uid, screens_write(screens, updated_by))
+
     def delete_all(self, project_id: str) -> int:
-        keys = [
-            {"PK": item["PK"], "SK": item["SK"]}
-            for item in self._iter_items(project_id, ProjectionExpression="PK, SK")
-        ]
+        def keys(prefix: str) -> list[dict[str, str]]:
+            items = self._iter_items(project_id, prefix, ProjectionExpression="PK, SK")
+            return [{"PK": item["PK"], "SK": item["SK"]} for item in items]
+
+        stops, markers = keys(Keys.STOP_PREFIX), keys(Keys.EXTERNAL_ID_PREFIX)
         with self._table.batch_writer() as batch:
-            for key in keys:
+            for key in stops + markers:
                 batch.delete_item(Key=key)
-        return len(keys)
+        return len(stops)

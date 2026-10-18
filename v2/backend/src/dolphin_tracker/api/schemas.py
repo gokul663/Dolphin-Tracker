@@ -45,9 +45,20 @@ class ImportJobCreated(ApiModel):
     upload_key: str
 
 
+class SkippedStop(ApiModel):
+    """A submitted stop that was not written because it repeats another (STORE-MODEL §1.4)."""
+
+    index: int  # position in the submitted list
+    external_id: str
+    store_name: str
+    addr: str
+    reason: Literal["external_id", "address"]
+
+
 class ProjectCreated(ApiModel):
     project: Project
     job_id: str | None = None  # the routing job; absent when the project has no stops (201)
+    skipped: list[SkippedStop] = Field(default_factory=list)  # duplicates by IBC#, then address
 
 
 class JobAccepted(ApiModel):
@@ -106,12 +117,6 @@ class AppendStops(ApiModel):
     stops: list[StopInput] = Field(min_length=1, max_length=5000)
     pa: str = Field(default="", max_length=500)
     import_mapping: dict[str, str] = Field(default_factory=dict)  # merged into project.import_mappings
-
-
-class SkippedStop(ApiModel):
-    addr: str
-    venue_code: str
-    reason: str
 
 
 class AppendResult(ApiModel):

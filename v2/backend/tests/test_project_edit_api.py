@@ -12,8 +12,9 @@ def existing_stop(uid: str, display: str, installer: str, day: int, seq: int, st
     )
 
 
-def new_stop(name: str, addr: str, state: str = "GA", **fields) -> dict:
-    return {"store_name": name, "addr": addr, "city": "Atlanta", "state": state, "zip": "30303", "fields": fields}
+def new_stop(name: str, addr: str, state: str = "GA", *, external_id: str | None = None, **fields) -> dict:
+    return {"external_id": external_id or f"IBC-{name}", "store_name": name, "addr": addr, "city": "Atlanta",
+            "state": state, "zip": "30303", "fields": fields}
 
 
 class AppendTests(ProjectApiTestCase):
@@ -38,21 +39,29 @@ class AppendTests(ProjectApiTestCase):
     def append(self, stops: list[dict], **body):
         return self.client.post("/api/projects/p1/stores/append", json={"stops": stops, **body})
 
-    def test_dedupe_against_existing_and_within_batch(self):
+    def test_dedupe_by_external_id_then_address_against_existing_and_within_batch(self):
+        self.stores._items["p1"]["a"] = self.stores.get("p1", "a").model_copy(update={"external_id": "IBC-A"})
         response = self.append(
             [
-                new_stop("Dup venue", "1 Other Rd", venue_code="v1"),  # venue code match, case-insensitive
+                new_stop("Dup id", "1 Other Rd", external_id=" ibc-a "),  # IBC# of stop a, normalised
                 new_stop("Dup address", "B Main St"),  # normalised address of stop b
                 new_stop("Fresh", "77 New Rd"),
-                new_stop("Fresh again", "77 new rd."),  # duplicate inside the batch
+                new_stop("Fresh again", "77 new rd."),  # duplicate address inside the batch
+                new_stop("Same id", "88 Far Rd", external_id="IBC-Fresh"),  # duplicate IBC# inside the batch
+                new_stop("Venue only", "5 Venue Rd", venue_code="v1"),  # a venue code match no longer counts
             ]
         )
         self.assertEqual(response.status_code, 200, response.text)
         body = response.json()
-        self.assertEqual((body["appended"], body["total"]), (1, 5))
-        self.assertEqual([(s["addr"], s["reason"]) for s in body["skipped"]],
-                         [("1 Other Rd", "duplicate"), ("B Main St", "duplicate"), ("77 new rd.", "duplicate")])
-        self.assertEqual(body["skipped"][0]["venue_code"], "v1")
+        self.assertEqual((body["appended"], body["total"]), (2, 6))
+        self.assertEqual(
+            [(s["index"], s["external_id"], s["reason"]) for s in body["skipped"]],
+            [(0, "IBC-A", "external_id"), (1, "IBC-DUP ADDRESS", "address"), (3, "IBC-FRESH AGAIN", "address"),
+             (4, "IBC-FRESH", "external_id")],
+        )
+        added = {stop.store_name: stop for stop in self.stores.list_all("p1") if stop.uid not in "abcd"}
+        self.assertEqual(set(added), {"Fresh", "Venue only"})
+        self.assertEqual(added["Fresh"].external_id, "IBC-FRESH")
 
     def test_greedy_placement_and_display_ids(self):
         body = self.append([new_stop("N1", "1 New Rd"), new_stop("N2", "2 New Rd"), new_stop("N3", "3 New Rd")]).json()

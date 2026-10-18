@@ -29,7 +29,8 @@ class NoopInvoker:
 
 def stop_input(i: int, **extra) -> dict:
     return {
-        "store_name": f"Store {i}", "addr": f"{i} Main St", "city": "Atlanta", "state": "GA", "zip": "30303",
+        "external_id": f"IBC-{i}", "store_name": f"Store {i}", "addr": f"{i} Main St", "city": "Atlanta",
+        "state": "GA", "zip": "30303",
         "lat": 33.70 + i * 0.01, "lng": -84.40 + i * 0.01, "fields": {"dma": "ATL"}, **extra,
     }
 
@@ -76,6 +77,15 @@ class ProjectApiTestCase(unittest.TestCase):
 
 
 class CreateProjectApiTests(ProjectApiTestCase):
+    def test_create_skips_duplicates_and_requires_an_ibc(self):
+        stops = [stop_input(0), {**stop_input(1), "external_id": "ibc-0"}, {**stop_input(2), "addr": "0 MAIN ST."}]
+        body = self.create_project(stops=stops)
+        self.assertEqual([(s["index"], s["reason"]) for s in body["skipped"]], [(1, "external_id"), (2, "address")])
+        self.assertEqual(body["project"]["stop_count"], 1)
+        missing = self.client.post("/api/projects", json=project_body(stops=[{**stop_input(0), "external_id": " "}]))
+        self.assertEqual(missing.status_code, 422)
+        self.assertEqual(missing.json()["detail"]["stops"][0]["errors"], ["IBC# is required"])
+
     def test_create_saves_the_import_mapping_and_store_details(self):
         stop = {**stop_input(0), "external_id": " ibc-7 ", "dma": "ATL", "spot_visible": True,
                 "screens": [{"stick_number": "S1"}, {"stick_number": "S2", "status": "Shipped"}]}

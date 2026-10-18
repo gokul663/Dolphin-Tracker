@@ -6,7 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from dolphin_tracker.domain.errors import NotFoundError, ValidationFailed
-from dolphin_tracker.domain.import_mapping import clean_mapping
+from dolphin_tracker.domain.import_mapping import clean_mapping, split_duplicates
 from dolphin_tracker.domain.kpi import KPI_ATTRIBUTES, kpi_summary
 from dolphin_tracker.domain.models import (
     FieldDef,
@@ -74,11 +74,11 @@ class ProjectService:
             raise NotFoundError(f"Project {project_id} not found")
         return project
 
-    def create(self, payload: ProjectCreate) -> tuple[Project, str | None]:
+    def create(self, payload: ProjectCreate) -> tuple[Project, str | None, list[dict[str, Any]]]:
         """Validate, write META + stops, and start the `create` routing job when there are stops.
 
-        Returns (project, routing_job_id or None). Every invalid stop is reported at once (422).
-        """
+        Returns (project, routing_job_id or None, skipped duplicates). Every invalid stop is reported at once
+        (422); a stop repeating an earlier one (IBC#, then address) is skipped and reported."""
         errors: list[Any] = []
         name, pa = payload.name.strip(), payload.pa.strip()
         if not name:
@@ -96,8 +96,10 @@ class ProjectService:
             raise ValidationFailed(f"Project could not be created{bad_rows}", errors=errors, stops=stop_errors)
 
         assert self._stores is not None
+        keep, skipped = split_duplicates([], payload.stops)
+        kept = [payload.stops[index] for index in keep]
         project_id = uuid.uuid4().hex
-        job = RoutingService.new_job(project_id, "create") if payload.stops else None
+        job = RoutingService.new_job(project_id, "create") if kept else None
         project = Project(
             id=project_id,
             name=name,
@@ -115,7 +117,7 @@ class ProjectService:
             import_mappings=clean_mapping(payload.import_mapping),
             routing_status=RoutingStatus.BUILDING if job else RoutingStatus.READY,
             routing_job_id=job.id if job else "",
-            stop_count=len(payload.stops),
+            stop_count=len(kept),
         )
         stops = [
             Stop(
@@ -136,13 +138,13 @@ class ProjectService:
                 **stop_details(stop),
                 screens=stop.build_screens(),
             )
-            for index, stop in enumerate(payload.stops)
+            for index, stop in enumerate(kept)
         ]
         # Stops first: if the META write fails there is no visible project, only orphan stop items.
         self._stores.put_many(project_id, stops)
         self._projects.put(project)
         if job is None:
-            return project, None
+            return project, None, skipped
         assert self._routing is not None
         try:
             self._routing.record_and_launch(job)
@@ -150,7 +152,7 @@ class ProjectService:
             # The project and its stops are saved; launch() already marked routing failed. Return them so the
             # client can open the project and retry with recluster instead of losing the import.
             return self.get(project_id), job.id
-        return project, job.id
+        return project, job.id, skipped
 
     UPDATABLE = frozenset(
         {

@@ -42,10 +42,10 @@ def list_projects(
     responses={201: {"model": ProjectCreated, "description": "Created without stops; no routing job"}},
 )
 def create_project(body: ProjectCreate, service: ServiceDep, response: Response) -> ProjectCreated:
-    project, job_id = service.create(body)
+    project, job_id, skipped = service.create(body)
     if job_id is None:
         response.status_code = 201
-    return ProjectCreated(project=project, job_id=job_id)
+    return ProjectCreated(project=project, job_id=job_id, skipped=skipped)
 
 
 @router.get("/{project_id}", response_model=Project)

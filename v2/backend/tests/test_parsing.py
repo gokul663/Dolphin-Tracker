@@ -76,6 +76,18 @@ class CsvParserTests(unittest.TestCase):
         rows = read_csv_table(b"address,store_name,pa\n\n123 Main St,Store A\n")
         self.assertEqual(rows, [{"address": "123 Main St", "store_name": "Store A", "pa": ""}])
 
+    def test_cp1252_fallback_replaces_undefined_bytes(self):
+        undefined = bytes([0x81, 0x8D, 0x8F, 0x90, 0x9D])
+        raw = "address,store_name\n1 Main St,Caf\u00e9 ".encode("cp1252") + undefined + b"\n"
+        rows = read_csv_table(raw)  # not UTF-8, and those five bytes are undefined in cp1252
+        self.assertEqual(rows[0]["address"], "1 Main St")
+        self.assertTrue(rows[0]["store_name"].startswith("Caf\u00e9 "))
+        self.assertEqual(rows[0]["store_name"][-5:], "\ufffd" * 5)
+
+    def test_blank_csv_header_cells_become_column_n(self):
+        rows = read_csv_table(b"address,,###,store_name\n1 Main St,x,y,Store A\n")
+        self.assertEqual(rows, [{"address": "1 Main St", "column_2": "x", "column_3": "y", "store_name": "Store A"}])
+
 
 class XlsxParserTests(unittest.TestCase):
     @staticmethod
@@ -94,6 +106,10 @@ class XlsxParserTests(unittest.TestCase):
         )
         rows = read_xlsx_table(raw)
         self.assertEqual(rows, [{"store_name": "Store A", "address": "1 Main St, Dallas, TX", "venue_code": "42"}])
+
+    def test_blank_xlsx_header_cells_become_column_n(self):
+        rows = read_xlsx_table(self._workbook([["address", None, "  "], ["1 Main St", "x", "y"]]))
+        self.assertEqual(rows, [{"address": "1 Main St", "column_2": "x", "column_3": "y"}])
 
     def test_read_table_dispatches_on_extension(self):
         raw = self._workbook([["address"], ["1 Main St"]])

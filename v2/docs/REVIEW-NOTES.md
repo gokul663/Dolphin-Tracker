@@ -1421,3 +1421,17 @@ whole-list write).
 The rename test checks one progress batch with only the stop whose `installer_name` matched.
 
 **Verified:** gates green (242 backend, 102 frontend).
+
+---
+
+## Y8 · Parsing edges
+
+**Changed** (`domain/parsing.py`)
+- The cp1252 fallback decodes with `errors="replace"`: bytes 0x81/0x8D/0x8F/0x90/0x9D become U+FFFD instead of
+  failing the whole import.
+- `header_keys(cells)`: one blank-header rule for both readers. A blank or all-punctuation header becomes
+  `column_<n>` (1-based), so a CSV can no longer produce `fields[""]` (which later failed "Unknown field ''").
+
+**Tests:** cp1252 with all five undefined bytes; blank and `###` CSV headers; blank/whitespace XLSX headers.
+
+**Verified:** gates green (245 backend, 102 frontend).

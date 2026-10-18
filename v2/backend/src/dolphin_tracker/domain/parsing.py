@@ -5,6 +5,7 @@ import csv
 import io
 import math
 import re
+from collections.abc import Iterable
 
 from openpyxl import load_workbook
 
@@ -34,6 +35,16 @@ def normalize_column(value: object) -> str:
     return re.sub(r"[^a-z0-9]+", "_", text).strip("_")
 
 
+def header_keys(cells: Iterable[object]) -> list[str]:
+    """Normalised header per column; a blank (or all-punctuation) header becomes `column_<n>`, 1-based, in both
+    readers, so it can never land in `fields` under the empty key."""
+    keys = []
+    for index, cell in enumerate(cells):
+        key = normalize_column(cell) if cell is not None else ""
+        keys.append(key or f"column_{index + 1}")
+    return keys
+
+
 def normalize_status(value: object) -> tuple[str, bool]:
     """Map a free-text status onto an allowed value. Returns (status, was_recognised)."""
     raw = clean_cell(value)
@@ -48,7 +59,8 @@ def _decode(raw: bytes) -> str:
     try:
         return raw.decode("utf-8-sig")
     except UnicodeDecodeError:
-        return raw.decode("cp1252")
+        # cp1252 leaves 0x81, 0x8D, 0x8F, 0x90 and 0x9D undefined; replace them rather than fail the import.
+        return raw.decode("cp1252", errors="replace")
 
 
 def read_csv_table(raw: bytes) -> list[Row]:
@@ -57,7 +69,7 @@ def read_csv_table(raw: bytes) -> list[Row]:
     if not records:
         return []
 
-    header = [normalize_column(column) for column in records[0]]
+    header = header_keys(records[0])
     body = [record for record in records[1:] if record and any(field.strip() for field in record)]
     address_positions = [i for i, column in enumerate(header) if column in ADDRESS_ALIASES]
 
@@ -96,10 +108,7 @@ def read_xlsx_table(raw: bytes) -> list[Row]:
         header_row = next(rows_iter, None)
         if not header_row:
             return []
-        header = [
-            normalize_column(cell) if cell is not None and str(cell).strip() else f"column_{index + 1}"
-            for index, cell in enumerate(header_row)
-        ]
+        header = header_keys(header_row)
         rows: list[Row] = []
         for values in rows_iter:
             cells = [clean_cell(value) for value in values]

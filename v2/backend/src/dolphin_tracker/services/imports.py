@@ -105,7 +105,13 @@ def verify_row(row: ParsedRow, geocoder: Geocoder) -> dict[str, Any]:
         return result
 
     geo = geocoder.geocode(address)
-    place = geocoder.find_place(f"{row.store_name}, {address}" if row.store_name else address)
+    # Places only confirms a geocoded address (§9 #3: it costs a request per row); a failed geocode has nothing
+    # to confirm. Partial matches still get the call.
+    place = (
+        geocoder.find_place(f"{row.store_name}, {address}" if row.store_name else address)
+        if geo.get("ok")
+        else {"ok": False}
+    )
     result["verified_by"] = [name for name, hit in (("geocoding", geo), ("places", place)) if hit.get("ok")]
 
     if geo.get("ok"):
@@ -245,11 +251,11 @@ class ImportService:
             key = result_key(job_id)
             self._files.put_json(key, result)
             summary = result["summary"]
-            self._jobs.set_result(
-                job_id,
-                key,
-                message=f"{summary['valid']} valid, {summary['needs_review']} to review, {summary['invalid']} invalid",
-            )
+            message = f"{summary['valid']} valid, {summary['needs_review']} to review, {summary['invalid']} invalid"
+            if not getattr(self._geocoder, "enabled", True):  # local only: outside local, start() refuses
+                message += " (no Google key configured: addresses were not verified)"
+                logger.warning("Import ran without a Google key", extra={"job_id": job_id})
+            self._jobs.set_result(job_id, key, message=message)
             logger.info("Import finished", extra={"job_id": job_id, **summary})
         except Exception as exc:
             logger.exception("Import failed", extra={"job_id": job_id})

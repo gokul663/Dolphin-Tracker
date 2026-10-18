@@ -77,6 +77,16 @@ class VerifyRowTests(unittest.TestCase):
         self.assertEqual(result["error"], "Could not geocode address")
         self.assertIsNone(result["lat"])
 
+    def test_places_is_skipped_when_geocoding_fails(self):
+        geocoder = FakeGeocoder()
+        verify_row(self.row("nowhere", "Shop"), geocoder)
+        self.assertNotIn("find_place", [kind for kind, _ in geocoder.calls])
+
+    def test_places_still_confirms_a_partial_match(self):
+        geocoder = FakeGeocoder(geocodes={"Main St": geocode_ok("Main St", partial=True)})
+        verify_row(self.row("Main St", "Shop"), geocoder)
+        self.assertIn(("find_place", "Shop, Main St"), geocoder.calls)
+
     def test_blank_address_is_invalid_without_google_calls(self):
         geocoder = FakeGeocoder()
         result = verify_row(self.row("   "), geocoder)
@@ -161,6 +171,16 @@ class ImportRunTests(unittest.TestCase):
         service.run(job_id, {"job_id": job_id})  # at-least-once delivery
         self.assertEqual([kind for kind, _ in geocoder.calls].count("geocode"), 1)
         self.assertEqual(self.jobs.history[job_id], [JobStatus.RUNNING, JobStatus.SUCCEEDED])
+
+    def test_run_without_a_key_warns_in_the_job_message(self):
+        class NoKey(FakeGeocoder):
+            enabled = False
+
+        job_id = self._job(b"address\n1 Main St\n")
+        ImportService(self.jobs, self.files, NoKey()).run(job_id, {"job_id": job_id})
+        job = self.jobs.get(job_id)
+        self.assertEqual(job.status, JobStatus.SUCCEEDED)
+        self.assertIn("no Google key configured", job.message)
 
     def test_unparseable_file_fails_the_job(self):
         job_id = self._job(b"store_name\nOnly a name\n")

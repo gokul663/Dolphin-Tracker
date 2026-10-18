@@ -8,8 +8,10 @@ from dolphin_tracker.api.deps import (
     get_file_store,
     get_job_repository,
     get_project_repository,
+    get_settings,
     get_worker_invoker,
 )
+from dolphin_tracker.config import Settings
 from dolphin_tracker.domain.models import Project, ProjectType
 from dolphin_tracker.handlers.worker import WorkerDeps, dispatch
 from dolphin_tracker.repositories.files import LocalFileStore
@@ -109,6 +111,25 @@ class ImportJobFlowTests(unittest.TestCase):
         self.assertEqual(self.client.post(f"/api/jobs/{job_id}/start").status_code, 503)
         job = self.client.get(f"/api/jobs/{job_id}").json()
         self.assertEqual((job["status"], job["message"]), ("failed", "Could not start the worker"))
+
+    def test_start_without_a_google_key_fails_fast_outside_local(self):
+        self.app.dependency_overrides[get_settings] = lambda: Settings(
+            _env_file=None, app_env="dev", google_server_key="", google_server_key_param=""
+        )
+        job_id = self._create()["job_id"]
+        self.client.put(f"/api/jobs/{job_id}/upload", content=CSV)
+        response = self.client.post(f"/api/jobs/{job_id}/start")
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(response.json()["detail"]["message"], "Google key not configured")
+        self.assertEqual(self.client.get(f"/api/jobs/{job_id}").json()["status"], "queued")  # nothing started
+
+    def test_start_without_a_key_still_runs_locally(self):
+        self.app.dependency_overrides[get_settings] = lambda: Settings(
+            _env_file=None, app_env="local", google_server_key="", google_server_key_param=""
+        )
+        job_id = self._create()["job_id"]
+        self.client.put(f"/api/jobs/{job_id}/upload", content=CSV)
+        self.assertEqual(self.client.post(f"/api/jobs/{job_id}/start").status_code, 202)
 
     def test_failed_import_reports_message(self):
         job_id = self._create()["job_id"]

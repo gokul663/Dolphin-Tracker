@@ -1242,3 +1242,22 @@ with the "no CORS origins" message.
 **Tests:** `/config/maps` returns both values; infra context override for `google_map_id`.
 
 **Verified:** gates green (230 backend, 88 frontend); `make infra-test`.
+
+---
+
+## D3 · §9 #3: Places skipped on failed geocodes; fail fast without a key
+
+**Changed**
+- `verify_row` calls `find_place` only when the geocode succeeded (partial matches included). A failed geocode
+  goes straight to autocomplete suggestions, as before, one Google request cheaper per row.
+- `JobService.start` takes a lazy `missing_google_key()` check; `deps.get_job_service` wires it as "not local
+  and `resolve_google_server_key()` is empty". When it is true, start raises `ValidationFailed("Google key not
+  configured")` → 422 and the job stays `queued` (the worker is never invoked). The check runs only on start,
+  so the SSM read never happens on other job endpoints.
+- Local (`app_env` local/test) keeps today's behaviour; the finished job message gains
+  "(no Google key configured: addresses were not verified)" and the worker logs a warning.
+
+**Tests:** Places not called on a failed geocode, still called on a partial; API: non-local start without a key →
+422 with the job still queued, local start without a key → 202; local run message carries the warning.
+
+**Verified:** gates green (235 backend, 88 frontend).

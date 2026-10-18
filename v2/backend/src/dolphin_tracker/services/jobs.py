@@ -2,11 +2,12 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Callable
 from typing import Any
 
 from aws_lambda_powertools import Logger
 
-from dolphin_tracker.domain.errors import ConflictError, NotFoundError
+from dolphin_tracker.domain.errors import ConflictError, NotFoundError, ValidationFailed
 from dolphin_tracker.domain.models import Job, JobStatus, JobType, JobView
 from dolphin_tracker.repositories.files import FileStore, upload_key
 from dolphin_tracker.repositories.jobs import JobRepository
@@ -25,11 +26,16 @@ class JobService:
         files: FileStore,
         invoker: WorkerInvoker | None = None,
         projects: ProjectRepository | None = None,
+        *,
+        missing_google_key: Callable[[], bool] | None = None,
     ) -> None:
         self._jobs = jobs
         self._files = files
         self._invoker = invoker
         self._projects = projects
+        # Returns True when imports must refuse to start (non-local env with no server key). Lazy: resolving the
+        # key may read SSM, which only `start` needs.
+        self._missing_google_key = missing_google_key or (lambda: False)
 
     def get(self, job_id: str) -> Job:
         job = self._jobs.get(job_id)
@@ -85,6 +91,8 @@ class JobService:
             raise ConflictError("Only import jobs are started by the client")
         if job.status != JobStatus.QUEUED:
             raise ConflictError(f"Job {job_id} has already started")
+        if self._missing_google_key():  # every row would end in review; fail before spending a worker run
+            raise ValidationFailed("Google key not configured")
         key = job.payload.get("upload_key", "")
         if not key or not self._files.exists(key):
             raise ConflictError("The file has not been uploaded yet")

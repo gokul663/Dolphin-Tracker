@@ -66,8 +66,12 @@ def get_job_service(
     files: Annotated[FileStore, Depends(get_file_store)],
     invoker: Annotated[WorkerInvoker, Depends(get_worker_invoker)],
     projects: Annotated[ProjectRepository, Depends(get_project_repository)],
+    settings: SettingsDep,
 ) -> JobService:
-    return JobService(jobs, files, invoker, projects)
+    def missing_google_key() -> bool:  # §9 #3: outside local, an import without a server key fails fast
+        return not settings.is_local and not resolve_google_server_key(settings)
+
+    return JobService(jobs, files, invoker, projects, missing_google_key=missing_google_key)
 
 
 @lru_cache

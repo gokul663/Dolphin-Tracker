@@ -1971,3 +1971,59 @@ header and values for a pre-v2 stop (PA from `fields`) and a v2 stop (attributes
 CSV header in the Routes tab export test; a `coreError` test kept for the inline name rule.
 
 **Verified:** gates green (305 backend, 127 frontend).
+
+---
+
+## Round 2 summary for the reviewer
+
+**Commits (on `tech-stack-migration`, after `be8fffd`):**
+- `2023536`: the round-2 docs baseline.
+- Should-fixes: Y1, Y2, Y3, Y4, X1–X6.
+- §9 decisions: D1 (#1), Y10 (#2), D3, D4, D6, D8, D9, D10. #5 and #7 needed no code.
+- Minors: X7, X8, Y5–Y9, plus one fix commit for a flaky D3 test.
+- Phase 5: S1, S2, S3, S5, S6, S4, S7, S8, S9, S10.
+- **Not done:** X9 (waiting for your answer) and B13 (no deploy without asking).
+
+**Tests:** backend 211 → **305**, frontend 77 → **127**, plus 5 infra config tests (`make infra-test`).
+
+**Process slip (fixed):** my gate wrapper exited 0 regardless of the result, so Y8 (`3dcaace`) was committed
+on a run with one flaky failure. The test was fixed in the next commit and the wrapper now propagates the exit
+code. Every other gate run showed all tests passing. The backend suite was run 5× afterwards with no flakes.
+
+**Bugs found on the way:**
+
+| Where | Bug | Fix |
+|-------|-----|-----|
+| D3 test | An inline worker thread raced the temp-dir cleanup | `invoker.wait()` |
+| S8 | `useUpdateProject` overwrote the cached summary with META-only data, dropping KPIs | Merge into the cached summary |
+| S4 | openapi-typescript made every defaulted request field required | `--default-non-nullable false` |
+| S4 | A leading "-" placeholder in CSV screen rows tripped the formula guard | Use "—" |
+
+**Questions to decide**
+
+1. **X9:** which v1 fidelity gaps matter?
+   - the per-installer done/upcoming strip and totals in the Routes header;
+   - the DMA/venue-type breakdown panel;
+   - clicking a day-card header to toggle collapse.
+   - The city-narrowed-by-state item is covered by S4/S8's facet counts.
+2. **S9 deviation:** the column re-point is a step just before the review rather than inside the review table,
+   because a re-map rebuilds the rows and would discard address fixes. OK?
+3. **One-click status:** status now changes only in the drawer's screens editor (table and day cards show the
+   derived chip). Field staff might want a "set every screen to …" shortcut back on day cards.
+4. **Sheet coordinates:** rows whose geocode failed but whose sheet has lat/lng are importable as "Sheet pin"
+   (an extension of the §6 assumption). Keep, or require a verified address?
+5. **Other imported data:** unknown columns land in `fields` and show read-only, labelled by their header,
+   because the wizard no longer adds them to the project schema. Should the import add schema labels for them?
+6. **Migration IBC#:** `LEGACY-<display id>` when there is no venue code. Also when a venue code repeats inside
+   a project (suffix `-2`, …), with a report line. Confirm both assumptions.
+7. **Prod CORS:** `cdk synth -c env=prod` now fails until a `domain_name` or `cloudfront_domain` is set. The first
+   prod deploy needs `-c cloudfront_domain=…` after the Web stack exists (or a custom domain first).
+8. **Map ID:** markers are still classic `google.maps.Marker`. Moving to `AdvancedMarkerElement` is ready to
+   do once a Map ID exists and someone can check it in a browser.
+9. **Atomicity:** appends above 50 stores commit their IBC# markers in several transactions, so a conflict
+   mid-way leaves the earlier batches written. Y6's slot plus the pre-check make it rare. Acceptable?
+10. **Status palette:** colours for the four new statuses (sky, indigo, teal, stone). Fine, or is there a brand
+    palette to follow?
+
+**Not verified here:** anything needing AWS (B13), a Google key (real geocoding, the live map, Places), or a
+browser (the Chrome extension was not connected). Those paths are covered by fakes and mocks.

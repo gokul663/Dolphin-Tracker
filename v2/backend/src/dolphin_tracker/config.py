@@ -4,14 +4,17 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Literal
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="DT_", env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_prefix="DT_", env_file=".env", extra="ignore", populate_by_name=True)
 
     app_env: str = "local"
-    aws_region: str = "us-east-1"
+    # DT_AWS_REGION wins; otherwise the Lambda runtime's own AWS_REGION, so a deploy outside us-east-1 still points
+    # every boto3 client at the right region.
+    aws_region: str = Field(default="us-east-1", validation_alias=AliasChoices("DT_AWS_REGION", "AWS_REGION"))
     table_name: str = "dolphin-tracker-local"
     dynamodb_endpoint_url: str | None = None  # http://localhost:8000 for DynamoDB Local
     files_bucket: str = ""  # empty: files live in local_files_dir and the local upload/result routes are used

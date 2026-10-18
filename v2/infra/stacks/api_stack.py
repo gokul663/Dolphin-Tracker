@@ -69,6 +69,7 @@ class ApiStack(cdk.Stack):
         placeholder = not PACKAGE_DIR.is_dir()
         common_env = {
             "DT_APP_ENV": cfg.name,
+            "DT_AWS_REGION": self.region,  # explicit; config.py would otherwise fall back to the runtime AWS_REGION
             "DT_TABLE_NAME": table.table_name,
             "DT_FILES_BUCKET": files_bucket.bucket_name,
             "DT_GOOGLE_SERVER_KEY_PARAM": cfg.ssm_google_server_key,

@@ -1067,3 +1067,18 @@ docs unchanged.
 `LookupError` → `NotFoundError` with the slot released; migration with an empty and a partial installers list.
 
 **Verified:** gates green (223 backend, 77 frontend).
+
+---
+
+## Y4 · DT_AWS_REGION wired for Lambda
+
+**Changed**
+- `config.py`: `aws_region` reads `DT_AWS_REGION`, then the Lambda runtime's `AWS_REGION`, then defaults to
+  `us-east-1` (`AliasChoices`; `populate_by_name` keeps `Settings(aws_region=...)` working in tests).
+- `infra/stacks/api_stack.py`: `common_env` sets `DT_AWS_REGION` to the stack's region, so both Lambdas get it
+  explicitly.
+
+**Tests:** `tests/test_config.py`: default, runtime fallback, `DT_` precedence, init by field name.
+
+**Verified:** gates green (227 backend, 77 frontend). `cdk synth -c env=dev` (output to a scratch dir, not
+`infra/cdk.out`): `DT_AWS_REGION` is set on the Api and Worker functions.

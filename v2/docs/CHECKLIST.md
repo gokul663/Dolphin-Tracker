@@ -101,7 +101,7 @@ Tracks delivery against [PLAN.md](./PLAN.md). Tick items as they land; add sub-i
 - [x] X4 Append retry does not resend a stale version
 - [x] X5 Import wizard shows result/schema fetch errors
 - [x] X6 Dashboard refreshes after append
-- [ ] X7 Map hover restyle diffing; bounds published only when needed
+- [x] X7 Map hover restyle diffing; bounds published only when needed
 - [ ] X8 Minor frontend fixes + tests
 - [ ] X9 v1 fidelity gaps (after user confirms which)
 - [x] Y1 Job runners idempotent on redelivery

@@ -14,6 +14,7 @@ import { storeExportUrl } from "@/features/stores/api";
 import type { StoreFilters } from "@/lib/api/resources";
 import { STOP_STATUSES, type Project } from "@/lib/api/types";
 import { STATUS_META } from "@/lib/status";
+import { useShallow } from "zustand/react/shallow";
 import { useStoresUi } from "@/stores/ui";
 import { cn } from "@/lib/utils";
 
@@ -21,7 +22,20 @@ const UNASSIGNED = "";
 
 /** Search, status and installer filters, "only in view", CSV export of the current view. */
 export function StoresToolbar({ project, filters }: { project: Project; filters: StoreFilters }) {
-  const ui = useStoresUi();
+  // Only the slices the toolbar shows: hover, selection and map bounds never re-render it.
+  const ui = useStoresUi(
+    useShallow((state) => ({
+      search: state.search,
+      status: state.status,
+      installer: state.installer,
+      onlyInView: state.onlyInView,
+      setSearch: state.setSearch,
+      toggleStatus: state.toggleStatus,
+      setInstaller: state.setInstaller,
+      setOnlyInView: state.setOnlyInView,
+      clearFilters: state.clearFilters,
+    })),
+  );
   const [draft, setDraft] = useState(ui.search);
   useEffect(() => setDraft(ui.search), [ui.search]);
   useEffect(() => {

@@ -9,12 +9,33 @@ import { StoreDrawer } from "@/features/stores/StoreDrawer";
 import { StoresTable } from "@/features/stores/StoresTable";
 import { StoresToolbar } from "@/features/stores/StoresToolbar";
 import type { StoreFilters } from "@/lib/api/resources";
+import { useShallow } from "zustand/react/shallow";
 import { useStoresUi } from "@/stores/ui";
 
 /** Table left, synced map right (stacked on narrow screens), both driven by the same filters. */
 export function StoresTab() {
   const project = useProjectContext();
-  const ui = useStoresUi();
+  const ui = useStoresUi(
+    useShallow((state) => ({
+      status: state.status,
+      installer: state.installer,
+      search: state.search,
+      sort: state.sort,
+      dir: state.dir,
+      onlyInView: state.onlyInView,
+      selectedId: state.selectedId,
+      hoveredId: state.hoveredId,
+      drawerOpen: state.drawerOpen,
+      enterProject: state.enterProject,
+      setSort: state.setSort,
+      setBounds: state.setBounds,
+      hover: state.hover,
+      select: state.select,
+      closeDrawer: state.closeDrawer,
+    })),
+  );
+  // Map bounds matter only for "only stores in view"; otherwise panning never re-renders the tab or the table.
+  const bounds = useStoresUi((state) => (state.onlyInView ? state.bounds : null));
   useEffect(() => ui.enterProject(project.id), [project.id]); // the store action is stable
 
   const filters: StoreFilters = useMemo(
@@ -32,10 +53,9 @@ export function StoresTab() {
 
   const loaded = useMemo(() => list.data?.pages.flatMap((page) => page.items) ?? [], [list.data]);
   const stops = useMemo(() => {
-    if (!ui.onlyInView || !ui.bounds) return loaded;
-    const bounds = ui.bounds;
+    if (!bounds) return loaded;
     return loaded.filter((stop) => stop.lat !== null && stop.lng !== null && inBounds({ lat: stop.lat, lng: stop.lng }, bounds));
-  }, [loaded, ui.onlyInView, ui.bounds]);
+  }, [loaded, bounds]);
 
   const open = useCallback((uid: string) => ui.select(uid, true), []); // stable store action
 

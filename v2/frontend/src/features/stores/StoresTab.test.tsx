@@ -1,3 +1,4 @@
+import { Profiler } from "react";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -16,7 +17,7 @@ const STOPS: Stop[] = [
 ];
 
 /** A tiny stateful fake: successful PATCHes change what later GETs return, like the real API. */
-function renderTab(routes: Parameters<typeof mockApi>[0] = {}) {
+function renderTab(routes: Parameters<typeof mockApi>[0] = {}, onRender?: () => void) {
   const db = new Map(STOPS.map((stop) => [stop.uid, { ...stop }]));
   const write = (uid: string, init: RequestInit) => {
     const current = db.get(uid) as Stop;
@@ -39,7 +40,7 @@ function renderTab(routes: Parameters<typeof mockApi>[0] = {}) {
   const { client } = renderWithProviders(
     <Routes>
       <Route path="projects/:projectId" element={<ProjectPage />}>
-        <Route path="stores" element={<StoresTab />} />
+        <Route path="stores" element={<Profiler id="stores" onRender={() => onRender?.()}><StoresTab /></Profiler>} />
       </Route>
     </Routes>,
     { path: "/*", route: "/projects/p1/stores" },
@@ -70,6 +71,23 @@ afterAll(() => {
 
 describe("StoresTab", () => {
   beforeEach(() => useStoresUi.setState({ projectId: null }));
+
+  it("does not re-render on map bounds unless 'only stores in view' is on", async () => {
+    let renders = 0;
+    renderTab({}, () => (renders += 1));
+    expect(await screen.findByText("Alpha Mart")).toBeTruthy();
+    const settled = renders;
+    const pan = (north: number) => act(() => useStoresUi.getState().setBounds({ north, south: 33, east: -84, west: -85 }));
+    pan(34);
+    pan(34.1);
+    expect(renders).toBe(settled); // panning with the filter off: no tab render at all
+
+    act(() => useStoresUi.getState().setOnlyInView(true));
+    const withFilter = renders;
+    pan(33.75); // only Alpha (33.7) is inside now
+    expect(renders).toBeGreaterThan(withFilter);
+    await waitFor(() => expect(screen.queryByText("Beta Deli")).toBeNull());
+  });
 
   it("refetches the list when a routing build finishes while Stores is open", async () => {
     let routing: "building" | "ready" = "building";

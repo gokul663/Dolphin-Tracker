@@ -1321,3 +1321,26 @@ dashboard itself would be the next step if needed.
 **Tests:** the chart row appears after the page renders (`findByText` waits for the lazy chunk).
 
 **Verified:** gates green (236 backend, 90 frontend); `make frontend-build`.
+
+---
+
+## X7 · Map hover restyle diffing; bounds published only when needed
+
+**Changed**
+- (a) landed with X1: `changedStyles` restyles only markers whose style changed. A row hover now calls
+  `setIcon` on two markers (the one losing and the one gaining emphasis) instead of every marker (≈1000 at full
+  size).
+- (b) `MapView` publishes bounds on the map's `idle` event (once per settled pan/zoom) instead of
+  `bounds_changed` (every animation frame).
+- `StoresTab` and `StoresToolbar` select slices with `useShallow` instead of subscribing to the whole UI store,
+  and `StoresTab` reads `bounds` through a selector that returns `null` unless "only stores in view" is on.
+
+**Before / after** (measured in jsdom with a React `Profiler` around `StoresTab`, since no browser map is
+available here): before, every `setBounds` re-rendered the tab and its virtualized table, and the map called it
+every frame during a drag; after, `setBounds` with the filter off causes **0** tab renders, and with it on, one
+render per settled gesture. Hover still re-renders the tab (it drives row and pin highlight), as before.
+
+**Tests:** `StoresTab.test.tsx`: two bounds updates with the filter off → no renders; with it on → re-render and
+the out-of-view store disappears. Fails on the old `StoresTab`.
+
+**Verified:** gates green (236 backend, 91 frontend).

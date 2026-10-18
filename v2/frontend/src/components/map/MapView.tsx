@@ -32,7 +32,7 @@ export interface MapViewProps {
   selectedId?: string | null;
   hoveredId?: string | null;
   onSelect?: (uid: string) => void;
-  /** Fires on every pan/zoom with the visible bounds; the Stores tab uses it for "only stores in view". */
+  /** Fires once a pan/zoom settles (`idle`), not on every frame; the Stores tab uses it for "only stores in view". */
   onBoundsChange?: (bounds: Bounds) => void;
   className?: string;
 }
@@ -91,7 +91,10 @@ export function MapView({ pins, selectedId, hoveredId, onSelect, onBoundsChange,
               mapTypeControl={false}
               streetViewControl={false}
               className="absolute inset-0"
-              onBoundsChanged={(event) => onBoundsChange?.(event.detail.bounds)}
+              onIdle={(event) => {
+                const bounds = event.map.getBounds()?.toJSON();
+                if (bounds) onBoundsChange?.(bounds);
+              }}
             >
               <Markers groups={groups} fitSignature={fitSignature} selectedId={selectedId} hoveredId={hoveredId} onSelect={onSelect} />
             </Map>

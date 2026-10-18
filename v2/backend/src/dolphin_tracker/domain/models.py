@@ -248,6 +248,7 @@ class StopInput(StoreDetails):
     fields: dict[str, Any] = Field(default_factory=dict)
     screens: list[ScreenInput] = Field(default_factory=list, max_length=200)
     initial_status: ScreenStatus | None = None
+    installer_name: str = Field(default="", max_length=200)  # the sheet's Technician ("Completed by")
 
     def build_screens(self) -> list[Screen]:
         if self.screens:

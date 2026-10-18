@@ -5,7 +5,19 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useValidateAddress } from "@/features/places/api";
-import { applyGeocode, filterRows, reviewSummary, rowProblems, type ReviewRow, type RowFilter } from "@/features/imports/model";
+import {
+  applyGeocode,
+  duplicateText,
+  filterRows,
+  isDuplicate,
+  reviewSummary,
+  rowProblems,
+  screensPreview,
+  valueProblems,
+  type ReviewRow,
+  type RowFilter,
+} from "@/features/imports/model";
+import { STATUS_META } from "@/lib/status";
 import { cn } from "@/lib/utils";
 
 const PAGE = 100;
@@ -15,7 +27,8 @@ interface Props {
   onRowsChange: (update: (rows: ReviewRow[]) => ReviewRow[]) => void;
 }
 
-/** Step 3: fix what Google could not verify, fill missing store names, or exclude rows. */
+/** Fix what Google could not verify, fill a missing IBC# or store name, or exclude rows. Rows repeating an earlier
+ *  row of the sheet (same IBC#, else same address) are excluded and say why (STORE-MODEL §1.4). */
 export function ReviewStep({ rows, onRowsChange }: Props) {
   const summary = reviewSummary(rows);
   const initial: RowFilter = summary.blocked ? "blocked" : "all";
@@ -73,17 +86,20 @@ export function ReviewStep({ rows, onRowsChange }: Props) {
         {chip("needs_review", "need review", summary.needs_review, "border-amber-300 bg-amber-50 text-amber-700", AlertTriangle)}
         {summary.invalid > 0 && chip("invalid", "invalid", summary.invalid, "border-rose-300 bg-rose-50 text-rose-700", AlertCircle)}
         {chip("blocked", "to fix or exclude", summary.blocked, "border-rose-300 bg-white text-rose-700")}
+        {summary.duplicates > 0 && chip("duplicates", "duplicates", summary.duplicates, "border-slate-300 bg-slate-50 text-slate-600")}
         <span className="ml-auto self-center font-mono text-xs text-slate-500">
           {summary.ready} ready · {summary.excluded} excluded
         </span>
       </div>
       <div className="max-h-[50vh] overflow-auto rounded-lg border">
-        <table className="w-full min-w-[860px] text-sm">
+        <table className="w-full min-w-[1080px] text-sm">
           <thead className="sticky top-0 z-10 bg-slate-50 font-mono text-[10px] uppercase tracking-wider text-slate-500">
             <tr className="text-left">
               <th className="p-2">#</th>
+              <th className="p-2">IBC# *</th>
               <th className="p-2">Store name *</th>
               <th className="p-2">Address *</th>
+              <th className="p-2">Screens</th>
               <th className="p-2">Status</th>
               <th className="p-2">Suggestion</th>
               <th className="p-2 text-center">Exclude</th>
@@ -92,16 +108,33 @@ export function ReviewStep({ rows, onRowsChange }: Props) {
           <tbody>
             {shown.length === 0 && (
               <tr>
-                <td colSpan={6} className="p-6 text-center text-slate-500">
+                <td colSpan={8} className="p-6 text-center text-slate-500">
                   Nothing in this view.
                 </td>
               </tr>
             )}
             {shown.map((row) => {
               const problems = rowProblems(row);
+              const values = valueProblems(row);
+              const duplicate = isDuplicate(row);
               return (
                 <tr key={row.index} className={cn("border-t align-top", row.excluded && "opacity-50")}>
                   <td className="p-2 font-mono text-xs text-slate-500">{row.index + 1}</td>
+                  <td className="p-2">
+                    <Input
+                      aria-label={`IBC#, row ${row.index + 1}`}
+                      value={row.external_id}
+                      disabled={duplicate}
+                      aria-invalid={!row.excluded && !row.external_id.trim()}
+                      onChange={(event) => patch(row.index, { external_id: event.target.value.toUpperCase() })}
+                      className="h-8 w-28 font-mono"
+                    />
+                    {duplicate && (
+                      <div className="mt-1 rounded bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-600" role="note">
+                        Duplicate: {duplicateText(row)}
+                      </div>
+                    )}
+                  </td>
                   <td className="p-2">
                     <Input
                       aria-label={`Store name, row ${row.index + 1}`}
@@ -125,7 +158,18 @@ export function ReviewStep({ rows, onRowsChange }: Props) {
                       </div>
                     )}
                     {!row.excluded && problems.length > 0 && <div className="mt-1 text-xs text-rose-600">{problems.join(" · ")}</div>}
+                    {values.length > 0 && <div className="mt-1 text-xs text-amber-700">{values.join(" · ")}</div>}
                     {row.error && row.status !== "valid" && <div className="text-xs text-amber-700">{row.error}</div>}
+                  </td>
+                  <td className="p-2 text-xs">
+                    <div aria-label={`Screens, row ${row.index + 1}`}>{screensPreview(row)}</div>
+                    <span
+                      className={cn("mt-1 inline-flex rounded border px-1.5 py-0.5 text-[10px]", STATUS_META[row.venue_status].chip)}
+                      title={row.venue_status_valid ? undefined : `"${row.venue_status_raw}" is not a known status; imported as Upcoming`}
+                    >
+                      {STATUS_META[row.venue_status].label}
+                      {!row.venue_status_valid && " ?"}
+                    </span>
                   </td>
                   <td className="p-2">
                     <StatusChip row={row} />
@@ -152,6 +196,8 @@ export function ReviewStep({ rows, onRowsChange }: Props) {
                     <Checkbox
                       aria-label={`Exclude row ${row.index + 1}`}
                       checked={row.excluded}
+                      disabled={duplicate}
+                      title={duplicate ? "Duplicates are never imported" : undefined}
                       onCheckedChange={(checked) => patch(row.index, { excluded: checked === true })}
                     />
                   </td>
@@ -199,7 +245,7 @@ function StatusChip({ row }: { row: ReviewRow }) {
     needs_review: "border-amber-200 bg-amber-50 text-amber-700",
     invalid: "border-rose-200 bg-rose-50 text-rose-700",
   }[row.status];
-  const label = { valid: "Valid", needs_review: "Review", invalid: "Invalid" }[row.status];
+  const label = { valid: "Valid", needs_review: row.coordinates_source === "sheet" ? "Sheet pin" : "Review", invalid: "Invalid" }[row.status];
   return (
     <span className={cn("inline-flex rounded-full border px-2 py-0.5 font-mono text-[11px]", tone)} title={row.verified_by.join(", ")}>
       {label} · {row.confidence}

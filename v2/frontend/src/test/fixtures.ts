@@ -1,4 +1,4 @@
-import type { Kpi, Project, ProjectSummary, Screen, ScreenStatus, Stop } from "@/lib/api/types";
+import type { ImportRow, Kpi, Project, ProjectSummary, Screen, ScreenStatus, Stop } from "@/lib/api/types";
 import { STOP_STATUSES } from "@/lib/api/types";
 import { DEFAULT_SCHEMA_FOR_TESTS } from "@/test/schema";
 
@@ -55,5 +55,17 @@ export function makeStop(overrides: Partial<Stop> = {}): Stop {
     installer: "Ann", day: 1, seq: 0, fields: {}, screens: [makeScreen({ id: `${overrides.uid ?? "u1"}-s1`, status })],
     status, comment: "", additional_task: false, installer_name: "", route_stale: false,
     updated_at: "2026-10-01T00:00:00+00:00", updated_by: "", ...overrides,
+  };
+}
+
+/** One verified import row as `GET /jobs/{id}/result` returns it, valid by default. */
+export function makeImportRow(index: number, overrides: Partial<ImportRow> = {}): ImportRow {
+  return {
+    index, address: `${index} Main St`, store_name: `Store ${index}`, external_id: `IBC-${index}`, pa: "North",
+    status: "valid", confidence: 100, verified_by: ["geocoding"], formatted: `${index} Main St, Atlanta, GA 30303, USA`,
+    addr: `${index} Main St`, city: "Atlanta", state: "GA", zip: "30303", lat: 33.7, lng: -84.4, coordinates_source: "geocode",
+    place_name: "", suggestions: [], error: "", venue_status: "Upcoming", venue_status_valid: true, venue_status_raw: "",
+    installer_name: "", details: {}, screens: [{ stick_number: "", venue_id: "", status: "Upcoming" }], problems: {},
+    duplicate_of: null, duplicate_reason: "", fields: {}, ...overrides,
   };
 }

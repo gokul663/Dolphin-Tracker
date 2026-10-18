@@ -282,6 +282,12 @@ class ImportRow(ApiModel):
     fields: dict[str, str]  # unrecognised columns ("Other imported data"), keyed by normalised header
 
 
+class ImportMapping(ApiModel):
+    """A re-pointed column mapping for a finished import: every sheet column → field ("" other data, "-" ignore)."""
+
+    mapping: dict[str, str]
+
+
 class ImportResult(ApiModel):
     columns: list[str]
     mapping: dict[str, str] = Field(default_factory=dict)  # column → field ("" other data, "-" ignored)

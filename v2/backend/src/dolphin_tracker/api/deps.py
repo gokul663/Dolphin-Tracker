@@ -17,6 +17,7 @@ from dolphin_tracker.repositories.projects import DynamoProjectRepository, Proje
 from dolphin_tracker.repositories.stores import DynamoStoreRepository, StoreRepository
 from dolphin_tracker.repositories.worker_invoker import WorkerInvoker, make_invoker
 from dolphin_tracker.services.geocoding import GoogleGeocoder
+from dolphin_tracker.services.imports import ImportService
 from dolphin_tracker.services.jobs import JobService
 from dolphin_tracker.services.places import PlacesService
 from dolphin_tracker.services.projects import ProjectService
@@ -81,6 +82,14 @@ def _geocoder(api_key: str) -> GoogleGeocoder:
 
 def get_geocoder(settings: SettingsDep) -> GoogleGeocoder:
     return _geocoder(resolve_google_server_key(settings))
+
+
+def get_import_service(
+    jobs: Annotated[JobRepository, Depends(get_job_repository)],
+    files: Annotated[FileStore, Depends(get_file_store)],
+) -> ImportService:
+    """For synchronous import operations (re-mapping); the geocoding run itself happens on the worker."""
+    return ImportService(jobs, files)
 
 
 def get_routing_service(

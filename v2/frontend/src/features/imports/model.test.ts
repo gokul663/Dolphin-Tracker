@@ -1,111 +1,109 @@
 import { describe, expect, it } from "vitest";
 import {
   applyGeocode,
-  autoMap,
   buildStops,
-  extendedSchema,
+  duplicateText,
   filterRows,
-  mappableColumns,
-  mappedValueProblems,
-  mappingErrors,
-  newFieldTarget,
-  normalizeColumn,
+  isLocked,
   reviewSummary,
   rowProblems,
+  sampleValues,
+  screensPreview,
+  takenBy,
+  targetGroups,
   toReviewRows,
+  valueProblems,
   type ReviewRow,
 } from "@/features/imports/model";
-import type { GeocodeResult, ImportResult, ImportRow } from "@/lib/api/types";
-import { DEFAULT_SCHEMA_FOR_TESTS as SCHEMA } from "@/test/schema";
-
-function row(index: number, overrides: Partial<ImportRow> = {}): ImportRow {
-  return {
-    index, address: `${index} Main St`, store_name: `Store ${index}`, pa: "North", status: "valid", confidence: 100,
-    verified_by: ["geocoding"], formatted: `${index} Main St, Atlanta, GA 30303, USA`, addr: `${index} Main St`,
-    city: "Atlanta", state: "GA", zip: "30303", lat: 33.7, lng: -84.4, place_name: "", suggestions: [], error: "",
-    coordinates_source: "geocode", installer_name: "", details: {}, screens: [], problems: {}, duplicate_of: null,
-    duplicate_reason: "", external_id: `IBC-${index}`,
-    venue_status: "Upcoming", venue_status_valid: true, venue_status_raw: "", fields: {}, ...overrides,
-  };
-}
+import type { GeocodeResult, ImportResult } from "@/lib/api/types";
+import { makeImportRow as importRow } from "@/test/fixtures";
+import { STORE_FIELDS_FOR_TESTS as SPECS } from "@/test/storeFields";
 
 const RESULT: ImportResult = {
-  columns: ["store_name", "address", "pa", "dma", "owner_phone", "screens"], mapping: {}, address_column: "address", store_column: "store_name", extra_columns: ["owner_phone", "screens"],
-  summary: { total: 4, valid: 2, needs_review: 1, invalid: 1, duplicates: 0 }, pa_names: ["North"],
+  columns: ["ibc", "store_name", "store_address", "dma", "stick_number", "brand"],
+  mapping: { ibc: "external_id", store_name: "store_name", store_address: "addr", dma: "dma", stick_number: "stick_numbers", brand: "" },
+  address_column: "store_address", store_column: "store_name", extra_columns: ["brand"],
+  summary: { total: 4, valid: 3, needs_review: 1, invalid: 0, duplicates: 1 }, pa_names: ["North"],
   rows: [
-    row(0, { fields: { dma: "ATL", owner_phone: "555-010-0100", screens: "3" }, venue_status: "Completed" }),
-    row(1, { store_name: "", fields: { dma: "ATL", owner_phone: "call me", screens: "" } }),
-    row(2, { status: "needs_review", confidence: 0, lat: null, lng: null, suggestions: ["2 Main St, Atlanta, GA"] }),
-    row(3, { status: "invalid", address: "", lat: null, lng: null }),
+    importRow(0, {
+      details: { dma: "ATL", owner_email: "nope" }, problems: { owner_email: "Store owner email: enter a valid email" },
+      screens: [{ stick_number: "S1", venue_id: "V1", status: "Completed" }, { stick_number: "S2", venue_id: "", status: "Completed" }],
+      venue_status: "Completed", fields: { brand: "Acme" }, installer_name: "self install",
+    }),
+    importRow(1, { external_id: "", problems: { external_id: "IBC# is required" }, details: { dma: "ATL" } }),
+    importRow(2, { status: "needs_review", confidence: 0, coordinates_source: "sheet", lat: 34.1, lng: -84.2, formatted: "" }),
+    importRow(3, { duplicate_of: 0, duplicate_reason: "external_id", external_id: "IBC-0" }),
   ],
 };
 
 const geo = (overrides: Partial<GeocodeResult> = {}): GeocodeResult => ({
-  ok: true, status: "OK", formatted: "2 Main St, Atlanta, GA 30303, USA", lat: 33.71, lng: -84.41, addr: "2 Main St",
+  ok: true, status: "OK", formatted: "2 Main St, Atlanta, GA 30303, USA", lat: 33.71, lng: -84.4, addr: "2 Main St",
   city: "Atlanta", state: "GA", zip: "30303", partial: false, suggestions: [], error: "", ...overrides,
 });
 
-describe("review rows", () => {
-  it("flags missing store names and unverified addresses, and summarises", () => {
-    const rows = toReviewRows(RESULT);
-    expect(rowProblems(rows[0] as ReviewRow)).toEqual([]);
-    expect(rowProblems(rows[1] as ReviewRow)).toEqual(["Store name is required"]);
-    expect(rowProblems(rows[2] as ReviewRow)).toEqual(["Address is not verified"]);
-    expect(reviewSummary(rows)).toMatchObject({ total: 4, valid: 2, needs_review: 1, invalid: 1, blocked: 3, ready: 1 });
-    expect(filterRows(rows, "blocked").map((r) => r.index)).toEqual([1, 2, 3]);
-    const excluded = rows.map((r) => (r.index === 3 ? { ...r, excluded: true } : r));
-    expect(reviewSummary(excluded)).toMatchObject({ excluded: 1, blocked: 2 });
+describe("columns (STORE-MODEL §6)", () => {
+  it("offers store fields, screen/sheet targets and Other / Ignore", () => {
+    const groups = targetGroups(SPECS);
+    expect(groups.map((group) => group.label)).toEqual(["Store fields", "Screens and sheet values", "Other"]);
+    expect(groups[0]?.options[0]).toEqual({ value: "external_id", label: "IBC#" });
+    expect(groups[1]?.options.map((option) => option.value)).toContain("venue_ids");
+    expect(groups[2]?.options).toEqual([{ value: "", label: "Other imported data" }, { value: "-", label: "Ignore this column" }]);
   });
 
-  it("re-validation updates geo and status like v1", () => {
-    const [, , pending] = toReviewRows(RESULT);
-    const fixed = applyGeocode(pending as ReviewRow, geo(), "2 Main St, Atlanta");
-    expect(fixed).toMatchObject({ status: "valid", lat: 33.71, address: "2 Main St, Atlanta", addr: "2 Main St", error: "" });
-    expect(applyGeocode(pending as ReviewRow, geo({ partial: true })).status).toBe("needs_review");
-    const failed = applyGeocode(pending as ReviewRow, geo({ ok: false, suggestions: ["x"], error: "" }));
-    expect(failed).toMatchObject({ status: "needs_review", suggestions: ["x"], error: "Could not geocode address" });
+  it("knows which targets are taken and which columns are locked to the geocoding", () => {
+    expect(takenBy(RESULT.mapping, "dma", "brand")).toBe("dma");
+    expect(takenBy(RESULT.mapping, "dma", "dma")).toBeNull();
+    expect(takenBy(RESULT.mapping, "", "dma")).toBeNull(); // Other data takes any number of columns
+    expect([isLocked("addr"), isLocked("lat"), isLocked("dma")]).toEqual([true, true, false]);
+  });
+
+  it("shows what each column produced", () => {
+    expect(sampleValues(RESULT, "dma", "dma")).toEqual(["ATL", "ATL"]);
+    expect(sampleValues(RESULT, "brand", "")).toEqual(["Acme"]);
+    expect(sampleValues(RESULT, "stick_number", "stick_numbers")).toEqual(["S1, S2"]);
+    expect(sampleValues(RESULT, "store_name", "store_name", 2)).toEqual(["Store 0", "Store 1"]);
   });
 });
 
-describe("column mapping", () => {
-  it("auto-maps by key, label or source column and leaves unknown columns ignored", () => {
-    expect(normalizeColumn("﻿ Owner Phone #")).toBe("owner_phone");
-    const columns = mappableColumns(RESULT);
-    expect(columns).toEqual(["pa", "dma", "owner_phone", "screens"]);
-    const schema = [...SCHEMA, { ...SCHEMA[0]!, key: "screen_count", label: "Screen Count", source_column: "Screens" }];
-    expect(autoMap(columns, schema)).toEqual({
-      pa: { kind: "field", key: "pa" },
-      dma: { kind: "field", key: "dma" },
-      owner_phone: { kind: "field", key: "owner_phone" },
-      screens: { kind: "field", key: "screen_count" },
-    });
-    expect(autoMap(["screens"], SCHEMA)).toEqual({ screens: { kind: "ignore" } });
+describe("review rows", () => {
+  const rows = toReviewRows(RESULT);
+
+  it("excludes duplicates up front and says why", () => {
+    expect(rows.map((row) => row.excluded)).toEqual([false, false, false, true]);
+    expect(duplicateText(rows[3] as ReviewRow)).toBe("Same IBC# as row 1");
+    expect(duplicateText({ duplicate_of: 1, duplicate_reason: "address" })).toBe("Same address as row 2");
+    expect(filterRows(rows, "duplicates").map((row) => row.index)).toEqual([3]);
   });
 
-  it("adds unknown columns to the schema with unique keys and catches double mappings", () => {
-    const mapping = { ...autoMap(mappableColumns(RESULT), SCHEMA) };
-    mapping.screens = newFieldTarget("screens", SCHEMA, mapping);
-    expect(mapping.screens).toEqual({ kind: "new", key: "screens_field", label: "Screens" }); // "screens" is reserved
-    const schema = extendedSchema(SCHEMA, mapping);
-    expect(schema.at(-1)).toMatchObject({ key: "screens_field", source_column: "screens", type: "text" });
-    expect(mappingErrors({ ...mapping, dma: { kind: "field", key: "pa" } })).toEqual(["pa and dma both map to pa"]);
+  it("needs an IBC#, a name and a located address; sheet coordinates count as located", () => {
+    expect(rows.map(rowProblems)).toEqual([[], ["IBC# is required"], [], []]);
+    expect(valueProblems(rows[0] as ReviewRow)).toEqual(["Store owner email: enter a valid email"]);
+    expect(valueProblems(rows[1] as ReviewRow)).toEqual([]); // the missing IBC# is a row problem, not a value one
+    const summary = reviewSummary(rows);
+    expect(summary).toMatchObject({ total: 4, duplicates: 1, excluded: 1, blocked: 1, ready: 2, withValueProblems: 1 });
   });
 
-  it("builds stop inputs from ready rows and reports bad mapped values", () => {
-    const rows = toReviewRows(RESULT).map((r) => (r.index === 1 ? { ...r, store_name: "Named now" } : r));
-    const mapping = { ...autoMap(mappableColumns(RESULT), SCHEMA), screens: newFieldTarget("screens", SCHEMA, {}) };
-    const schema = extendedSchema(SCHEMA, mapping);
-    expect(mappedValueProblems(rows, mapping, schema)).toEqual([
-      { index: 1, key: "owner_phone", message: "Owner Phone: enter a valid phone number" },
-    ]);
-    const stops = buildStops(rows, mapping, schema);
-    expect(stops).toHaveLength(2); // rows 2 and 3 are not verified
+  it("re-validates a typed address like v1", () => {
+    const fixed = applyGeocode(rows[2] as ReviewRow, geo(), "2 Main St, Atlanta");
+    expect(fixed).toMatchObject({ status: "valid", lat: 33.71, coordinates_source: "geocode", address: "2 Main St, Atlanta" });
+    expect(applyGeocode(rows[2] as ReviewRow, geo({ ok: false, suggestions: ["x"] })).status).toBe("needs_review");
+  });
+
+  it("builds stop inputs with attributes, screens, installer and other data", () => {
+    const named = rows.map((row) => (row.index === 1 ? { ...row, external_id: "IBC-NEW" } : row));
+    const stops = buildStops(named);
+    expect(stops.map((stop) => stop.external_id)).toEqual(["IBC-0", "IBC-NEW", "IBC-2"]); // the duplicate is left out
     expect(stops[0]).toMatchObject({
-      store_name: "Store 0", addr: "0 Main St", lat: 33.7, initial_status: "Completed",
-      geocoded: "0 Main St, Atlanta, GA 30303, USA",
-      fields: { pa: "North", dma: "ATL", owner_phone: "555-010-0100", screens_field: "3" },
+      store_name: "Store 0", addr: "0 Main St", lat: 33.7, geocoded: "0 Main St, Atlanta, GA 30303, USA", pa: "North",
+      dma: "ATL", owner_email: "nope", installer_name: "self install", fields: { brand: "Acme" },
+      screens: [{ stick_number: "S1", venue_id: "V1", status: "Completed" }, { stick_number: "S2", venue_id: "", status: "Completed" }],
     });
-    expect(stops[1]?.fields).toEqual({ pa: "North", dma: "ATL", owner_phone: "call me" });
-    expect(buildStops(rows, mapping, schema, { dropInvalid: true })[1]?.fields).toEqual({ pa: "North", dma: "ATL" });
+    expect(stops[2]).toMatchObject({ lat: 34.1, geocoded: "" }); // placed by the sheet's coordinates
+    expect(buildStops(named, { dropInvalid: true })[0]).not.toHaveProperty("owner_email");
+  });
+
+  it("previews screens", () => {
+    expect(screensPreview(rows[0] as ReviewRow)).toBe("2 screens · S1/V1, S2");
+    expect(screensPreview(rows[1] as ReviewRow)).toBe("1 screen");
   });
 });

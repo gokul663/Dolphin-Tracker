@@ -1,9 +1,8 @@
 /**
- * Import wizard logic, kept pure so it can be unit-tested:
- *   review rows (edit, re-validate, pick suggestions, exclude) → map sheet columns to schema fields → stop inputs.
+ * Import wizard logic (STORE-MODEL §6), kept pure so it can be unit-tested:
+ *   the server's column mapping (re-point a column) → review rows (fix, exclude; duplicates excluded) → stop inputs.
  */
-import type { FieldDef, FieldDefInput, GeocodeResult, ImportResult, ImportRow, StopInput } from "@/lib/api/types";
-import { coreError, fieldError, isBlank, keyFromLabel } from "@/lib/validation/fields";
+import type { GeocodeResult, ImportResult, ImportRow, ScreenInput, StopInput, StoreFieldSpec } from "@/lib/api/types";
 
 export type RowStatus = ImportRow["status"] | "validating";
 
@@ -12,15 +11,87 @@ export interface ReviewRow extends Omit<ImportRow, "status"> {
   excluded: boolean;
 }
 
-export type RowFilter = "all" | "valid" | "needs_review" | "invalid" | "blocked";
+export type RowFilter = "all" | "valid" | "needs_review" | "invalid" | "blocked" | "duplicates";
 
-export function toReviewRows(result: ImportResult): ReviewRow[] {
-  return result.rows.map((row) => ({ ...row, excluded: false }));
+// ---- columns -------------------------------------------------------------------------------------------------
+
+/** Backend `import_mapping`: "" keeps a column as Other imported data, "-" drops it. */
+export const OTHER_DATA = "";
+export const IGNORE = "-";
+
+/** Targets that build the screens and the status, or carry sheet-only values (not store attributes). */
+export const SHEET_TARGETS: { value: string; label: string }[] = [
+  { value: "status", label: "Screen status" },
+  { value: "status_fallback", label: "Screen status (if STATUS is blank)" },
+  { value: "screen_count", label: "Number of screens (sticks)" },
+  { value: "stick_numbers", label: "Stick numbers" },
+  { value: "venue_ids", label: "DD codes (venue ids)" },
+  { value: "lat", label: "Latitude" },
+  { value: "lng", label: "Longitude" },
+  { value: "installer_name", label: "Technician (completed by)" },
+];
+
+/** Re-pointing these needs new geocoding, which a re-map does not do: re-upload instead (backend rule). */
+export const GEOCODED_TARGETS = new Set(["addr", "city", "state", "zip", "lat", "lng"]);
+
+export interface TargetGroup {
+  label: string;
+  options: { value: string; label: string }[];
 }
 
-/** Backend `normalize_column`: lower-case, non-alphanumerics to "_", trimmed. */
-export function normalizeColumn(value: string): string {
-  return value.replace(/^﻿/, "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+export function targetGroups(specs: StoreFieldSpec[]): TargetGroup[] {
+  return [
+    { label: "Store fields", options: specs.map((spec) => ({ value: spec.name, label: spec.label })) },
+    { label: "Screens and sheet values", options: SHEET_TARGETS },
+    { label: "Other", options: [{ value: OTHER_DATA, label: "Other imported data" }, { value: IGNORE, label: "Ignore this column" }] },
+  ];
+}
+
+export function targetLabel(specs: StoreFieldSpec[], target: string): string {
+  for (const group of targetGroups(specs)) {
+    const option = group.options.find((item) => item.value === target);
+    if (option) return option.label;
+  }
+  return target;
+}
+
+/** The column already holding `target`, other than `column` (each target is taken once; extras are not). */
+export function takenBy(mapping: Record<string, string>, target: string, column: string): string | null {
+  if (target === OTHER_DATA || target === IGNORE) return null;
+  return Object.entries(mapping).find(([other, mapped]) => mapped === target && other !== column)?.[0] ?? null;
+}
+
+export const isLocked = (target: string) => GEOCODED_TARGETS.has(target);
+
+/** A few values this column produced, for the columns table. */
+export function sampleValues(result: ImportResult, column: string, target: string, count = 3): string[] {
+  const values: string[] = [];
+  for (const row of result.rows) {
+    let value: unknown;
+    if (target === OTHER_DATA) value = row.fields[column];
+    else if (target === "status" || target === "status_fallback") value = row.venue_status_raw;
+    else if (target === "stick_numbers") value = row.screens.map((screen) => screen.stick_number).filter(Boolean).join(", ");
+    else if (target === "venue_ids") value = row.screens.map((screen) => screen.venue_id).filter(Boolean).join(", ");
+    else if (target === "screen_count") value = row.screens.length;
+    else if (target in row.details) value = row.details[target];
+    else if (target in row) value = (row as unknown as Record<string, unknown>)[target];
+    if (value !== undefined && value !== null && value !== "") values.push(String(value));
+    if (values.length >= count) break;
+  }
+  return values;
+}
+
+// ---- review rows -----------------------------------------------------------------------------------------------
+
+export function toReviewRows(result: ImportResult): ReviewRow[] {
+  return result.rows.map((row) => ({ ...row, excluded: row.duplicate_reason !== "" }));
+}
+
+export const isDuplicate = (row: Pick<ImportRow, "duplicate_reason">) => row.duplicate_reason !== "";
+
+export function duplicateText(row: Pick<ImportRow, "duplicate_of" | "duplicate_reason">): string {
+  const of = row.duplicate_of === null ? "an earlier row" : `row ${row.duplicate_of + 1}`;
+  return row.duplicate_reason === "external_id" ? `Same IBC# as ${of}` : `Same address as ${of}`;
 }
 
 /** Apply a `/places/validate` answer to a row, as v1 did: ok and not partial → valid. */
@@ -38,6 +109,7 @@ export function applyGeocode(row: ReviewRow, geo: GeocodeResult, address = row.a
     zip: geo.zip,
     lat: geo.lat,
     lng: geo.lng,
+    coordinates_source: "geocode",
     suggestions: geo.suggestions,
     status: geo.partial ? "needs_review" : "valid",
     confidence: geo.partial ? 40 : 70,
@@ -46,19 +118,32 @@ export function applyGeocode(row: ReviewRow, geo: GeocodeResult, address = row.a
   };
 }
 
-/** Why a row cannot be imported yet (empty when it can). Excluded rows have no problems: they are skipped. */
+/** The address can be routed: verified by Google, or (STORE-MODEL §6) placed by the sheet's own coordinates. */
+export const located = (row: ReviewRow) =>
+  row.lat !== null && row.lng !== null && (row.status === "valid" || (row.status === "needs_review" && row.coordinates_source === "sheet"));
+
+/** Why a row cannot be imported (empty when it can). Excluded rows have none: they are skipped. */
 export function rowProblems(row: ReviewRow): string[] {
   if (row.excluded) return [];
   const problems: string[] = [];
-  const name = coreError("store_name", row.store_name);
-  if (name) problems.push(name);
-  if (row.status !== "valid" || row.lat === null || row.lng === null) problems.push("Address is not verified");
+  if (!row.external_id.trim()) problems.push("IBC# is required");
+  if (!row.store_name.trim()) problems.push("Store name is required");
+  if (!located(row)) problems.push("Address is not verified");
   return problems;
+}
+
+/** Sheet values that could not be used (a bad phone, a non-numeric count…): fixed in the drawer later, or dropped. */
+export function valueProblems(row: ReviewRow): string[] {
+  if (row.excluded) return [];
+  return Object.entries(row.problems)
+    .filter(([key]) => key !== "external_id" && key !== "store_name")
+    .map(([, message]) => message);
 }
 
 export function filterRows(rows: ReviewRow[], filter: RowFilter): ReviewRow[] {
   if (filter === "all") return rows;
   if (filter === "blocked") return rows.filter((row) => rowProblems(row).length > 0);
+  if (filter === "duplicates") return rows.filter(isDuplicate);
   return rows.filter((row) => row.status === filter);
 }
 
@@ -69,112 +154,27 @@ export function reviewSummary(rows: ReviewRow[]) {
     valid: rows.filter((row) => row.status === "valid").length,
     needs_review: rows.filter((row) => row.status === "needs_review").length,
     invalid: rows.filter((row) => row.status === "invalid").length,
+    duplicates: rows.filter(isDuplicate).length,
     excluded: rows.length - active.length,
     blocked: active.filter((row) => rowProblems(row).length > 0).length,
+    withValueProblems: active.filter((row) => rowProblems(row).length === 0 && valueProblems(row).length > 0).length,
     ready: active.filter((row) => rowProblems(row).length === 0).length,
   };
 }
 
-// ---- column mapping ----------------------------------------------------------------------------------------
-
-export type ColumnTarget = { kind: "field"; key: string } | { kind: "new"; key: string; label: string } | { kind: "ignore" };
-export type ColumnMapping = Record<string, ColumnTarget>;
-
-/** Sheet columns that can feed custom fields: `pa` (top-level in the result) plus every key under `fields`. */
-export function mappableColumns(result: ImportResult): string[] {
-  const columns = new Set<string>();
-  if (result.rows.some((row) => !isBlank(row.pa))) columns.add("pa");
-  for (const row of result.rows) for (const key of Object.keys(row.fields)) columns.add(key);
-  return [...columns];
-}
-
-function columnValue(row: Pick<ImportRow, "pa" | "fields">, column: string): string {
-  return column === "pa" ? row.pa : (row.fields[column] ?? "");
-}
-
-/** Auto-map by alias: a column matches a field whose key, source column or label normalises to the same name. */
-export function autoMap(columns: string[], schema: FieldDef[]): ColumnMapping {
-  const mapping: ColumnMapping = {};
-  for (const column of columns) {
-    const match = schema.find(
-      (field) =>
-        field.key === column ||
-        (field.source_column && normalizeColumn(field.source_column) === column) ||
-        normalizeColumn(field.label) === column,
-    );
-    mapping[column] = match ? { kind: "field", key: match.key } : { kind: "ignore" };
-  }
-  return mapping;
-}
-
-/** A "new field" target for an unknown column: label from the header, key unique against the schema. */
-export function newFieldTarget(column: string, schema: FieldDef[], mapping: ColumnMapping): ColumnTarget {
-  const label = column.split("_").filter(Boolean).map((word) => word[0]?.toUpperCase() + word.slice(1)).join(" ") || column;
-  const taken = [
-    ...schema.map((field) => field.key),
-    ...Object.values(mapping).flatMap((target) => (target.kind === "new" ? [target.key] : [])),
-  ];
-  return { kind: "new", key: keyFromLabel(label, taken), label };
-}
-
-export function mappingErrors(mapping: ColumnMapping): string[] {
-  const targets = new Map<string, string[]>();
-  for (const [column, target] of Object.entries(mapping)) {
-    if (target.kind === "ignore") continue;
-    targets.set(target.key, [...(targets.get(target.key) ?? []), column]);
-  }
-  return [...targets].filter(([, columns]) => columns.length > 1).map(([key, columns]) => `${columns.join(" and ")} both map to ${key}`);
-}
-
-/** The schema after the mapping's "add to schema" choices; new fields remember their sheet column. */
-export function extendedSchema(schema: FieldDef[], mapping: ColumnMapping): FieldDefInput[] {
-  const added: FieldDefInput[] = Object.entries(mapping).flatMap(([column, target]) =>
-    target.kind === "new"
-      ? [{ key: target.key, label: target.label, type: "text" as const, required: false, options: [], source_column: column }]
-      : [],
-  );
-  return [...schema, ...added];
-}
-
-/** Values that would fail the server's field rules, per target key (shown on the mapping step). */
-export function mappedValueProblems(rows: ReviewRow[], mapping: ColumnMapping, schema: FieldDefInput[]) {
-  const problems: { index: number; key: string; message: string }[] = [];
-  const byKey = new Map(schema.map((field) => [field.key, field]));
-  for (const row of rows) {
-    if (row.excluded || rowProblems(row).length) continue;
-    for (const field of schema) {
-      const column = Object.entries(mapping).find(([, target]) => target.kind !== "ignore" && target.key === field.key)?.[0];
-      const value = column ? columnValue(row, column) : "";
-      const definition = byKey.get(field.key);
-      if (!definition) continue;
-      const message = fieldError(
-        { ...definition, type: definition.type ?? "text", required: Boolean(definition.required), options: definition.options ?? [] },
-        value,
-      );
-      if (message) problems.push({ index: row.index, key: field.key, message });
-    }
-  }
-  return problems;
-}
-
-/** Ready rows → `StopInput[]` for `POST /projects` or `stores/append`. `dropInvalid` blanks optional bad values. */
-export function buildStops(
-  rows: ReviewRow[],
-  mapping: ColumnMapping,
-  schema: FieldDefInput[],
-  { dropInvalid = false }: { dropInvalid?: boolean } = {},
-): StopInput[] {
-  const bad = new Set(dropInvalid ? mappedValueProblems(rows, mapping, schema).map((p) => `${p.index}|${p.key}`) : []);
+/** One stop input per ready row: store attributes, screens with the sheet status, unrecognised columns as `fields`.
+ *  `dropInvalid` leaves out the values listed in a row's problems (otherwise the server would refuse the row). */
+export function buildStops(rows: ReviewRow[], { dropInvalid = false } = {}): StopInput[] {
   return rows
     .filter((row) => !row.excluded && rowProblems(row).length === 0)
     .map((row) => {
-      const fields: Record<string, string> = {};
-      for (const [column, target] of Object.entries(mapping)) {
-        if (target.kind === "ignore") continue;
-        const value = columnValue(row, column).trim();
-        if (value && !bad.has(`${row.index}|${target.key}`)) fields[target.key] = value;
-      }
+      const details = Object.fromEntries(
+        Object.entries(row.details).filter(([key]) => !(dropInvalid && key in row.problems)),
+      );
+      const screens: ScreenInput[] = row.screens.map((screen) => ({ stick_number: screen.stick_number, venue_id: screen.venue_id, status: screen.status }));
       return {
+        ...details,
+        external_id: row.external_id.trim(),
         store_name: row.store_name.trim(),
         addr: row.addr || row.address,
         city: row.city,
@@ -182,9 +182,18 @@ export function buildStops(
         zip: row.zip,
         lat: row.lat,
         lng: row.lng,
-        geocoded: row.formatted || row.address,
-        fields,
-        initial_status: row.venue_status,
-      };
+        geocoded: row.formatted,
+        pa: row.pa,
+        installer_name: row.installer_name,
+        screens,
+        fields: row.fields,
+      } as StopInput;
     });
+}
+
+/** Screen rows as one short line for the review table: "2 screens · S1/V1, S2/V2". */
+export function screensPreview(row: Pick<ImportRow, "screens">): string {
+  const ids = row.screens.map((screen) => [screen.stick_number, screen.venue_id].filter(Boolean).join("/")).filter(Boolean);
+  const count = `${row.screens.length} ${row.screens.length === 1 ? "screen" : "screens"}`;
+  return ids.length ? `${count} · ${ids.join(", ")}` : count;
 }

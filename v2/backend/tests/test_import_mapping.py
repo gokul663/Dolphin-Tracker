@@ -4,6 +4,10 @@ import io
 import tempfile
 import unittest
 
+from fastapi.testclient import TestClient
+
+from dolphin_tracker.api.app import create_app
+from dolphin_tracker.api.deps import get_file_store, get_job_repository
 from dolphin_tracker.api.schemas import ImportResult
 from dolphin_tracker.domain.import_mapping import (
     FIELDS,
@@ -222,3 +226,55 @@ class SampleSheetImportTests(unittest.TestCase):
         self.assertEqual(result["mapping"]["notes"], "installation_notes")
         self.assertEqual(row["details"]["installation_notes"], "use the side door")  # saved choice beat §6
         self.assertNotIn("regional_manager", row["fields"])  # ignored
+
+
+class RemapTests(unittest.TestCase):
+    """POST /jobs/{id}/mapping: re-point a column after the import ran, without geocoding again."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.files = LocalFileStore(tmp.name)
+        self.jobs = InMemoryJobRepository()
+        self.geocoder = FakeGeocoder(geocodes=GEOCODES)
+        self.files.put_bytes("uploads/j1/ibc.csv", sheet(ROWS[0], {**ROWS[1], "Notes": "side door"}))
+        payload = {"upload_key": "uploads/j1/ibc.csv", "filename": "ibc.csv"}
+        self.jobs.put(Job(id="j1", type=JobType.IMPORT_PARSE, status=JobStatus.RUNNING, payload=payload))
+        ImportService(self.jobs, self.files, self.geocoder).run("j1", {})
+        self.first = self.files.get_json(result_key("j1"))
+        app = create_app()
+        app.dependency_overrides[get_job_repository] = lambda: self.jobs
+        app.dependency_overrides[get_file_store] = lambda: self.files
+        self.client = TestClient(app)
+
+    def remap(self, **changes):
+        return self.client.post("/api/jobs/j1/mapping", json={"mapping": {**self.first["mapping"], **changes}})
+
+    def test_repointing_a_column_rebuilds_rows_but_keeps_geocoding(self):
+        calls = len(self.geocoder.calls)
+        response = self.remap(notes="installation_notes", installation_comments=FIELDS, regional_manager=IGNORE)
+        self.assertEqual(response.status_code, 200, response.text)
+        result = response.json()
+        self.assertEqual(len(self.geocoder.calls), calls)  # Google is not asked again
+        self.assertEqual(result["mapping"]["notes"], "installation_notes")
+        beta = result["rows"][1]
+        self.assertEqual(beta["details"]["installation_notes"], "side door")
+        self.assertNotIn("notes", beta["fields"])
+        self.assertNotIn("regional_manager", result["rows"][0]["fields"])
+        for key in ("status", "lat", "lng", "coordinates_source", "formatted"):
+            self.assertEqual(beta[key], self.first["rows"][1][key], key)
+        self.assertEqual(self.files.get_json(result_key("j1")), result)  # the stored result follows
+
+    def test_address_columns_cannot_move_and_the_mapping_must_be_complete(self):
+        moved = self.remap(store_address=FIELDS, notes="addr")
+        self.assertEqual(moved.status_code, 422)
+        self.assertIn("Re-upload the sheet", " ".join(moved.json()["detail"]["errors"]))
+        partial = self.client.post("/api/jobs/j1/mapping", json={"mapping": {"store_address": "addr"}})
+        self.assertEqual(partial.status_code, 422)
+        double = self.remap(notes="store_name")
+        self.assertEqual(double.status_code, 422)  # store_name is already taken by "store_name"
+
+    def test_only_finished_imports(self):
+        self.jobs.put(Job(id="j2", type=JobType.IMPORT_PARSE, status=JobStatus.RUNNING, payload={}))
+        self.assertEqual(self.client.post("/api/jobs/j2/mapping", json={"mapping": {}}).status_code, 409)
+        self.assertEqual(self.client.post("/api/jobs/nope/mapping", json={"mapping": {}}).status_code, 404)

@@ -4,13 +4,15 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 
-from dolphin_tracker.api.deps import SettingsDep, get_job_service
-from dolphin_tracker.api.schemas import ImportJobCreate, ImportJobCreated, ImportResult
+from dolphin_tracker.api.deps import SettingsDep, get_import_service, get_job_service
+from dolphin_tracker.api.schemas import ImportJobCreate, ImportJobCreated, ImportMapping, ImportResult
 from dolphin_tracker.domain.models import Job, JobView
+from dolphin_tracker.services.imports import ImportService
 from dolphin_tracker.services.jobs import JobService
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 ServiceDep = Annotated[JobService, Depends(get_job_service)]
+ImportDep = Annotated[ImportService, Depends(get_import_service)]
 
 
 @router.post("/imports", response_model=ImportJobCreated, status_code=201)
@@ -55,3 +57,9 @@ def get_job(job_id: str, service: ServiceDep) -> JobView:
 def get_result_local(job_id: str, service: ServiceDep) -> dict:
     """Local mode only: the import result document (§3.4). In AWS, follow `result_url` from GET /jobs/{id}."""
     return service.result(job_id)
+
+
+@router.post("/{job_id}/mapping", response_model=ImportResult)
+def remap_import(job_id: str, body: ImportMapping, imports: ImportDep) -> dict:
+    """Apply a re-pointed column mapping to a finished import (no new geocoding) and return the new result."""
+    return imports.remap(job_id, body.mapping)

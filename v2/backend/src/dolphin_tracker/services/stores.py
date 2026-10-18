@@ -462,6 +462,7 @@ class StoreService:
                 fields=coerce_fields(project.field_schema, stop.fields),
                 **stop_details(stop),
                 screens=stop.build_screens(),
+                installer_name=stop.installer_name.strip(),
             )
             days[installer][day].append(new)
             appended.append(new)

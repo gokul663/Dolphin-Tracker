@@ -1,34 +1,25 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useNavigate } from "react-router";
 import { ArrowLeft, ArrowRight, CheckCircle2, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { useImportResult, useJob } from "@/features/imports/api";
+import { Label } from "@/components/ui/label";
+import { useImportResult, useJob, useRemapImport } from "@/features/imports/api";
 import { DetailsStep } from "@/features/imports/DetailsStep";
 import { MappingStep } from "@/features/imports/MappingStep";
-import {
-  autoMap,
-  buildStops,
-  extendedSchema,
-  mappableColumns,
-  mappedValueProblems,
-  mappingErrors,
-  reviewSummary,
-  toReviewRows,
-  type ColumnMapping,
-  type ReviewRow,
-} from "@/features/imports/model";
+import { buildStops, reviewSummary, toReviewRows, type ReviewRow } from "@/features/imports/model";
 import { ReviewStep } from "@/features/imports/ReviewStep";
 import { UploadStep } from "@/features/imports/UploadStep";
 import { EMPTY_DETAILS, wizardDetailsSchema, type WizardDetails } from "@/features/imports/wizardSchema";
-import { useDefaultFieldSchema } from "@/features/places/api";
-import { useCreateProject, useUpdateProject } from "@/features/projects/api";
+import { useStoreFields } from "@/features/places/api";
+import { useCreateProject } from "@/features/projects/api";
 import { metaPayload } from "@/features/projects/schema";
 import { useAppendStores } from "@/features/stores/api";
-import { ApiError, type AppendResult, type FieldDef, type Project } from "@/lib/api/types";
+import { ApiError, type AppendResult, type Project } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
 
 export interface ImportWizardProps {
@@ -38,12 +29,12 @@ export interface ImportWizardProps {
   appendTo?: Project | null;
 }
 
-type Step = "details" | "upload" | "review" | "mapping" | "done";
+type Step = "details" | "upload" | "columns" | "review" | "done";
 
 export function ImportWizard({ open, onClose, appendTo }: ImportWizardProps) {
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
-      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-5xl">
+      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-6xl">
         {/* Remounting per open resets every step. */}
         {open && <WizardBody key={appendTo?.id ?? "new"} appendTo={appendTo ?? null} onClose={onClose} />}
       </DialogContent>
@@ -51,9 +42,21 @@ export function ImportWizard({ open, onClose, appendTo }: ImportWizardProps) {
   );
 }
 
+/** A failed fetch the wizard depends on: say so and offer a retry, instead of sitting on "succeeded 100%". */
+function FetchError({ message, retrying, onRetry }: { message: string; retrying: boolean; onRetry: () => void }) {
+  return (
+    <div role="alert" className="flex items-center justify-between gap-3 rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">
+      <span>{message}</span>
+      <Button size="sm" variant="outline" onClick={onRetry} disabled={retrying}>
+        {retrying && <Loader2 className="animate-spin" />} Retry
+      </Button>
+    </div>
+  );
+}
+
 function WizardBody({ appendTo, onClose }: { appendTo: Project | null; onClose: () => void }) {
   const navigate = useNavigate();
-  const steps: Step[] = appendTo ? ["upload", "review", "mapping"] : ["details", "upload", "review", "mapping"];
+  const steps: Step[] = appendTo ? ["upload", "columns", "review"] : ["details", "upload", "columns", "review"];
   const [step, setStep] = useState<Step>(steps[0] as Step);
   const details = useForm<WizardDetails>({ resolver: zodResolver(wizardDetailsSchema), defaultValues: EMPTY_DETAILS });
   const [installers, setInstallers] = useState<string[]>([]);
@@ -61,39 +64,31 @@ function WizardBody({ appendTo, onClose }: { appendTo: Project | null; onClose: 
   const [jobId, setJobId] = useState<string | null>(null);
   const job = useJob(jobId);
   const result = useImportResult(job.data);
+  const remap = useRemapImport(jobId);
+  const specs = useStoreFields();
   const [rows, setRows] = useState<ReviewRow[]>([]);
-  const [mapping, setMapping] = useState<ColumnMapping>({});
   const [dropInvalid, setDropInvalid] = useState(false);
   const [appended, setAppended] = useState<AppendResult | null>(null);
-  const savedProject = useRef<Project | null>(null); // the project as the last successful schema PATCH returned it
-  const defaults = useDefaultFieldSchema();
-  const schema: FieldDef[] = useMemo(() => appendTo?.field_schema ?? defaults.data ?? [], [appendTo, defaults.data]);
 
-  // When the job's result (and the schema to map against) arrive: seed review rows and the automatic mapping.
-  // Keyed on the result only, so later schema refetches never discard review edits.
-  const ready = Boolean(result.data) && (Boolean(appendTo) || defaults.isSuccess);
+  // A (re-mapped) result rebuilds the review rows. Re-pointing a column happens before the review, so no edits are
+  // lost; going back to Columns and re-pointing again does reset them (the step says so).
+  const [seeded, setSeeded] = useState<unknown>(null);
   useEffect(() => {
-    if (!result.data || !ready) return;
+    if (!result.data || result.data === seeded) return;
+    const first = seeded === null;
+    setSeeded(result.data);
     setRows(toReviewRows(result.data));
-    setMapping(autoMap(mappableColumns(result.data), schema));
-    if (!appendTo && !details.getValues("pa") && result.data.pa_names.length) {
-      details.setValue("pa", result.data.pa_names.join(", "));
+    if (first) {
+      if (!appendTo && !details.getValues("pa") && result.data.pa_names.length) details.setValue("pa", result.data.pa_names.join(", "));
+      setStep("columns");
     }
-    setStep("review");
-  }, [result.data, ready]);
+  }, [result.data]);
 
-  const columns = useMemo(() => (result.data ? mappableColumns(result.data) : []), [result.data]);
-  const targetSchema = useMemo(() => extendedSchema(schema, mapping), [schema, mapping]);
-  const errors = mappingErrors(mapping);
-  const problems = useMemo(() => mappedValueProblems(rows, mapping, targetSchema), [rows, mapping, targetSchema]);
-  const blockingProblems = problems.filter((problem) => problem.message.endsWith("is required"));
   const summary = reviewSummary(rows);
   const create = useCreateProject();
   const append = useAppendStores(appendTo?.id ?? "");
-  const updateSchema = useUpdateProject(appendTo?.id ?? "");
-  const saving = create.isPending || append.isPending || updateSchema.isPending;
-  const canSubmit =
-    summary.ready > 0 && errors.length === 0 && blockingProblems.length === 0 && (problems.length === 0 || dropInvalid);
+  const saving = create.isPending || append.isPending;
+  const canSubmit = summary.ready > 0 && (summary.withValueProblems === 0 || dropInvalid);
 
   // Installers live outside the form; report them together with the form's own errors, not after them.
   const checkInstallers = () => {
@@ -106,18 +101,22 @@ function WizardBody({ appendTo, onClose }: { appendTo: Project | null; onClose: 
     () => checkInstallers(),
   );
 
+  const repoint = (column: string, target: string) => {
+    if (!result.data) return;
+    remap.mutate(
+      { ...result.data.mapping, [column]: target },
+      { onError: (error) => toast.error(error instanceof Error ? error.message : "Could not re-map the column") },
+    );
+  };
+  const remapError = remap.error instanceof ApiError ? (remap.error.validation?.errors ?? [remap.error.message]).join(" · ") : null;
+
   const submit = async () => {
-    const stops = buildStops(rows, mapping, targetSchema, { dropInvalid });
+    const stops = buildStops(rows, { dropInvalid });
+    const importMapping = result.data?.mapping ?? {};
     try {
       if (appendTo) {
-        // A retry after a failed append builds on the schema PATCH that already succeeded (its new version),
-        // instead of resending the dashboard's stale version and getting 409 forever.
-        const base = savedProject.current ?? appendTo;
-        if (targetSchema.length > base.field_schema.length) {
-          savedProject.current = await updateSchema.mutateAsync({ field_schema: targetSchema, expected_version: base.version });
-        }
         const pa = rows.filter((row) => !row.excluded).map((row) => row.pa).filter(Boolean);
-        setAppended(await append.mutateAsync({ stops, pa: [...new Set(pa)].join(", ") }));
+        setAppended(await append.mutateAsync({ stops, pa: [...new Set(pa)].join(", "), import_mapping: importMapping }));
         setStep("done");
         return;
       }
@@ -126,10 +125,11 @@ function WizardBody({ appendTo, onClose }: { appendTo: Project | null; onClose: 
         ...metaPayload(values),
         installers,
         stops_per_day: values.stops_per_day,
-        field_schema: targetSchema,
         stops,
+        import_mapping: importMapping,
       });
-      toast.success(`Created ${created.project.name} with ${stops.length} stores${created.job_id ? "; routing has started" : ""}`);
+      const skipped = created.skipped.length ? `; ${created.skipped.length} skipped as duplicates` : "";
+      toast.success(`Created ${created.project.name} with ${stops.length - created.skipped.length} stores${skipped}${created.job_id ? "; routing has started" : ""}`);
       onClose();
       navigate(`/projects/${created.project.id}/stores`);
     } catch (error) {
@@ -142,8 +142,8 @@ function WizardBody({ appendTo, onClose }: { appendTo: Project | null; onClose: 
   const titles: Record<Step, string> = {
     details: "Project details",
     upload: "Upload the store list",
-    review: "Review addresses",
-    mapping: "Map columns to store fields",
+    columns: "Check the columns",
+    review: "Review the stores",
     done: "Stores appended",
   };
 
@@ -184,18 +184,7 @@ function WizardBody({ appendTo, onClose }: { appendTo: Project | null; onClose: 
           <UploadStep projectId={appendTo?.id} jobId={jobId} onJobId={setJobId} />
           {result.isFetching && <p className="font-mono text-xs text-slate-500">Loading the verified rows…</p>}
           {result.isError && (
-            <FetchError
-              message={`Could not load the verified rows: ${result.error.message}`}
-              retrying={result.isFetching}
-              onRetry={() => void result.refetch()}
-            />
-          )}
-          {!appendTo && defaults.isError && (
-            <FetchError
-              message={`Could not load the default store fields: ${defaults.error.message}`}
-              retrying={defaults.isFetching}
-              onRetry={() => void defaults.refetch()}
-            />
+            <FetchError message={`Could not load the verified rows: ${result.error.message}`} retrying={result.isFetching} onRetry={() => void result.refetch()} />
           )}
           <div className="flex justify-between">
             {!appendTo ? (
@@ -206,10 +195,30 @@ function WizardBody({ appendTo, onClose }: { appendTo: Project | null; onClose: 
               <span />
             )}
             {result.data && rows.length > 0 && (
-              <Button variant="outline" onClick={() => setStep("review")}>
-                Continue to review <ArrowRight />
+              <Button variant="outline" onClick={() => setStep("columns")}>
+                Continue to the columns <ArrowRight />
               </Button>
             )}
+          </div>
+        </div>
+      )}
+
+      {step === "columns" && result.data && (
+        <div className="space-y-4">
+          {specs.data ? (
+            <MappingStep result={result.data} specs={specs.data} onRepoint={repoint} pending={remap.isPending} error={remapError} />
+          ) : specs.isError ? (
+            <FetchError message={`Could not load the store fields: ${specs.error.message}`} retrying={specs.isFetching} onRetry={() => void specs.refetch()} />
+          ) : (
+            <p className="font-mono text-xs text-slate-500">Loading the store fields…</p>
+          )}
+          <div className="flex justify-between">
+            <Button variant="ghost" onClick={() => setStep("upload")}>
+              <ArrowLeft /> Upload another file
+            </Button>
+            <Button onClick={() => setStep("review")} disabled={remap.isPending}>
+              Next: review {summary.total} rows <ArrowRight />
+            </Button>
           </div>
         </div>
       )}
@@ -217,33 +226,17 @@ function WizardBody({ appendTo, onClose }: { appendTo: Project | null; onClose: 
       {step === "review" && (
         <div className="space-y-4">
           <ReviewStep rows={rows} onRowsChange={setRows} />
+          {summary.withValueProblems > 0 && (
+            <div className="flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              <Checkbox id="drop-invalid" checked={dropInvalid} onCheckedChange={(checked) => setDropInvalid(checked === true)} />
+              <Label htmlFor="drop-invalid">
+                {summary.withValueProblems} rows have values that cannot be used (marked above). Import them without those values
+              </Label>
+            </div>
+          )}
           <div className="flex justify-between">
-            <Button variant="ghost" onClick={() => setStep("upload")}>
-              <ArrowLeft /> Upload another file
-            </Button>
-            <Button onClick={() => setStep("mapping")} disabled={summary.ready === 0}>
-              Next: map columns ({summary.ready} ready) <ArrowRight />
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {step === "mapping" && (
-        <div className="space-y-4">
-          <MappingStep
-            columns={columns}
-            rows={rows}
-            schema={schema}
-            mapping={mapping}
-            onMappingChange={setMapping}
-            errors={errors}
-            problems={problems}
-            dropInvalid={dropInvalid}
-            onDropInvalidChange={setDropInvalid}
-          />
-          <div className="flex justify-between">
-            <Button variant="ghost" onClick={() => setStep("review")}>
-              <ArrowLeft /> Back to review
+            <Button variant="ghost" onClick={() => setStep("columns")}>
+              <ArrowLeft /> Back to the columns
             </Button>
             <Button onClick={submit} disabled={!canSubmit || saving}>
               {saving && <Loader2 className="animate-spin" />}
@@ -287,17 +280,5 @@ function WizardBody({ appendTo, onClose }: { appendTo: Project | null; onClose: 
         </div>
       )}
     </>
-  );
-}
-
-/** A failed fetch the wizard depends on: say so and offer a retry, instead of sitting on "succeeded 100%". */
-function FetchError({ message, retrying, onRetry }: { message: string; retrying: boolean; onRetry: () => void }) {
-  return (
-    <div role="alert" className="flex items-center justify-between gap-3 rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">
-      <span>{message}</span>
-      <Button size="sm" variant="outline" onClick={onRetry} disabled={retrying}>
-        {retrying && <Loader2 className="animate-spin" />} Retry
-      </Button>
-    </div>
   );
 }

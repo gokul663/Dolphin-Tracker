@@ -3,7 +3,6 @@ import { api, apiUrl, fetchJson, uploadFile } from "@/lib/api/client";
 import type {
   AppendResult,
   AppendStops,
-  FieldDef,
   GeocodeResult,
   HealthResponse,
   ImportJobCreate,
@@ -75,7 +74,6 @@ export const healthApi = {
 
 export const configApi = {
   maps: () => api<MapsConfig>("/config/maps"),
-  defaultFieldSchema: () => api<FieldDef[]>("/config/field-schema"),
   storeFields: () => api<StoreFieldSpec[]>("/config/store-fields"),
 };
 
@@ -138,4 +136,6 @@ export const jobsApi = {
   start: (jobId: string) => api<Job>(`/jobs/${enc(jobId)}/start`, { method: "POST" }),
   get: (jobId: string) => api<JobView>(`/jobs/${enc(jobId)}`),
   result: (resultUrl: string) => fetchJson<ImportResult>(resultUrl),
+  remap: (jobId: string, mapping: Record<string, string>) =>
+    api<ImportResult>(`/jobs/${enc(jobId)}/mapping`, { method: "POST", body: { mapping } }),
 };

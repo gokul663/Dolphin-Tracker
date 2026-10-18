@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { keys } from "@/lib/api/keys";
 import { jobsApi } from "@/lib/api/resources";
 import type { JobView } from "@/lib/api/types";
@@ -53,5 +53,14 @@ export function useImportResult(job: JobView | undefined) {
     queryFn: () => jobsApi.result(job?.result_url ?? ""),
     enabled: job?.status === "succeeded" && Boolean(job.result_url),
     staleTime: Infinity,
+  });
+}
+
+/** Re-point columns of a finished import (`POST /jobs/{id}/mapping`); the new result replaces the cached one. */
+export function useRemapImport(jobId: string | null) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (mapping: Record<string, string>) => jobsApi.remap(jobId ?? "", mapping),
+    onSuccess: (result) => client.setQueryData(keys.jobResult(jobId ?? ""), result),
   });
 }

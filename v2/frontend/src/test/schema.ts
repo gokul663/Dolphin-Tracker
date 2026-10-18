@@ -1,6 +1,6 @@
 import type { FieldDef } from "@/lib/api/types";
 
-/** Mirrors backend DEFAULT_FIELD_SCHEMA (§3.1) for component tests. */
+/** An extra-field schema for component tests: the round-1 defaults, as a project created before v2 carries them. */
 export const DEFAULT_SCHEMA_FOR_TESTS: FieldDef[] = [
   ["pa", "PA", "text"], ["venue_type", "Venue Type", "text"], ["dma", "DMA", "text"],
   ["venue_code", "Venue Code", "text"], ["owner_name", "Owner Name", "text"],

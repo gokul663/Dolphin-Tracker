@@ -1881,3 +1881,63 @@ connected).
 
 **Verified:** gates green (302 backend, 124 frontend); `make frontend-build` shows `TopStatesChart` in its own
 chunk.
+
+---
+
+## S9 · Import wizard v2: mapping override, duplicates, screens preview
+
+**Changed — backend**
+- `POST /jobs/{id}/mapping` (new) `{mapping}` → `ImportResult`. It re-parses the stored sheet with a
+  re-pointed mapping and keeps each row's geocoding from the stored result (`carry_geocoding`), so Google is not
+  called again.
+  - Refused with 422 when the mapping is invalid (`check_mapping`: unknown target, a target taken twice, no
+    address), when it does not list exactly the sheet's columns, or when it moves an address or coordinate
+    column, since that would need new geocoding ("Re-upload the sheet…").
+  - Only for a succeeded import (409), and 404 for an unknown job.
+  - The new result overwrites the stored one.
+- `verify_row` is split into `verify_inputs` (sheet-only part) plus geocoding, so a re-map and a run share the
+  row shape.
+- `StopInput.installer_name`: the sheet's Technician ("Completed by", "self install") is saved on create and
+  append.
+
+**Changed — frontend** (`features/imports/`)
+- Steps: details (new projects) → upload → **Check the columns** → **Review the stores** → create / append.
+  - **Columns** (`MappingStep`) shows every sheet column with its detected §6 target and example values.
+  - Each column has a grouped select: store fields from the registry, screens and sheet values, Other
+    imported data, Ignore.
+  - Targets held by another column are disabled with "(from column)". Address and coordinate columns show
+    locked with a hint. A change calls the re-map and replaces the cached result.
+  - **Review** (`ReviewStep`) gains an IBC# input, a screens preview ("2 screens · S1/V1, S2"), the sheet status
+    chip (with "?" for unknown values), and the row's value problems.
+    - Duplicates are excluded from the start, show "Duplicate: Same IBC# as row 1" (or address), cannot be
+      included, and have their own filter chip.
+    - Rows placed by the sheet's coordinates ("Sheet pin") count as located.
+  - Rows with unusable optional values block the save until "Import them without those values" is ticked.
+    The old per-column "drop invalid" moved here.
+- `model.ts` rewritten: targets, `takenBy`, `isLocked`, `sampleValues`, `toReviewRows`, `rowProblems` (IBC#,
+  name, located), `valueProblems`, `buildStops` (store attributes, screens with the sheet status,
+  `installer_name`, unknown columns as `fields`), `screensPreview`.
+  - Create and append send `import_mapping`, so the next sheet maps the same way (S2).
+- **Removed:** the client-side column → schema mapping and the append-time schema PATCH. Unknown columns are
+  now Other imported data (§1.2), not new project fields.
+  - So X4's "retry without a stale schema PATCH" no longer applies: there is no PATCH. The append retry is
+    still tested.
+  - `useDefaultFieldSchema` / the field-schema fetch are gone from the wizard (X5's schema error became a
+    store-fields error with the same retry).
+- **Deviation:** the handoff puts the re-point control *in* the review table; I made it a step just before
+  review. A re-map rebuilds the rows from the server, so re-pointing after address fixes would throw those
+  fixes away. Going back to Columns says so implicitly: the rows are rebuilt.
+
+**Tests:**
+- Backend `RemapTests`:
+  - re-point and ignore with no new geocoding and the stored result replaced;
+  - a moved address column, an incomplete mapping and a double target → 422;
+  - unfinished → 409; unknown → 404.
+- Frontend:
+  - `model.test.ts` (targets, taken/locked, samples, duplicates excluded with reason, problems,
+    sheet-coordinate rows, geocode re-check, stop inputs incl. drop-invalid, preview);
+  - `ImportWizard.test.tsx`: the full new-project flow; a re-map refusal shown; append with the mapping and
+    the skipped list; append retry; drop-invalid gating; result and registry fetch errors with retry;
+    back-to-upload.
+
+**Verified:** gates green (305 backend, 129 frontend).

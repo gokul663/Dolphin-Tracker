@@ -144,6 +144,7 @@ class ProjectService:
                 fields=coerce_fields(schema, stop.fields),
                 **stop_details(stop),
                 screens=stop.build_screens(),
+                installer_name=stop.installer_name.strip(),
             )
             for index, stop in enumerate(kept)
         ]

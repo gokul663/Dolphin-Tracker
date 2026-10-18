@@ -539,6 +539,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/jobs/{job_id}/mapping": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Remap Import
+         * @description Apply a re-pointed column mapping to a finished import (no new geocoding) and return the new result.
+         */
+        post: operations["remap_import_api_jobs__job_id__mapping_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -725,6 +745,16 @@ export interface components {
             upload_url: string;
             /** Upload Key */
             upload_key: string;
+        };
+        /**
+         * ImportMapping
+         * @description A re-pointed column mapping for a finished import: every sheet column → field ("" other data, "-" ignore).
+         */
+        ImportMapping: {
+            /** Mapping */
+            mapping: {
+                [key: string]: string;
+            };
         };
         /** ImportResult */
         ImportResult: {
@@ -1896,6 +1926,11 @@ export interface components {
             /** Screens */
             screens?: components["schemas"]["ScreenInput"][];
             initial_status?: components["schemas"]["ScreenStatus"] | null;
+            /**
+             * Installer Name
+             * @default
+             */
+            installer_name?: string;
         };
         /** StopReassign */
         StopReassign: {
@@ -3205,6 +3240,41 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remap_import_api_jobs__job_id__mapping_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImportMapping"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

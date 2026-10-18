@@ -1,111 +1,91 @@
-import { Checkbox } from "@/components/ui/checkbox";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { newFieldTarget, type ColumnMapping, type ColumnTarget, type ReviewRow } from "@/features/imports/model";
-import type { FieldDef } from "@/lib/api/types";
+import { Loader2, Lock } from "lucide-react";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { isLocked, sampleValues, takenBy, targetGroups, targetLabel } from "@/features/imports/model";
+import type { ImportResult, StoreFieldSpec } from "@/lib/api/types";
 
 interface Props {
-  columns: string[];
-  rows: ReviewRow[];
-  schema: FieldDef[];
-  mapping: ColumnMapping;
-  onMappingChange: (mapping: ColumnMapping) => void;
-  errors: string[];
-  problems: { index: number; key: string; message: string }[];
-  dropInvalid: boolean;
-  onDropInvalidChange: (value: boolean) => void;
+  result: ImportResult;
+  specs: StoreFieldSpec[];
+  /** Re-point one column; the server re-maps the sheet (no new geocoding) and returns the new result. */
+  onRepoint: (column: string, target: string) => void;
+  pending: boolean;
+  error: string | null;
 }
 
-const NEW = "__new__";
-const IGNORE = "__ignore__";
+// Radix Select cannot hold "" as a value; the "Other imported data" target travels as this token in the UI.
+const OTHER_TOKEN = "__other__";
+const toUi = (target: string) => (target === "" ? OTHER_TOKEN : target);
+const fromUi = (value: string) => (value === OTHER_TOKEN ? "" : value);
 
-function encode(target: ColumnTarget): string {
-  return target.kind === "ignore" ? IGNORE : target.kind === "new" ? NEW : target.key;
-}
-
-/** Step 4: which sheet column feeds which store field; unknown columns can be added to the schema or ignored. */
-export function MappingStep({ columns, rows, schema, mapping, onMappingChange, errors, problems, dropInvalid, onDropInvalidChange }: Props) {
-  const sample = (column: string) =>
-    [...new Set(rows.map((row) => (column === "pa" ? row.pa : (row.fields[column] ?? ""))).filter(Boolean))].slice(0, 3);
-  const choose = (column: string, value: string) => {
-    const target: ColumnTarget =
-      value === IGNORE ? { kind: "ignore" } : value === NEW ? newFieldTarget(column, schema, mapping) : { kind: "field", key: value };
-    onMappingChange({ ...mapping, [column]: target });
-  };
-  const requiredMissing = schema.filter(
-    (field) => field.required && !Object.values(mapping).some((target) => target.kind !== "ignore" && target.key === field.key),
-  );
-
+/** The detected STORE-MODEL §6 mapping, one row per sheet column, each with a re-point control. */
+export function MappingStep({ result, specs, onRepoint, pending, error }: Props) {
+  const mapping = result.mapping;
+  const groups = targetGroups(specs);
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <p className="text-sm text-slate-600">
-        Store name and address are always imported. Choose where every other column goes; columns matching a field by
-        name were mapped automatically.
+        Each column of the sheet and the store field it fills. Change a field to re-point the column; the rows are rebuilt
+        without checking the addresses again. The mapping is saved on the project for its next sheet.
+        {pending && <Loader2 className="ml-2 inline size-4 animate-spin" aria-label="Re-mapping" />}
       </p>
-      {columns.length === 0 ? (
-        <p className="rounded-md border bg-slate-50 p-4 text-sm text-slate-500">This sheet has no extra columns to map.</p>
-      ) : (
-        <table className="w-full text-sm">
-          <thead className="font-mono text-[10px] uppercase tracking-wider text-slate-500">
+      {error && (
+        <p role="alert" className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
+          {error}
+        </p>
+      )}
+      <div className="max-h-[50vh] overflow-auto rounded-lg border">
+        <table className="w-full min-w-[720px] text-sm">
+          <thead className="sticky top-0 z-10 bg-slate-50 font-mono text-[10px] uppercase tracking-wider text-slate-500">
             <tr className="text-left">
               <th className="p-2">Sheet column</th>
-              <th className="p-2">Sample values</th>
               <th className="p-2">Store field</th>
+              <th className="p-2">Example values</th>
             </tr>
           </thead>
           <tbody>
-            {columns.map((column) => {
-              const target = mapping[column] ?? { kind: "ignore" };
+            {result.columns.map((column) => {
+              const target = mapping[column] ?? "";
+              const locked = isLocked(target);
               return (
-                <tr key={column} className="border-t">
+                <tr key={column} className="border-t align-top">
                   <td className="p-2 font-mono text-xs">{column}</td>
-                  <td className="max-w-56 truncate p-2 text-xs text-slate-500">{sample(column).join(" · ") || "—"}</td>
                   <td className="p-2">
-                    <Select value={encode(target)} onValueChange={(value) => choose(column, value)}>
-                      <SelectTrigger aria-label={`Field for column ${column}`} className="h-8 w-60">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {schema.map((field) => (
-                          <SelectItem key={field.key} value={field.key}>
-                            {field.label}
-                          </SelectItem>
-                        ))}
-                        <SelectItem value={NEW}>
-                          {target.kind === "new" ? `New field: ${target.label}` : "Add as a new field"}
-                        </SelectItem>
-                        <SelectItem value={IGNORE}>Ignore this column</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    {locked ? (
+                      <span className="inline-flex items-center gap-1 text-xs text-slate-600" title="Re-upload the sheet to change the address columns">
+                        <Lock size={12} /> {targetLabel(specs, target)}
+                      </span>
+                    ) : (
+                      <Select value={toUi(target)} disabled={pending} onValueChange={(value) => onRepoint(column, fromUi(value))}>
+                        <SelectTrigger aria-label={`Field for column ${column}`} className="h-8 w-64">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent className="max-h-80">
+                          {groups.map((group) => (
+                            <SelectGroup key={group.label}>
+                              <SelectLabel>{group.label}</SelectLabel>
+                              {group.options.map((option) => {
+                                const owner = takenBy(mapping, option.value, column);
+                                const unavailable = isLocked(option.value) || owner !== null;
+                                return (
+                                  <SelectItem key={option.value || OTHER_TOKEN} value={toUi(option.value)} disabled={unavailable}>
+                                    {option.label}
+                                    {owner && <span className="text-[10px] text-slate-400"> (from {owner})</span>}
+                                  </SelectItem>
+                                );
+                              })}
+                            </SelectGroup>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
                   </td>
+                  <td className="p-2 text-xs text-slate-500">{sampleValues(result, column, target).join(" · ") || "—"}</td>
                 </tr>
               );
             })}
           </tbody>
         </table>
-      )}
-      {errors.map((error) => (
-        <p key={error} className="text-sm text-rose-600">
-          {error}
-        </p>
-      ))}
-      {requiredMissing.length > 0 && (
-        <p className="text-sm text-rose-600">
-          Required fields with no column: {requiredMissing.map((field) => field.label).join(", ")}.
-        </p>
-      )}
-      {problems.length > 0 && (
-        <div className="space-y-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-          <p>
-            {problems.length} value{problems.length === 1 ? "" : "s"} would be rejected, e.g. row {(problems[0]?.index ?? 0) + 1}:{" "}
-            {problems[0]?.message}.
-          </p>
-          <div className="flex items-center gap-2">
-            <Checkbox id="drop-invalid" checked={dropInvalid} onCheckedChange={(checked) => onDropInvalidChange(checked === true)} />
-            <Label htmlFor="drop-invalid">Import those stores with the invalid values left blank</Label>
-          </div>
-        </div>
-      )}
+      </div>
     </div>
   );
 }

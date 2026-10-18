@@ -12,15 +12,17 @@ from typing import Any
 
 from aws_lambda_powertools import Logger
 
+from dolphin_tracker.domain.errors import ConflictError, NotFoundError, ValidationFailed
 from dolphin_tracker.domain.import_mapping import (
     FIELDS,
     MappedRow,
+    check_mapping,
     detect_mapping,
     geocode_query,
     map_row,
     mark_duplicates,
 )
-from dolphin_tracker.domain.models import JobStatus
+from dolphin_tracker.domain.models import JobStatus, JobType
 from dolphin_tracker.domain.parsing import read_table
 from dolphin_tracker.repositories.files import FileStore, result_key
 from dolphin_tracker.repositories.jobs import JobRepository
@@ -52,11 +54,21 @@ class ParsedTable:
         return sorted({row.pa for row in self.rows if row.pa})
 
 
-def verify_row(row: MappedRow, geocoder: Geocoder) -> dict[str, Any]:
-    """Geocode one mapped row and apply the confidence rules. The route address always comes from geocoding,
-    never from Places. When geocoding fails, the sheet's own coordinates (if any) are kept and the row is
-    `needs_review` (STORE-MODEL §6, assumption)."""
-    result: dict[str, Any] = {
+# Result keys that come from geocoding a row; a re-map keeps them (see `ImportService.remap`).
+GEOCODE_KEYS = (
+    "status", "confidence", "verified_by", "formatted", "addr", "city", "state", "zip", "lat", "lng",
+    "coordinates_source", "place_name", "suggestions", "error",
+)
+GEOCODED_TARGETS = ("addr", "city", "state", "zip", "lat", "lng")
+
+
+def carry_geocoding(row: dict[str, Any], previous: dict[str, Any]) -> dict[str, Any]:
+    return {**row, **{key: previous[key] for key in GEOCODE_KEYS if key in previous}}
+
+
+def verify_inputs(row: MappedRow) -> dict[str, Any]:
+    """A result row from the sheet alone, before geocoding (the mapping-derived part)."""
+    return {
         "index": row.index,
         "address": row.address,
         "store_name": row.store_name,
@@ -87,6 +99,13 @@ def verify_row(row: MappedRow, geocoder: Geocoder) -> dict[str, Any]:
         "duplicate_reason": "",
         "fields": row.fields,
     }
+
+
+def verify_row(row: MappedRow, geocoder: Geocoder) -> dict[str, Any]:
+    """Geocode one mapped row and apply the confidence rules. The route address always comes from geocoding,
+    never from Places. When geocoding fails, the sheet's own coordinates (if any) are kept and the row is
+    `needs_review` (STORE-MODEL §6, assumption)."""
+    result = verify_inputs(row)
     query = geocode_query(row)
     if not row.addr.strip() or not query:
         result["error"] = "Missing address"
@@ -179,6 +198,43 @@ class ImportService:
             "pa_names": table.pa_names,
             "rows": rows,
         }
+
+    def remap(self, job_id: str, mapping: dict[str, str]) -> dict[str, Any]:
+        """Re-map a finished import with a re-pointed mapping (the review step's per-column control).
+
+        The stored sheet is parsed again with `mapping`; each row keeps its geocoding from the stored result, so
+        Google is not called again. That is only sound while the address and coordinate columns stay where
+        they were, so re-pointing those is refused (re-upload instead). The new result replaces the stored one."""
+        assert self._jobs is not None and self._files is not None
+        job = self._jobs.get(job_id)
+        if job is None:
+            raise NotFoundError(f"Job {job_id} not found")
+        if job.type != JobType.IMPORT_PARSE or job.status != JobStatus.SUCCEEDED or not job.result_key:
+            raise ConflictError("Only a finished import can be re-mapped")
+        previous = self._files.get_json(job.result_key)
+        before = previous.get("mapping", {})
+        problems = check_mapping(mapping)
+        if set(mapping) != set(before):
+            problems.append("The mapping must list exactly the sheet's columns")
+        moved = sorted(
+            target for target in GEOCODED_TARGETS
+            if [c for c, t in before.items() if t == target] != [c for c, t in mapping.items() if t == target]
+        )
+        if moved:
+            problems.append(f"Re-upload the sheet to change the address columns ({', '.join(moved)})")
+        if problems:
+            raise ValidationFailed("The mapping cannot be applied", errors=problems)
+
+        raw = self._files.get_bytes(job.payload["upload_key"])
+        table = read_table(job.payload.get("filename") or job.payload["upload_key"], raw)
+        columns = list(table[0].keys()) if table else []
+        mapped = [map_row(index, record, mapping) for index, record in enumerate(table)]
+        parsed = ParsedTable(columns=columns, mapping=dict(mapping), rows=mapped)
+        geocoded = {row["index"]: row for row in previous.get("rows", [])}
+        rows = [carry_geocoding(verify_inputs(row), geocoded.get(row.index, {})) for row in parsed.rows]
+        result = self.build_result(parsed, rows)
+        self._files.put_json(job.result_key, result)
+        return result
 
     def _saved_mapping(self, project_id: str | None) -> dict[str, str]:
         if not project_id or self._projects is None:

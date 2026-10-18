@@ -75,6 +75,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/config/store-fields": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Store Fields
+         * @description The store field registry (STORE-MODEL §2–§3) in drawer order, so the UI never keeps its own copy.
+         */
+        get: operations["store_fields_api_config_store_fields_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/places/validate": {
         parameters: {
             query?: never;
@@ -1964,6 +1984,32 @@ export interface components {
             } | null;
         };
         /**
+         * StoreFieldSpec
+         * @description One first-class store attribute as the drawer shows it (`domain/validation.STORE_FIELDS`, §3 order).
+         */
+        StoreFieldSpec: {
+            /** Name */
+            name: string;
+            /** Label */
+            label: string;
+            /**
+             * Group
+             * @enum {string}
+             */
+            group: "Identity & address" | "Contacts" | "Installation" | "Site notes" | "Site checklist" | "Screens";
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "text" | "multiline" | "phone" | "email" | "url" | "select" | "int" | "bool" | "tristate";
+            /** Editable */
+            editable: boolean;
+            /** Required */
+            required: boolean;
+            /** Options */
+            options: string[];
+        };
+        /**
          * StoreFilterOptions
          * @description Per filter, the values present (STORE-MODEL §5). An empty list: no store has a value; grey it out.
          */
@@ -2092,6 +2138,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FieldDef-Output"][];
+                };
+            };
+        };
+    };
+    store_fields_api_config_store_fields_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoreFieldSpec"][];
                 };
             };
         };

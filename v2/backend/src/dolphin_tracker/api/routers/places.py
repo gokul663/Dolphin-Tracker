@@ -5,9 +5,10 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query
 
 from dolphin_tracker.api.deps import SettingsDep, get_places_service
-from dolphin_tracker.api.schemas import GeocodeResult, MapsConfig, Suggestions
+from dolphin_tracker.api.schemas import GeocodeResult, MapsConfig, StoreFieldSpec, Suggestions
 from dolphin_tracker.domain.models import FieldDef
 from dolphin_tracker.domain.schema import default_field_schema
+from dolphin_tracker.domain.validation import STORE_FIELDS
 from dolphin_tracker.services.places import PlacesService
 
 router = APIRouter(tags=["places"])
@@ -24,6 +25,18 @@ def maps_config(settings: SettingsDep) -> MapsConfig:
 def default_schema() -> list[FieldDef]:
     """The schema a new project starts with (§3.1); the import wizard maps sheet columns against it."""
     return default_field_schema()
+
+
+@router.get("/config/store-fields", response_model=list[StoreFieldSpec])
+def store_fields() -> list[StoreFieldSpec]:
+    """The store field registry (STORE-MODEL §2–§3) in drawer order, so the UI never keeps its own copy."""
+    return [
+        StoreFieldSpec(
+            name=spec.name, label=spec.label, group=spec.group.value, kind=spec.kind.value, editable=spec.editable,
+            required=spec.required, options=list(spec.options),
+        )
+        for spec in STORE_FIELDS
+    ]
 
 
 @router.get("/places/validate", response_model=GeocodeResult)

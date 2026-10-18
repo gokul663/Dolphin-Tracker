@@ -2,15 +2,13 @@ import { useEffect, useMemo, useRef } from "react";
 import { createColumnHelper, flexRender, getCoreRowModel, useReactTable, type ColumnDef } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { AlertTriangle, ArrowDown, ArrowUp, ChevronsUpDown, Loader2 } from "lucide-react";
-import { toast } from "sonner";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { EditableCell } from "@/features/stores/EditableCell";
 import { addressLine } from "@/features/stores/details";
-import { useUpdateScreens, useUpdateStoreDetails, withStatus } from "@/features/stores/api";
-import { STOP_STATUSES, type Project, type Stop } from "@/lib/api/types";
+import { useUpdateStoreDetails } from "@/features/stores/api";
+import type { Project, Stop } from "@/lib/api/types";
 import { STATUS_META } from "@/lib/status";
 import { cn } from "@/lib/utils";
-import { coreError, fieldError } from "@/lib/validation/fields";
+import { coreError } from "@/lib/validation/fields";
 
 const ROW_HEIGHT = 44;
 
@@ -31,111 +29,113 @@ interface Props {
 }
 
 const helper = createColumnHelper<Stop>();
-
 /** Server sort key per column; columns without one are not sortable (the API cannot sort them). */
 const SORT_KEYS: Record<string, string> = {
-  display_id: "display_id",
+  external_id: "external_id",
   store_name: "store_name",
-  addr: "addr",
+  place: "city",
   status: "status",
+  screens: "screens",
   installer: "installer",
-  day: "day",
+  pa: "pa",
+  dma: "dma",
+  committed: "committed_dolphin_screens",
 };
+
+/** One dot per screen in its status colour: the row's mini status summary. */
+function ScreenDots({ stop }: { stop: Stop }) {
+  const counts = new Map<Stop["status"], number>();
+  for (const screen of stop.screens) counts.set(screen.status, (counts.get(screen.status) ?? 0) + 1);
+  const summary = [...counts].map(([status, count]) => `${count} ${STATUS_META[status].label}`).join(", ");
+  return (
+    <span className="flex items-center gap-1.5" title={summary} aria-label={`${stop.screens.length} screens: ${summary}`}>
+      <span className="font-mono text-xs">{stop.screens.length}</span>
+      <span className="flex flex-wrap gap-0.5">
+        {stop.screens.slice(0, 12).map((screen) => (
+          <span key={screen.id} className="size-2 rounded-full" style={{ background: STATUS_META[screen.status].color }} />
+        ))}
+        {stop.screens.length > 12 && <span className="text-[10px] text-slate-400">+{stop.screens.length - 12}</span>}
+      </span>
+    </span>
+  );
+}
+
+const dash = <span className="text-slate-300">—</span>;
+const count = (value: number | null) => (value === null ? "—" : String(value));
 
 export function StoresTable(props: Props) {
   const { project, stops, sort, dir, onSort, selectedId, hoveredId, onHover, onOpen } = props;
   const details = useUpdateStoreDetails(project.id);
-  const screens = useUpdateScreens(project.id);
 
-  const columns = useMemo<ColumnDef<Stop, string>[]>(() => {
-    const saveDetails = (uid: string, body: Parameters<typeof details.mutateAsync>[0]["body"]) =>
-      details.mutateAsync({ uid, body });
-    const base: ColumnDef<Stop, string>[] = [
-      helper.accessor("display_id", { header: "ID", size: 70, cell: (info) => <span className="font-mono text-xs text-slate-500">{info.getValue()}</span> }),
+  const columns = useMemo<ColumnDef<Stop, string>[]>(
+    () => [
+      helper.accessor("external_id", {
+        header: "IBC#",
+        size: 110,
+        cell: (info) => <span className="font-mono text-xs text-slate-600">{info.getValue() || info.row.original.display_id}</span>,
+      }),
       helper.accessor("store_name", {
         header: "Store name",
         size: 220,
         cell: (info) => (
           <EditableCell
-            label={`store name of ${info.row.original.display_id}`}
+            label={`store name of ${info.row.original.external_id || info.row.original.display_id}`}
             value={info.getValue()}
             validate={(value) => coreError("store_name", value)}
-            onSave={(value) => saveDetails(info.row.original.uid, { store_name: value })}
+            onSave={(value) => details.mutateAsync({ uid: info.row.original.uid, body: { store_name: value } })}
           />
         ),
       }),
-      helper.accessor((stop) => addressLine(stop), {
-        id: "addr",
-        header: "Address",
-        size: 300,
+      helper.accessor((stop) => [stop.city, stop.state].filter(Boolean).join(", "), {
+        id: "place",
+        header: "City, state",
+        size: 170,
         cell: (info) => (
           <button
             type="button"
             className="flex w-full items-center gap-1 truncate text-left hover:text-brand"
-            title="Open to edit the address (it is re-verified with Google)"
+            title={`${addressLine(info.row.original)} (open to edit; the address is re-verified with Google)`}
             onClick={(event) => {
               event.stopPropagation();
               onOpen(info.row.original.uid);
             }}
           >
             {info.row.original.route_stale && <AlertTriangle size={12} className="shrink-0 text-amber-600" aria-label="Route may be stale" />}
-            <span className="truncate">{info.getValue()}</span>
+            <span className="truncate">{info.getValue() || "—"}</span>
           </button>
         ),
       }),
       helper.accessor((stop): string => stop.status, {
         id: "status",
         header: "Status",
-        size: 160,
-        cell: (info) => {
-          const stop = info.row.original;
-          return (
-            <div onClick={(event) => event.stopPropagation()}>
-              <Select
-                value={stop.status}
-                onValueChange={(value) =>
-                  screens.mutate(
-                    { uid: stop.uid, screens: withStatus(stop, value as Stop["status"]) },
-                    { onError: (error) => toast.error(`Status not saved: ${error.message}`) },
-                  )
-                }
-              >
-                <SelectTrigger size="sm" aria-label={`Status of ${stop.display_id}`} className={cn("h-7 w-36 border", STATUS_META[stop.status].chip)}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {STOP_STATUSES.map((status) => (
-                    <SelectItem key={status} value={status}>
-                      <span className="size-2 rounded-full" style={{ background: STATUS_META[status].color }} />
-                      {STATUS_META[status].label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          );
-        },
-      }),
-      helper.accessor("installer", { header: "Installer", size: 120, cell: (info) => info.getValue() || <span className="text-slate-300">—</span> }),
-      helper.accessor((stop) => String(stop.day), { id: "day", header: "Day", size: 60 }),
-    ];
-    const custom = project.field_schema.map((field) =>
-      helper.accessor((stop) => (stop.fields[field.key] === undefined || stop.fields[field.key] === null ? "" : String(stop.fields[field.key])), {
-        id: `fields.${field.key}`,
-        header: field.label,
         size: 150,
         cell: (info) => (
-          <EditableCell
-            label={`${field.label} of ${info.row.original.display_id}`}
-            value={info.getValue()}
-            validate={(value) => fieldError(field, value)}
-            onSave={(value) => saveDetails(info.row.original.uid, { fields: { [field.key]: value } })}
-          />
+          <span
+            aria-label={`Status of ${info.row.original.external_id || info.row.original.display_id}`}
+            className={cn("rounded border px-1.5 py-0.5 text-xs font-medium", STATUS_META[info.row.original.status].chip)}
+          >
+            {STATUS_META[info.row.original.status].label}
+          </span>
         ),
       }),
-    );
-    return [...base, ...custom];
-  }, [project.field_schema, onOpen]); // mutation objects are stable per project
+      helper.accessor((stop) => String(stop.screens.length), { id: "screens", header: "Screens", size: 120, cell: (info) => <ScreenDots stop={info.row.original} /> }),
+      helper.accessor((stop) => (stop.installer ? `${stop.installer} · day ${stop.day}` : ""), {
+        id: "installer",
+        header: "Installer / day",
+        size: 140,
+        cell: (info) => info.getValue() || dash,
+      }),
+      helper.accessor((stop) => stop.pa || project.pa, { id: "pa", header: "PA", size: 100, cell: (info) => info.getValue() || dash }),
+      helper.accessor("dma", { header: "DMA", size: 90, cell: (info) => info.getValue() || dash }),
+      helper.accessor((stop) => `${count(stop.committed_dolphin_screens)} / ${count(stop.committed_store_tvs)}`, {
+        id: "committed",
+        header: "Committed Dolphin / TVs",
+        size: 150,
+        cell: (info) => <span className="font-mono text-xs">{info.getValue()}</span>,
+      }),
+    ],
+    [project.pa, onOpen], // the mutation object is stable per project
+  );
 
   const table = useReactTable({ data: stops, columns, getCoreRowModel: getCoreRowModel(), manualSorting: true, getRowId: (stop) => stop.uid });
   const rows = table.getRowModel().rows;

@@ -158,6 +158,20 @@ class StoreFilterOptions(ApiModel):
     screen_size: list[FilterOption]
 
 
+class StoreFieldSpec(ApiModel):
+    """One first-class store attribute as the drawer shows it (`domain/validation.STORE_FIELDS`, §3 order)."""
+
+    name: str
+    label: str
+    group: Literal[
+        "Identity & address", "Contacts", "Installation", "Site notes", "Site checklist", "Screens"
+    ]
+    kind: Literal["text", "multiline", "phone", "email", "url", "select", "int", "bool", "tristate"]
+    editable: bool
+    required: bool
+    options: list[str]
+
+
 class StateCount(ApiModel):
     state: str
     count: int

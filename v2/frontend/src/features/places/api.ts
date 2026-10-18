@@ -10,6 +10,11 @@ export function useMapsConfig() {
   return useQuery({ queryKey: keys.mapsConfig, queryFn: configApi.maps, staleTime: Infinity });
 }
 
+/** The store field registry (labels, groups, kinds) in drawer order; it never changes while the app runs. */
+export function useStoreFields() {
+  return useQuery({ queryKey: keys.storeFields, queryFn: configApi.storeFields, staleTime: Infinity });
+}
+
 /** The schema a new project starts with (backend §3.1 default), for the import wizard's column mapping. */
 export function useDefaultFieldSchema() {
   return useQuery({ queryKey: keys.defaultFieldSchema, queryFn: configApi.defaultFieldSchema, staleTime: Infinity });

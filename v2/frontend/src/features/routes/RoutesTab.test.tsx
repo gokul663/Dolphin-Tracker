@@ -6,6 +6,7 @@ import { ProjectPage } from "@/features/projects/ProjectPage";
 import { RoutesTab } from "@/features/routes/RoutesTab";
 import { mockApi, renderWithProviders } from "@/test/render";
 import { makeProject, makeStop } from "@/test/fixtures";
+import { STORE_FIELDS_FOR_TESTS } from "@/test/storeFields";
 import type { RoutesBundle, Stop } from "@/lib/api/types";
 
 const s = (uid: string, overrides: Partial<Stop> = {}) =>
@@ -34,6 +35,7 @@ function renderRoutes(project = makeProject(), extra: Parameters<typeof mockApi>
     "GET /api/projects/p1/routes": () => BUNDLE,
     "GET /api/config/maps": () => ({ google_maps_browser_key: "" }),
     "GET /api/projects/p1/stores/a": () => BUNDLE.routes.Ann?.[0]?.[0],
+    "GET /api/config/store-fields": () => STORE_FIELDS_FOR_TESTS,
     ...extra,
   });
   renderWithProviders(
@@ -162,6 +164,6 @@ describe("RoutesTab", () => {
     renderRoutes();
     await userEvent.click(await screen.findByRole("button", { name: "Edit Store a" }));
     expect(await screen.findByRole("dialog")).toBeTruthy();
-    expect(await screen.findByText("Field progress")).toBeTruthy();
+    expect(await screen.findByRole("region", { name: "Screen rows" })).toBeTruthy();
   });
 });

@@ -25,6 +25,7 @@ import type {
   ReassignResult,
   RoutesBundle,
   Stop,
+  StoreFieldSpec,
   StopStatus,
   StoreDetailsUpdate,
 } from "@/lib/api/types";
@@ -57,6 +58,7 @@ export const healthApi = {
 export const configApi = {
   maps: () => api<MapsConfig>("/config/maps"),
   defaultFieldSchema: () => api<FieldDef[]>("/config/field-schema"),
+  storeFields: () => api<StoreFieldSpec[]>("/config/store-fields"),
 };
 
 export const placesApi = {

@@ -54,6 +54,17 @@ class PlacesApiTests(unittest.TestCase):
     def test_default_field_schema(self):
         self.assertEqual(self.client.get("/api/config/field-schema").json(), [])  # STORE-MODEL: all first-class
 
+    def test_store_field_registry(self):
+        fields = self.client.get("/api/config/store-fields").json()
+        self.assertEqual([field["name"] for field in fields[:3]], ["external_id", "store_name", "addr"])
+        by_name = {field["name"]: field for field in fields}
+        self.assertEqual((by_name["external_id"]["editable"], by_name["external_id"]["required"]), (False, True))
+        self.assertEqual(by_name["outlet_status"]["options"], ["New", "Existing"])
+        self.assertEqual(by_name["spot_visible"]["kind"], "tristate")
+        groups = list(dict.fromkeys(field["group"] for field in fields))
+        self.assertEqual(groups, ["Identity & address", "Contacts", "Installation", "Site notes", "Site checklist",
+                                  "Screens"])
+
     def test_endpoints_are_documented(self):
         paths = self.client.get("/api/openapi.json").json()["paths"]
         for path in ("/api/config/maps", "/api/places/validate", "/api/places/autocomplete"):

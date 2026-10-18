@@ -31,6 +31,7 @@ export type ProgressUpdate = Schemas["ProgressUpdate"];
 export type StoreFilterOptions = Schemas["StoreFilterOptions"];
 export type FilterOption = Schemas["FilterOption"];
 export type StateCount = Schemas["StateCount"];
+export type StoreFieldSpec = Schemas["StoreFieldSpec"];
 export type SkippedStop = Schemas["SkippedStop"];
 export type AppendStops = Schemas["AppendStops"];
 export type AppendResult = Schemas["AppendResult"];

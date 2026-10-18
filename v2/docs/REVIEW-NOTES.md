@@ -1774,3 +1774,63 @@ was not re-run; the transform is covered by the fixture tests and the writer is 
     expect the screens PUT.
 
 **Verified:** gates green (301 backend, 108 frontend); `make gen-api` twice → identical file.
+
+---
+
+## S7 · Store drawer and table v2
+
+**Changed**
+- `GET /config/store-fields` (new, additive): the backend's `STORE_FIELDS` registry (name, label, group, kind,
+  editable, required, options) in §3 order. The drawer builds every control from it, so labels, groups and
+  read-only flags are not copied into the frontend. `useStoreFields()` caches it for the session. A test fixture
+  (`src/test/storeFields.ts`) is generated from the endpoint's output.
+- `features/stores/details.ts` (rewritten): the form covers every editable attribute.
+  - Text as strings, counts as their input text, bools and tri-states as is.
+  - `detailsPatch` sends only changes, in API types: counts → number or `null`, tri-state `null` = unknown.
+  - `detailsErrors` uses `lib/validation/storeFields.ts`, a client mirror of the backend rules (same messages).
+  - `actualCounts(screens)`.
+- Drawer (`StoreDrawer.tsx`) sections in §3 order:
+  - Identity & address: IBC#, PA (falling back to the project's, marked "(project)") and the sheet date are
+    read-only. Address edits keep the geocode-on-save with Google's suggestions.
+  - Contacts, Installation, Site notes:
+    - the SSID password is a masked input with Show/Hide;
+    - the image URL lists every `http(s)` token as a link;
+    - CMS details is a checkbox; outlet status a select with "—".
+  - Site checklist: tri-state checkboxes (`components/TriStateCheckbox.tsx`: Unknown → Yes → No,
+    `aria-checked="mixed"`).
+  - Screen counts: the two committed counts are editable, each with its actual count from the screen rows.
+  - Screens: `ScreensEditor.tsx`.
+    - Per-row status, stick #, DD code, size, and Dolphin screen / Has mount / Ceiling mount.
+    - Add screen (+) defaults to Upcoming, Dolphin screen, wall mount.
+    - Delete asks for confirmation and is disabled on the last row; the live derived store status and counts
+      show above the rows.
+    - Save is one `PUT …/screens`, sending ids back for existing rows.
+    - The editor resets only when the saved rows change, so saving details keeps unsaved screen edits.
+  - Progress: Completed by (suggests "self install" and the installers), Additional task, Comment. No status:
+    it is per screen.
+  - Other imported data: `fields`, read-only, labelled from the project schema.
+  - One "Save details" for sections 1–5 plus the counts; the server's per-field 422 messages land on their
+    fields.
+- Table (`StoresTable.tsx`) columns:
+  - IBC#; store name (inline edit kept); city/state (opens the drawer, stale-route marker);
+  - derived status as a read-only chip; screens (count plus one coloured dot per screen, summary in the title);
+  - installer/day; PA (project fallback); DMA; committed Dolphin / store TVs.
+  - Sortable where the API sorts.
+  - Extra-field columns and the one-click status select are gone: status changes go through the screens
+    editor, as the spec asks.
+
+**Tests:**
+- Stores tab:
+  - v2 columns, derived chip, screen summary, PA fallback, committed counts;
+  - inline name edit;
+  - the drawer's §3 section order, read-only IBC#/PA, client validation blocking the save, the tri-state
+    cycle, masked/revealed password, links, and the PATCH body;
+  - screens editor add / edit / delete-with-confirm / disabled last delete / live derived status, and the PUT
+    body (ids kept, new rows without one);
+  - optimistic table status after a screens save with rollback;
+  - geocode suggestions; progress.
+- `details.test.ts` rewritten; `TriStateCheckbox.test.tsx` (cycle, screen-row defaults, ids); backend
+  registry endpoint test.
+
+**Verified:** gates green (302 backend, 115 frontend). No browser check (no map key; Chrome extension not
+connected).

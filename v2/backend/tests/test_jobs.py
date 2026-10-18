@@ -12,7 +12,7 @@ from dolphin_tracker.domain.models import Job, JobStatus, JobType
 from dolphin_tracker.repositories.dynamo import TABLE_DEFINITION
 from dolphin_tracker.repositories.jobs import DynamoJobRepository
 from dolphin_tracker.repositories.memory import InMemoryJobRepository
-from dolphin_tracker.services.worker_invoker import InlineInvoker, LambdaInvoker, make_invoker
+from dolphin_tracker.repositories.worker_invoker import InlineInvoker, LambdaInvoker, make_invoker
 
 CREATED = "2026-10-16T12:00:00+00:00"
 

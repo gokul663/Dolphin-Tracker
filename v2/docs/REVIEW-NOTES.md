@@ -1178,3 +1178,25 @@ both invalidated. **Deviation:** the handoff named "append → dashboard card to
 dashboard are separate routes, so the test checks the invalidation the dashboard depends on, at the hook.
 
 **Verified:** gates green (227 backend, 88 frontend).
+
+---
+
+## Y10 · Invoker and cursor helpers out of services/dynamo coupling (incl. §9 #2)
+
+**Changed**
+- `services/worker_invoker.py` → `repositories/worker_invoker.py` (`git mv`; `WorkerInvoker` protocol,
+  `LambdaInvoker`, `InlineInvoker`, `make_invoker`). Services still receive the invoker by injection; `deps.py`
+  and the tests import from the new path.
+- `domain/cursors.py` (new, pure): `encode_cursor`, `decode_cursor`, `offset_from_cursor`. The encoder converts
+  DynamoDB `Decimal`s through a JSON `default`; `query_page` converts a decoded start key with `to_ddb` before
+  the query. `services/stores.py` and the in-memory fakes import from `domain.cursors`; no service imports
+  `repositories.dynamo` any more.
+- `tests/test_layering.py` (new): parses imports and fails if a `services/` module imports boto3, botocore or
+  `repositories.dynamo`, or a `domain/` module imports boto3 or any I/O layer.
+- AGENT-HANDOFF §5 (B3 text) still names the old path; left as written (it's the round-1 work order; §9 #2
+  supersedes it).
+
+**Tests:** layering guard (2), Decimal cursor round trip; all existing cursor tests now run against
+`domain.cursors`.
+
+**Verified:** gates green (230 backend, 88 frontend).

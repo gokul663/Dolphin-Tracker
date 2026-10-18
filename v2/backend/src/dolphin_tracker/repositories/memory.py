@@ -3,9 +3,9 @@ from __future__ import annotations
 
 from typing import Any
 
+from dolphin_tracker.domain.cursors import encode_cursor, offset_from_cursor
 from dolphin_tracker.domain.errors import ConflictError, NotFoundError
 from dolphin_tracker.domain.models import Job, JobStatus, Page, Project, RoutingStatus, Stop, now_iso
-from dolphin_tracker.repositories.dynamo import encode_cursor, offset_from_cursor
 from dolphin_tracker.repositories.projects import IMMUTABLE_FIELDS
 from dolphin_tracker.repositories.stores import IMMUTABLE_STOP_FIELDS, RoutingChange, check_routing_change
 

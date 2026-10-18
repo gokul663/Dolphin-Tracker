@@ -1,8 +1,6 @@
-"""Single-table helpers: key builders, Decimal/float conversion, opaque pagination cursors, table access."""
+"""Single-table helpers: key builders, Decimal/float conversion, cursor-driven queries, table access."""
 from __future__ import annotations
 
-import base64
-import json
 from decimal import Decimal
 from typing import Any
 
@@ -11,6 +9,7 @@ from botocore.config import Config
 from botocore.exceptions import ClientError
 
 from dolphin_tracker.config import Settings
+from dolphin_tracker.domain.cursors import decode_cursor
 
 PROJECT_LIST_GSI1PK = "PROJECT"
 GSI1 = "GSI1"
@@ -57,34 +56,6 @@ def from_ddb(value: Any) -> Any:
     return value
 
 
-def encode_cursor(key: dict[str, Any] | None) -> str | None:
-    if not key:
-        return None
-    payload = json.dumps(from_ddb(key), separators=(",", ":"), sort_keys=True).encode()
-    return base64.urlsafe_b64encode(payload).decode().rstrip("=")
-
-
-def decode_cursor(cursor: str | None) -> dict[str, Any] | None:
-    if not cursor:
-        return None
-    padded = cursor + "=" * (-len(cursor) % 4)
-    try:
-        payload = json.loads(base64.urlsafe_b64decode(padded.encode()))
-    except (ValueError, json.JSONDecodeError) as exc:
-        raise ValueError("Invalid cursor") from exc
-    if not isinstance(payload, dict):  # decodable but not a key we issued (a list, string, number)
-        raise ValueError("Invalid cursor")
-    return to_ddb(payload)
-
-
-def offset_from_cursor(cursor: str | None) -> int:
-    """The offset in an `{"offset": n}` cursor (services that page in memory). Anything else is a bad cursor."""
-    offset = (decode_cursor(cursor) or {}).get("offset", 0)
-    if isinstance(offset, bool) or not isinstance(offset, int) or offset < 0:
-        raise ValueError("Invalid cursor")
-    return offset
-
-
 TABLE_KEY = frozenset({"PK", "SK"})
 GSI1_KEY = TABLE_KEY | {"GSI1PK", "GSI1SK"}
 
@@ -98,7 +69,7 @@ def query_page(
     if start_key:
         if set(start_key) != key_attributes or not all(isinstance(value, str) for value in start_key.values()):
             raise ValueError("Invalid cursor")
-        kwargs = {**kwargs, "ExclusiveStartKey": start_key}
+        kwargs = {**kwargs, "ExclusiveStartKey": to_ddb(start_key)}
     try:
         return table.query(**kwargs)
     except ClientError as exc:

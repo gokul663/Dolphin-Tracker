@@ -18,7 +18,7 @@ from dolphin_tracker.repositories.memory import (
     InMemoryProjectRepository,
     InMemoryStoreRepository,
 )
-from dolphin_tracker.services.worker_invoker import InlineInvoker
+from dolphin_tracker.repositories.worker_invoker import InlineInvoker
 from tests.fakes import FakeGeocoder, geocode_ok
 
 CSV = b"Store Name,Address,PA\nStore A,1 Main St,North\nStore B,,North\n"

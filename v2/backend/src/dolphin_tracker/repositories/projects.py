@@ -5,6 +5,7 @@ from typing import Any, Protocol
 
 from botocore.exceptions import ClientError
 
+from dolphin_tracker.domain.cursors import encode_cursor
 from dolphin_tracker.domain.errors import ConflictError, NotFoundError
 from dolphin_tracker.domain.models import Page, Project, RoutingStatus, now_iso
 from dolphin_tracker.repositories.dynamo import (
@@ -12,7 +13,6 @@ from dolphin_tracker.repositories.dynamo import (
     GSI1_KEY,
     PROJECT_LIST_GSI1PK,
     Keys,
-    encode_cursor,
     from_ddb,
     query_page,
     strip_internal,

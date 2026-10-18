@@ -6,17 +6,10 @@ from typing import Any, Protocol
 
 from botocore.exceptions import ClientError
 
+from dolphin_tracker.domain.cursors import encode_cursor
 from dolphin_tracker.domain.errors import NotFoundError
 from dolphin_tracker.domain.models import ROUTING_FIELDS, Page, Stop, now_iso
-from dolphin_tracker.repositories.dynamo import (
-    Keys,
-    build_set_expression,
-    encode_cursor,
-    from_ddb,
-    query_page,
-    strip_internal,
-    to_ddb,
-)
+from dolphin_tracker.repositories.dynamo import Keys, build_set_expression, from_ddb, query_page, strip_internal, to_ddb
 
 IMMUTABLE_STOP_FIELDS = {"uid"}
 ROUTING_WRITE_WORKERS = 16

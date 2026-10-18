@@ -1,7 +1,8 @@
 """Hand a job event to the worker: async Lambda invoke in AWS, a background thread locally (DT_WORKER_MODE=inline).
 
 Both modes deliver the same event shape (AGENT-HANDOFF §3.3) to the same dispatcher, so the services that run the
-job are identical in both.
+job are identical in both. An infrastructure adapter like the repositories (it owns the boto3 Lambda client), so it
+lives here rather than in `services/`; services receive a `WorkerInvoker` by injection.
 """
 from __future__ import annotations
 

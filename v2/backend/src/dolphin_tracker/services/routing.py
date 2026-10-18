@@ -39,7 +39,7 @@ from dolphin_tracker.domain.route_optimizer import (
 from dolphin_tracker.repositories.jobs import JobRepository
 from dolphin_tracker.repositories.projects import ProjectRepository
 from dolphin_tracker.repositories.stores import StoreRepository
-from dolphin_tracker.services.worker_invoker import WorkerInvoker
+from dolphin_tracker.repositories.worker_invoker import WorkerInvoker
 
 logger = Logger(child=True)
 

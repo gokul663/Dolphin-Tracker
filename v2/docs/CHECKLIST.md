@@ -88,7 +88,7 @@ Tracks delivery against [PLAN.md](./PLAN.md). Tick items as they land; add sub-i
 
 **Decisions applied (§9)**
 - [ ] Browser Maps key and Map ID via infra config; S3/API CORS never `*`; prod synth fails on empty origins
-- [ ] `LambdaInvoker` moved out of `services/`
+- [x] `LambdaInvoker` moved out of `services/`
 - [ ] Places call skipped when geocoding fails; import start fails fast without a key outside local
 - [ ] Schema field removal asks for confirmation when values exist
 - [ ] CI drift check for the generated API client
@@ -113,7 +113,7 @@ Tracks delivery against [PLAN.md](./PLAN.md). Tick items as they land; add sub-i
 - [ ] Y7 rename installer_name writes threaded
 - [ ] Y8 cp1252 replace; empty CSV header → column_N
 - [ ] Y9 migration day/datetime normalisation
-- [ ] Y10 invoker and cursor helpers out of services/dynamo coupling
+- [x] Y10 invoker and cursor helpers out of services/dynamo coupling
 
 **Phase 5 — Store model v2 (§11)**
 - [ ] S1 Domain model v2: screens, statuses, derived status, validation

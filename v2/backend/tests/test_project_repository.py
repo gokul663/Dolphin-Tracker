@@ -3,9 +3,10 @@ import unittest
 import boto3
 from moto import mock_aws
 
+from dolphin_tracker.domain.cursors import encode_cursor
 from dolphin_tracker.domain.errors import ConflictError, NotFoundError
 from dolphin_tracker.domain.models import Project, ProjectType, RoutingStatus
-from dolphin_tracker.repositories.dynamo import TABLE_DEFINITION, encode_cursor
+from dolphin_tracker.repositories.dynamo import TABLE_DEFINITION
 from dolphin_tracker.repositories.projects import DynamoProjectRepository
 
 

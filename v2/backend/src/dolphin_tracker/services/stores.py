@@ -16,12 +16,12 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from dolphin_tracker.domain.addresses import duplicate_key
+from dolphin_tracker.domain.cursors import encode_cursor, offset_from_cursor
 from dolphin_tracker.domain.errors import ConflictError, NotFoundError, ValidationFailed
 from dolphin_tracker.domain.models import PROGRESS_FIELDS, Page, Project, RoutingStatus, Stop, StopInput, StopStatus
 from dolphin_tracker.domain.parsing import clean_cell
 from dolphin_tracker.domain.route_optimizer import state_key
 from dolphin_tracker.domain.schema import coerce_fields, validate_fields, validate_stop_inputs
-from dolphin_tracker.repositories.dynamo import encode_cursor, offset_from_cursor
 from dolphin_tracker.repositories.projects import ProjectRepository
 from dolphin_tracker.repositories.stores import StoreRepository
 from dolphin_tracker.services.geocoding import Geocoder

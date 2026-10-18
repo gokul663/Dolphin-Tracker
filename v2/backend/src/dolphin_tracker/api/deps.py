@@ -15,13 +15,13 @@ from dolphin_tracker.repositories.files import FileStore, make_file_store
 from dolphin_tracker.repositories.jobs import DynamoJobRepository, JobRepository
 from dolphin_tracker.repositories.projects import DynamoProjectRepository, ProjectRepository
 from dolphin_tracker.repositories.stores import DynamoStoreRepository, StoreRepository
+from dolphin_tracker.repositories.worker_invoker import WorkerInvoker, make_invoker
 from dolphin_tracker.services.geocoding import GoogleGeocoder
 from dolphin_tracker.services.jobs import JobService
 from dolphin_tracker.services.places import PlacesService
 from dolphin_tracker.services.projects import ProjectService
 from dolphin_tracker.services.routing import RoutingService
 from dolphin_tracker.services.stores import StoreService
-from dolphin_tracker.services.worker_invoker import WorkerInvoker, make_invoker
 
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 

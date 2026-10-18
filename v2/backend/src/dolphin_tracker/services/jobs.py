@@ -11,7 +11,7 @@ from dolphin_tracker.domain.models import Job, JobStatus, JobType, JobView
 from dolphin_tracker.repositories.files import FileStore, upload_key
 from dolphin_tracker.repositories.jobs import JobRepository
 from dolphin_tracker.repositories.projects import ProjectRepository
-from dolphin_tracker.services.worker_invoker import WorkerInvoker
+from dolphin_tracker.repositories.worker_invoker import WorkerInvoker
 
 logger = Logger(child=True)
 

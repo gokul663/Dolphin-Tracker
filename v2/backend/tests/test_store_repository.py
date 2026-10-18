@@ -3,9 +3,10 @@ import unittest
 import boto3
 from moto import mock_aws
 
+from dolphin_tracker.domain.cursors import encode_cursor
 from dolphin_tracker.domain.errors import NotFoundError
 from dolphin_tracker.domain.models import Stop, StopStatus
-from dolphin_tracker.repositories.dynamo import TABLE_DEFINITION, encode_cursor
+from dolphin_tracker.repositories.dynamo import TABLE_DEFINITION
 from dolphin_tracker.repositories.memory import InMemoryStoreRepository
 from dolphin_tracker.repositories.stores import DynamoStoreRepository
 

@@ -3,14 +3,8 @@ import json
 import unittest
 from decimal import Decimal
 
-from dolphin_tracker.repositories.dynamo import (
-    Keys,
-    decode_cursor,
-    encode_cursor,
-    from_ddb,
-    offset_from_cursor,
-    to_ddb,
-)
+from dolphin_tracker.domain.cursors import decode_cursor, encode_cursor, offset_from_cursor
+from dolphin_tracker.repositories.dynamo import Keys, from_ddb, to_ddb
 
 
 def wrong_shape(payload) -> str:
@@ -44,6 +38,9 @@ class SerializerTests(unittest.TestCase):
         for payload in ([1], "str", 5, None, True):
             with self.subTest(payload=payload), self.assertRaises(ValueError):
                 decode_cursor(wrong_shape(payload))
+
+    def test_cursor_encodes_dynamodb_decimals(self):
+        self.assertEqual(decode_cursor(encode_cursor({"n": Decimal("3"), "x": Decimal("1.5")})), {"n": 3, "x": 1.5})
 
     def test_offset_cursor_rejects_non_integer_offsets(self):
         self.assertEqual(offset_from_cursor(None), 0)

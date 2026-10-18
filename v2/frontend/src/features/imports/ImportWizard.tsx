@@ -197,11 +197,20 @@ function WizardBody({ appendTo, onClose }: { appendTo: Project | null; onClose: 
               onRetry={() => void defaults.refetch()}
             />
           )}
-          {!appendTo && (
-            <Button variant="ghost" onClick={() => setStep("details")}>
-              <ArrowLeft /> Back
-            </Button>
-          )}
+          <div className="flex justify-between">
+            {!appendTo ? (
+              <Button variant="ghost" onClick={() => setStep("details")}>
+                <ArrowLeft /> Back
+              </Button>
+            ) : (
+              <span />
+            )}
+            {result.data && rows.length > 0 && (
+              <Button variant="outline" onClick={() => setStep("review")}>
+                Continue to review <ArrowRight />
+              </Button>
+            )}
+          </div>
         </div>
       )}
 

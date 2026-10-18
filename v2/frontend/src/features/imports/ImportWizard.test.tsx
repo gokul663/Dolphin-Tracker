@@ -203,3 +203,16 @@ describe("ImportWizard: fetch errors", () => {
     await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
   });
 });
+
+describe("ImportWizard: back to upload", () => {
+  it("offers 'Continue to review' with the verified rows still loaded", async () => {
+    importRoutes();
+    renderWithProviders(<ImportWizard open appendTo={makeProject({ id: "p1" })} onClose={() => {}} />);
+    await uploadSheet();
+    await userEvent.type(screen.getByLabelText("Store name, row 2"), "Kept edit");
+    await waitFor(() => expect(screen.getByText("2 ready · 0 excluded")).toBeTruthy());
+    await userEvent.click(screen.getByRole("button", { name: /Upload another file/ }));
+    await userEvent.click(await screen.findByRole("button", { name: /Continue to review/ }));
+    expect(screen.getByText("2 ready · 0 excluded")).toBeTruthy(); // the edit survived the round trip
+  });
+});

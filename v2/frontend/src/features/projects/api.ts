@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
 import { keys } from "@/lib/api/keys";
 import { projectsApi } from "@/lib/api/resources";
-import type { Page, Project, ProjectSummary, ProjectUpdate } from "@/lib/api/types";
+import { ApiError, type Page, type Project, type ProjectSummary, type ProjectUpdate } from "@/lib/api/types";
 
 const PAGE_SIZE = 200;
 
@@ -75,6 +75,10 @@ export function useUpdateProject(projectId: string) {
       client.setQueryData(keys.project(projectId), project);
       return client.invalidateQueries({ queryKey: keys.projects });
     },
+    // A 409 means our expected_version is stale: refetch so the retry sends the current one. `keys.projects`
+    // covers the dashboard list and the project. Used by the edit dialog, Settings details and the schema editor.
+    onError: (error) =>
+      error instanceof ApiError && error.status === 409 ? client.invalidateQueries({ queryKey: keys.projects }) : undefined,
   });
 }
 

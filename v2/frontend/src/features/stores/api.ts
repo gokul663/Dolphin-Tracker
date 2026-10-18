@@ -49,12 +49,31 @@ export function useUpdateStoreDetails(projectId: string) {
   return useMutation({
     mutationFn: ({ uid, body }: { uid: string; body: StoreDetailsUpdate }) =>
       storesApi.updateDetails(projectId, uid, body),
-    onSuccess: (stop) => {
-      store(stop);
-      // Address edits move pins and may reorder sorted lists; let those refetch.
-      return client.invalidateQueries({ queryKey: keys.stores(projectId) });
+    onSuccess: (stop, { body }) => {
+      store(stop); // the per-page patch covers every other change
+      const touched = editedKeys(body);
+      const moved = ["addr", "city", "state", "zip"].some((key) => touched.has(key));
+      return Promise.all([
+        // Pins only change when the address (and so the geocode) does.
+        moved ? client.invalidateQueries({ queryKey: [...keys.stores(projectId), "pins"] }) : undefined,
+        // A list refetches only if the edit can move the row: its sort column, its search, or the address.
+        client.invalidateQueries({
+          queryKey: [...keys.stores(projectId), "list"],
+          predicate: (query) => {
+            const filters = (query.queryKey[4] ?? {}) as StoreFilters;
+            return moved || touched.has(filters.sort ?? "store_name") || Boolean(filters.q);
+          },
+        }),
+      ]);
     },
   });
+}
+
+/** Keys a detail PATCH changes, with extra fields spelled as the list sorts them (`fields.dma`). */
+export function editedKeys(body: StoreDetailsUpdate): Set<string> {
+  const keysTouched = new Set(Object.keys(body).filter((key) => key !== "fields"));
+  for (const key of Object.keys(body.fields ?? {})) keysTouched.add(`fields.${key}`);
+  return keysTouched;
 }
 
 /** Progress edits are optimistic: lists, detail, pins and the routes bundle update at once and roll back on error. */

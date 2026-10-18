@@ -69,7 +69,7 @@ describe("DashboardPage", () => {
     const dialog = await screen.findByRole("dialog");
     const remove = within(dialog).getByRole("button", { name: "Delete" });
     expect((remove as HTMLButtonElement).disabled).toBe(true);
-    await userEvent.type(within(dialog).getByLabelText(/to confirm/), "Atlanta refresh");
+    await userEvent.type(within(dialog).getByLabelText(/to confirm/), "Atlanta refresh "); // trailing space: trimmed
     expect((remove as HTMLButtonElement).disabled).toBe(false);
     await userEvent.click(remove);
     await waitFor(() => expect(calls.some((call) => call.method === "DELETE")).toBe(true));

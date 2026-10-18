@@ -18,6 +18,7 @@ export function EditableCell({ value, label, validate, onSave }: Props) {
   const [saving, setSaving] = useState(false);
 
   const commit = async () => {
+    if (saving) return; // Enter then blur would otherwise send the PATCH twice
     const next = draft.trim();
     if (next === value.trim()) return setEditing(false);
     const problem = validate(next);

@@ -1344,3 +1344,29 @@ render per settled gesture. Hover still re-renders the tab (it drives row and pi
 the out-of-view store disappears. Fails on the old `StoresTab`.
 
 **Verified:** gates green (236 backend, 91 frontend).
+
+---
+
+## X8 · Minor frontend fixes
+
+**Changed**
+- `useJob`: polling goes through `jobPollInterval(state)`, which stops when the query itself errors (a 404 or
+  network failure no longer polls forever).
+- 409s: `useUpdateProject.onError` invalidates `keys.projects` (dashboard list + project) on an `ApiError`
+  409. **Deviation:** the handoff names `ProjectDialogs`, `DetailsSection` and `SchemaEditor`; all three (and
+  the wizard's schema PATCH) use this one hook, so the fix lives there once. The schema editor keeps the user's
+  rows after a 409 (it only resets when the mutation is idle) and the retry sends the refetched version.
+- `useUpdateStoreDetails.onSuccess`: the per-page patch stays; a list refetches only when the edit touched its
+  sort column (`editedKeys` spells extra fields `fields.<key>`), the address, or the list has a search term
+  (membership may change). Pins refetch only on an address change.
+- `EditableCell.commit` returns early while saving (Enter then blur sent two PATCHes).
+- Import wizard: going back to upload shows "Continue to review" while the verified rows are loaded; review
+  edits are kept.
+- Delete dialog sends the trimmed confirm name (it already compared trimmed).
+
+**Tests:** `EditableCell.test.tsx` (new): Enter + blur → one save; blur saves; Escape cancels; invalid stays.
+`imports/api.test.ts` (new): `jobPollInterval` cases incl. error. `stores/api.test.tsx`: list/pins invalidation by
+edit kind; `editedKeys`; 409 invalidation. Dashboard delete with a trailing space; wizard round trip. (Wizard
+error states were covered in X5.)
+
+**Verified:** gates green (236 backend, 102 frontend).

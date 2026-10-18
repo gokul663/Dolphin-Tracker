@@ -31,13 +31,19 @@ export function useStartImport() {
 export const isJobActive = (job: Pick<JobView, "status"> | undefined) =>
   job?.status === "queued" || job?.status === "running";
 
-/** Poll a job every 1.5 s until it succeeds or fails. */
+/** 1.5 s while the job is queued or running (or not loaded yet); stop once it finishes or the poll itself fails. */
+export function jobPollInterval(state: { status: string; data?: Pick<JobView, "status"> }): number | false {
+  if (state.status === "error") return false;
+  return !state.data || isJobActive(state.data) ? 1_500 : false;
+}
+
+/** Poll a job until it succeeds or fails. */
 export function useJob(jobId: string | null) {
   return useQuery({
     queryKey: keys.job(jobId ?? ""),
     queryFn: () => jobsApi.get(jobId ?? ""),
     enabled: Boolean(jobId),
-    refetchInterval: (query) => (!query.state.data || isJobActive(query.state.data) ? 1_500 : false),
+    refetchInterval: (query) => jobPollInterval(query.state),
   });
 }
 

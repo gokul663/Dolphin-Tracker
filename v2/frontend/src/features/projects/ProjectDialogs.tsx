@@ -76,7 +76,7 @@ export function DeleteProjectDialog({ project, onClose }: TargetProps) {
   const confirm = async () => {
     if (!project) return;
     try {
-      await remove.mutateAsync({ id: project.id, confirm: typed });
+      await remove.mutateAsync({ id: project.id, confirm: typed.trim() });
       toast.success(`Deleted ${project.name}`);
       onClose();
     } catch (error) {

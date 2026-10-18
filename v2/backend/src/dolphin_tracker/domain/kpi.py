@@ -13,7 +13,9 @@ from dolphin_tracker.domain.statuses import LEGACY_STATUSES, PENDING_STATUSES, S
 
 STATUSES = tuple(status.value for status in ScreenStatus)
 FINISHED = frozenset({ScreenStatus.ARCHIVED, ScreenStatus.CANCELLED})
-KPI_ATTRIBUTES = ("uid", "status", "installer", "installer_name", "fields", "addr", "city", "state", "zip")
+KPI_ATTRIBUTES = (
+    "uid", "status", "installer", "installer_name", "fields", "dma", "venue_type", "addr", "city", "state", "zip"
+)
 
 
 class Breakdown(ApiModel):
@@ -66,8 +68,9 @@ def kpi_summary(rows: Iterable[Mapping[str, Any]]) -> Kpi:
         installer = row.get("installer_name") or row.get("installer") or ""
         if installer:
             kpi.by_installer[installer] = kpi.by_installer.get(installer, 0) + 1
-        _add(kpi.by_dma, fields.get("dma", ""), status)
-        _add(kpi.by_venue_type, fields.get("venue_type", ""), status)
+        # First-class since the store model v2; items and v1 rows written before it carry them in `fields`.
+        _add(kpi.by_dma, row.get("dma") or fields.get("dma", ""), status)
+        _add(kpi.by_venue_type, row.get("venue_type") or fields.get("venue_type", ""), status)
         address_groups.setdefault(_address_key(row), []).append(status)
     kpi.complete = kpi.by_status.get(ScreenStatus.COMPLETED, 0)
     kpi.pending = sum(kpi.by_status.get(status, 0) for status in PENDING_STATUSES)

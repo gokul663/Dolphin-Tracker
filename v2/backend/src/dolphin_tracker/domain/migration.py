@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import math
 import uuid
-from collections import defaultdict
+from collections import Counter, defaultdict
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -21,14 +21,19 @@ from dolphin_tracker.domain.models import (
     Project,
     ProjectType,
     RoutingStatus,
+    Screen,
     ScreenStatus,
     Stop,
 )
 from dolphin_tracker.domain.parsing import clean_cell
-from dolphin_tracker.domain.schema import default_field_schema
+from dolphin_tracker.domain.validation import normalize_external_id
 
 LEGACY_PROJECT_IDS = frozenset({"atlanta-default"})
 LEGACY_FIELD_KEYS = ("pa", "venue_type", "dma", "venue_code", "owner_name", "owner_phone", "owner_email", "payee_name")
+# v1 stop keys that are first-class store attributes in v2 (STORE-MODEL §2); venue_code becomes the screen's
+# venue_id and, when present, the IBC#. payee_name stays an extra field.
+FIRST_CLASS_LEGACY_KEYS = ("pa", "venue_type", "dma", "owner_name", "owner_phone", "owner_email")
+LEGACY_ID_PREFIX = "LEGACY-"
 V1_CORE_KEYS = frozenset(
     {"id", "addr", "city", "state", "zip", "store_name", "lat", "lng", "geocoded", "installer", "day", "_id"}
 )
@@ -103,6 +108,11 @@ class ProjectReport:
     orphan_states: list[str] = field(default_factory=list)
     repaired_addresses: int = 0
     extra_fields: list[str] = field(default_factory=list)
+    v1_statuses: dict[str, int] = field(default_factory=dict)  # every stop's v1 status (both key spellings)
+    v2_statuses: dict[str, int] = field(default_factory=dict)  # the derived v2 status of the migrated stops
+    ids_from_venue_code: int = 0
+    legacy_ids: int = 0  # LEGACY-<display_id>: no venue code, or one already used in the project
+    duplicate_venue_codes: list[str] = field(default_factory=list)
     derived_installers: bool = False  # the v1 doc had no installers list; it was rebuilt from the stops
     unlisted_installer_stops: int = 0  # stops routed to an installer the project's list lacks
     old_kpi: Kpi | None = None
@@ -111,6 +121,14 @@ class ProjectReport:
     @property
     def kpi_matches(self) -> bool:
         return self.old_kpi == self.new_kpi
+
+    @property
+    def statuses_match(self) -> bool:
+        """Each v2 status count equals the v1 counts that map onto it (§4.4); False means a stop was lost."""
+        expected: dict[str, int] = defaultdict(int)
+        for status, count in self.v1_statuses.items():
+            expected[LEGACY_STATUSES.get(status, ScreenStatus.UPCOMING).value] += count
+        return dict(expected) == {status: count for status, count in self.v2_statuses.items() if count}
 
 
 @dataclass
@@ -154,8 +172,12 @@ def transform_project(doc: Mapping[str, Any], states: Iterable[Mapping[str, Any]
             if key not in V1_CORE_KEYS and key not in LEGACY_FIELD_KEYS and clean_cell(value)
         }
     )
-    schema = default_field_schema() + [FieldDef(key=key, label=key.replace("_", " ").title()) for key in extra_keys]
+    has_payee = any(clean_cell(stop.get("payee_name")) for stop in raw_stops)
+    schema = [FieldDef(key="payee_name", label="Payee Name")] if has_payee else []
+    schema += [FieldDef(key=key, label=key.replace("_", " ").title()) for key in extra_keys]
     report.extra_fields = extra_keys
+    used_ids: set[str] = set()
+    v1_statuses: dict[str, int] = defaultdict(int)
 
     matched: set[str] = set()
     seq_counter: dict[tuple[str, int], int] = defaultdict(int)
@@ -176,20 +198,39 @@ def transform_project(doc: Mapping[str, Any], states: Iterable[Mapping[str, Any]
         seq = seq_counter[(installer, day)]
         seq_counter[(installer, day)] += 1
 
-        fields = {key: clean_cell(raw.get(key)) for key in LEGACY_FIELD_KEYS if clean_cell(raw.get(key))}
-        fields.update({key: clean_cell(raw.get(key)) for key in extra_keys if clean_cell(raw.get(key))})
-        if clean_cell(state.get("venue_code")):
-            fields["venue_code"] = clean_cell(state.get("venue_code"))  # v1 detail edits stored it on the state
+        details = {key: clean_cell(raw.get(key)) for key in FIRST_CLASS_LEGACY_KEYS if clean_cell(raw.get(key))}
+        fields = {key: clean_cell(raw.get(key)) for key in ("payee_name", *extra_keys) if clean_cell(raw.get(key))}
+        # v1 detail edits stored the venue code on the state document; it wins over the stop's own.
+        venue_code = clean_cell(state.get("venue_code")) or clean_cell(raw.get("venue_code"))
 
-        status = LEGACY_STATUSES.get(clean_cell(state.get("status")), ScreenStatus.UPCOMING)
+        v1_status = clean_cell(state.get("status")) or "Incomplete"
+        v1_statuses[v1_status] += 1
+        status = LEGACY_STATUSES.get(v1_status, ScreenStatus.UPCOMING)
+        comment = clean_cell(state.get("comment"))
+        if v1_status == "Technical Issue":  # §4.4: Offline, with the original value kept in the comment
+            comment = f"{comment}\nv1 status: Technical Issue" if comment else "v1 status: Technical Issue"
         additional_task = state.get("additional_task")
         if additional_task is None:
             additional_task = state.get("modem", False)  # the legacy ARA flag maps onto additional_task
         stop_id = str(raw.get("id") or f"S{index + 1}")
+        external_id = normalize_external_id(venue_code)
+        if external_id and external_id in used_ids:
+            report.duplicate_venue_codes.append(external_id)
+        if external_id and external_id not in used_ids:
+            report.ids_from_venue_code += 1
+        else:  # §4.4 assumption: no venue code (or a repeated one) → LEGACY-<display id>, unique in the project
+            external_id = normalize_external_id(f"{LEGACY_ID_PREFIX}{stop_id}")
+            suffix = 2
+            while external_id in used_ids:
+                external_id, suffix = normalize_external_id(f"{LEGACY_ID_PREFIX}{stop_id}-{suffix}"), suffix + 1
+            report.legacy_ids += 1
+        used_ids.add(external_id)
         stops.append(
             Stop(
                 uid=str(uuid.uuid5(UID_NAMESPACE, f"{project_id}|{index}|{stop_id}")),  # stable across re-runs
                 display_id=stop_id,
+                external_id=external_id,
+                **details,
                 store_name=clean_cell(state.get("store_name")) or clean_cell(repaired.get("store_name")),
                 addr=clean_cell(repaired.get("addr")),
                 city=clean_cell(repaired.get("city")),
@@ -202,8 +243,8 @@ def transform_project(doc: Mapping[str, Any], states: Iterable[Mapping[str, Any]
                 day=day,
                 seq=seq,
                 fields=fields,
-                status=status,
-                comment=clean_cell(state.get("comment")),
+                screens=[Screen(venue_id=venue_code, status=status)],  # one screen per v1 stop (§4.4)
+                comment=comment,
                 additional_task=bool(additional_task),
                 installer_name=clean_cell(state.get("installer_name")),
                 updated_by=clean_cell(state.get("updatedBy") or state.get("updated_by")),
@@ -211,6 +252,8 @@ def transform_project(doc: Mapping[str, Any], states: Iterable[Mapping[str, Any]
             )
         )
     report.stops = len(stops)
+    report.v1_statuses = dict(v1_statuses)
+    report.v2_statuses = dict(Counter(stop.status.value for stop in stops))
     report.matched_states = len(matched)
     report.orphan_states = sorted(set(states_by_key) - matched)
 
@@ -268,6 +311,15 @@ def format_report(reports: Iterable[ProjectReport]) -> str:
             lines.append(f"    orphan state: {key}")
         if report.repaired_addresses:
             lines.append(f"    addresses repaired from geocoded text: {report.repaired_addresses}")
+        if not report.statuses_match:
+            lines.append(f"    << status counts differ: v1 {report.v1_statuses} vs v2 {report.v2_statuses}")
+        mapped = ", ".join(f"{status} {count}" for status, count in sorted(report.v2_statuses.items()))
+        lines.append(f"    v2 statuses: {mapped}")
+        lines.append(
+            f"    IBC#: {report.ids_from_venue_code} from venue codes, {report.legacy_ids} {LEGACY_ID_PREFIX}*"
+            + (f" (repeated venue codes: {', '.join(report.duplicate_venue_codes)})" if report.duplicate_venue_codes
+               else "")
+        )
         if report.derived_installers:
             lines.append("    installers derived from stops (the v1 doc had none)")
         if report.unlisted_installer_stops:

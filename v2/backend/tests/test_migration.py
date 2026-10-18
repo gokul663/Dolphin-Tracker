@@ -66,18 +66,16 @@ class TransformTests(unittest.TestCase):
         self.assertEqual((project.pa_percentage, project.dolphin_percentage, project.store_percentage), (40, 60, None))
         self.assertEqual((project.stops_per_day, project.stop_count), (8, 5))
         self.assertEqual(project.created_at, "2026-05-01T00:00:00+00:00")
-        keys = [field.key for field in project.field_schema]
-        self.assertEqual(keys[:8], ["pa", "venue_type", "dma", "venue_code", "owner_name", "owner_phone",
-                                    "owner_email", "payee_name"])
-        self.assertEqual(keys[8:], ["brand"])  # non-empty extra attribute kept, not dropped
+        # First-class attributes are not schema fields any more; only extras (and payee_name, if used) are.
+        self.assertEqual([field.key for field in project.field_schema], ["brand"])
 
-    def test_legacy_attributes_move_into_fields(self):
+    def test_legacy_attributes_become_store_attributes(self):
         s1 = self.by_id["S1"]
-        self.assertEqual(
-            s1.fields,
-            {"pa": "North", "dma": "DAL", "venue_code": "V1-NEW", "owner_phone": "555-0100", "brand": "Acme"},
-        )
-        self.assertEqual(self.by_id["S2"].fields, {})
+        self.assertEqual((s1.pa, s1.dma, s1.owner_phone), ("North", "DAL", "555-0100"))
+        self.assertEqual(s1.fields, {"brand": "Acme"})  # only the extra attribute stays in `fields`
+        # The venue code (the state's edited one wins) is the IBC# and the screen's venue id (§4.4).
+        self.assertEqual((s1.external_id, [screen.venue_id for screen in s1.screens]), ("V1-NEW", ["V1-NEW"]))
+        self.assertEqual((self.by_id["S2"].fields, self.by_id["S2"].external_id), ({}, "LEGACY-S2"))
 
     def test_state_join_all_key_spellings(self):
         s1, s2, s3 = self.by_id["S1"], self.by_id["S2"], self.by_id["S3"]
@@ -159,6 +157,39 @@ class TransformTests(unittest.TestCase):
         self.assertEqual(migrated.project.updated_at, "2026-06-02T00:00:00+00:00")
         self.assertEqual(migrated.stops[0].updated_at, "2026-06-01T10:00:05+00:00")
         self.assertLess(migrated.stops[0].updated_at, now_iso())  # sorts with values the app writes
+
+    def test_v1_statuses_map_per_section_4_4(self):
+        s1, s2, s3, s4 = (self.by_id[key] for key in ("S1", "S2", "S3", "S4"))
+        self.assertEqual((s1.status, s1.comment), (ScreenStatus.COMPLETED, "done"))
+        self.assertEqual((s2.status, s2.comment), (ScreenStatus.OFFLINE, "v1 status: Technical Issue"))
+        self.assertEqual(s3.status, ScreenStatus.UPCOMING)  # Other
+        self.assertEqual(s4.status, ScreenStatus.UPCOMING)  # no state at all: Incomplete
+        self.assertTrue(all(len(stop.screens) == 1 for stop in self.migrated.stops))
+        technical = {**STATES[1], "comment": "modem dead"}
+        stop = transform_project(V1_PROJECT, [STATES[0], technical]).stops[1]
+        self.assertEqual(stop.comment, "modem dead\nv1 status: Technical Issue")
+
+    def test_ibc_falls_back_to_legacy_ids_when_a_venue_code_repeats(self):
+        first, second = V1_PROJECT["stops"][:2]
+        doc = {**V1_PROJECT, "stops": [{**first, "venue_code": "V9"}, {**second, "venue_code": "v9"},
+                                       {**second, "id": "S2", "venue_code": ""}]}
+        migrated = transform_project(doc, [])
+        self.assertEqual([stop.external_id for stop in migrated.stops], ["V9", "LEGACY-S2", "LEGACY-S2-2"])
+        self.assertEqual([stop.screens[0].venue_id for stop in migrated.stops], ["V9", "v9", ""])
+        report = migrated.report
+        self.assertEqual((report.ids_from_venue_code, report.legacy_ids, report.duplicate_venue_codes),
+                         (1, 2, ["V9"]))
+        self.assertIn("IBC#: 1 from venue codes, 2 LEGACY-* (repeated venue codes: V9)", format_report([report]))
+
+    def test_report_compares_v1_status_counts_to_derived_statuses(self):
+        report = self.migrated.report
+        self.assertEqual(report.v1_statuses, {"Complete": 1, "Technical Issue": 1, "Other": 1, "Incomplete": 2})
+        self.assertEqual(report.v2_statuses, {"Completed": 1, "Offline": 1, "Upcoming": 3})
+        self.assertTrue(report.statuses_match)
+        self.assertIn("v2 statuses: Completed 1, Offline 1, Upcoming 3", format_report([report]))
+        report.v2_statuses = {"Completed": 1, "Upcoming": 3}  # a lost stop
+        self.assertFalse(report.statuses_match)
+        self.assertIn("status counts differ", format_report([report]))
 
     def test_legacy_project_is_recognised(self):
         self.assertTrue(is_legacy("atlanta-default"))

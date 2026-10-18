@@ -1655,3 +1655,36 @@ v2 vocabulary through a `status_write` helper (bare `status` writes are now over
 the bundle's `pending` totals match. The installer-ops caps helper counts the pending set.
 
 **Verified:** gates green (286 backend, 102 frontend).
+
+---
+
+## S6 · Migration v2: status mapping and parity
+
+**Changed** (`domain/migration.py`)
+- Statuses per §4.4:
+  - `Incomplete` → Upcoming, `Complete` → Completed, `Other` → Upcoming (comment kept).
+  - `Technical Issue` → Offline, with "v1 status: Technical Issue" appended to the comment on its own line.
+  - Each v1 stop becomes **one screen** carrying that status, with `venue_id` = the venue code (the state's
+    edited value wins over the stop's).
+- `external_id` = the normalised venue code when present. Otherwise, or when the code was already used in the
+  same project, it is `LEGACY-<display_id>`, suffixed `-2`, `-3` … if that repeats (§4.4 **assumption**).
+  A repeat would otherwise make the marker write fail.
+- v1's `pa`, `dma`, `venue_type`, `owner_name/phone/email` become store attributes. `payee_name` and unknown
+  attributes stay in `fields`, and the migrated project's schema lists only those (payee only if a stop has
+  one).
+- Parity report:
+  - `v1_statuses` counts every stop's v1 status, joined on both key spellings; `v2_statuses` counts the derived
+    statuses.
+  - `statuses_match` checks each v2 count equals the v1 counts that map onto it; a mismatch prints
+    "<< status counts differ".
+  - Each project also gets a "v2 statuses: …" line and an "IBC#: N from venue codes, M LEGACY-*" line, listing
+    any repeated venue codes.
+- `kpi.py` reads `dma` / `venue_type` from the attribute first and `fields` second, so migrated (v2) and v1 rows
+  give the same breakdown. The KPI shape itself changes in S4.
+
+**Tests:** §4.4 for all four statuses, including the Technical Issue comment with and without an existing
+comment; one screen per stop; IBC# from the edited venue code; a repeated code and a repeated LEGACY id; the
+attribute/fields split; status parity (match and a forced mismatch) and the new report lines.
+
+**Verified:** gates green (289 backend, 102 frontend). The Mongo round trip from round 1 (throwaway container)
+was not re-run; the transform is covered by the fixture tests and the writer is S3's `put_many`.

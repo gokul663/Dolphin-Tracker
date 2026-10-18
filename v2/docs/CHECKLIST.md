@@ -121,7 +121,7 @@ Tracks delivery against [PLAN.md](./PLAN.md). Tick items as they land; add sub-i
 - [x] S3 Repository: external_id uniqueness markers, screens write, address dedupe
 - [ ] S4 Store API v2: fields, screens, filters, by-state, export, KPI v2, client regenerated
 - [x] S5 Routing pending set on derived status
-- [ ] S6 Migration v2 status mapping and parity
+- [x] S6 Migration v2 status mapping and parity
 - [ ] S7 Store drawer and table v2
 - [ ] S8 Filters with greyed empties, top-states chart, KPIs
 - [ ] S9 Import wizard v2: mapping override, duplicates, screens preview

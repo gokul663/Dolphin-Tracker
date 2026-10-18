@@ -282,6 +282,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{project_id}/stores/filters": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Filter Options
+         * @description Distinct values per filter, each counted under the other active filters (whole project, like pins).
+         */
+        get: operations["filter_options_api_projects__project_id__stores_filters_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{project_id}/stores/by-state": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Stores By State
+         * @description Top states by store count (pending stores only by default), under the active filters except State.
+         */
+        get: operations["stores_by_state_api_projects__project_id__stores_by_state_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects/{project_id}/stores/field-usage": {
         parameters: {
             query?: never;
@@ -352,6 +392,23 @@ export interface paths {
         head?: never;
         /** Update Store */
         patch: operations["update_store_api_projects__project_id__stores__stop_uid__patch"];
+        trace?: never;
+    };
+    "/api/projects/{project_id}/stores/{stop_uid}/screens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Update Screens */
+        put: operations["update_screens_api_projects__project_id__stores__stop_uid__screens_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/projects/{project_id}/stores/{stop_uid}/progress": {
@@ -483,7 +540,11 @@ export interface components {
              * Pa
              * @default
              */
-            pa: string;
+            pa?: string;
+            /** Import Mapping */
+            import_mapping?: {
+                [key: string]: string;
+            };
         };
         /** Breakdown */
         Breakdown: {
@@ -513,12 +574,12 @@ export interface components {
             /** Label */
             label: string;
             /** @default text */
-            type: components["schemas"]["FieldType"];
+            type?: components["schemas"]["FieldType"];
             /**
              * Required
              * @default false
              */
-            required: boolean;
+            required?: boolean;
             /** Options */
             options?: string[];
             /** Source Column */
@@ -550,6 +611,13 @@ export interface components {
          * @enum {string}
          */
         FieldType: "text" | "number" | "select" | "date" | "phone" | "email";
+        /** FilterOption */
+        FilterOption: {
+            /** Value */
+            value: string;
+            /** Count */
+            count: number;
+        };
         /** GeocodeResult */
         GeocodeResult: {
             /** Ok */
@@ -625,7 +693,7 @@ export interface components {
              * Content Type
              * @default application/octet-stream
              */
-            content_type: string;
+            content_type?: string;
             /** Project Id */
             project_id?: string | null;
         };
@@ -642,6 +710,10 @@ export interface components {
         ImportResult: {
             /** Columns */
             columns: string[];
+            /** Mapping */
+            mapping: {
+                [key: string]: string;
+            };
             /** Address Column */
             address_column: string;
             /** Store Column */
@@ -665,6 +737,11 @@ export interface components {
             address: string;
             /** Store Name */
             store_name: string;
+            /**
+             * External Id
+             * @default
+             */
+            external_id: string;
             /** Pa */
             pa: string;
             /**
@@ -690,21 +767,58 @@ export interface components {
             lat: number | null;
             /** Lng */
             lng: number | null;
+            /**
+             * Coordinates Source
+             * @default
+             * @enum {string}
+             */
+            coordinates_source: "" | "geocode" | "sheet";
             /** Place Name */
             place_name: string;
             /** Suggestions */
             suggestions: string[];
             /** Error */
             error: string;
-            venue_status: components["schemas"]["StopStatus"];
+            venue_status: components["schemas"]["ScreenStatus"];
             /** Venue Status Valid */
             venue_status_valid: boolean;
             /** Venue Status Raw */
             venue_status_raw: string;
+            /**
+             * Installer Name
+             * @default
+             */
+            installer_name: string;
+            /** Details */
+            details: {
+                [key: string]: unknown;
+            };
+            /** Screens */
+            screens: components["schemas"]["ImportScreen"][];
+            /** Problems */
+            problems: {
+                [key: string]: string;
+            };
+            /** Duplicate Of */
+            duplicate_of: number | null;
+            /**
+             * Duplicate Reason
+             * @default
+             * @enum {string}
+             */
+            duplicate_reason: "" | "external_id" | "address";
             /** Fields */
             fields: {
                 [key: string]: string;
             };
+        };
+        /** ImportScreen */
+        ImportScreen: {
+            /** Stick Number */
+            stick_number: string;
+            /** Venue Id */
+            venue_id: string;
+            status: components["schemas"]["ScreenStatus"];
         };
         /** ImportSummary */
         ImportSummary: {
@@ -716,6 +830,11 @@ export interface components {
             needs_review: number;
             /** Invalid */
             invalid: number;
+            /**
+             * Duplicates
+             * @default 0
+             */
+            duplicates: number;
         };
         /** InstallerAdd */
         InstallerAdd: {
@@ -733,6 +852,11 @@ export interface components {
         InstallerStats: {
             /** Total */
             total: number;
+            /**
+             * Pending
+             * @default 0
+             */
+            pending: number;
             /** Days */
             days: number;
             /** Avg Stops */
@@ -828,20 +952,20 @@ export interface components {
              */
             total: number;
             /**
-             * Complete
-             * @default 0
-             */
-            complete: number;
-            /**
              * Pending
              * @default 0
              */
             pending: number;
             /**
-             * Technical
+             * Complete
              * @default 0
              */
-            technical: number;
+            complete: number;
+            /**
+             * Offline
+             * @default 0
+             */
+            offline: number;
             /**
              * Other
              * @default 0
@@ -851,6 +975,35 @@ export interface components {
             by_status: {
                 [key: string]: number;
             };
+            /**
+             * Screens Total
+             * @default 0
+             */
+            screens_total: number;
+            /** Screens By Status */
+            screens_by_status: {
+                [key: string]: number;
+            };
+            /**
+             * Committed Dolphin Screens
+             * @default 0
+             */
+            committed_dolphin_screens: number;
+            /**
+             * Committed Store Tvs
+             * @default 0
+             */
+            committed_store_tvs: number;
+            /**
+             * Actual Dolphin Screens
+             * @default 0
+             */
+            actual_dolphin_screens: number;
+            /**
+             * Actual Store Tvs
+             * @default 0
+             */
+            actual_store_tvs: number;
             /** By Installer */
             by_installer: {
                 [key: string]: number;
@@ -897,7 +1050,7 @@ export interface components {
             lat: number;
             /** Lng */
             lng: number;
-            status: components["schemas"]["StopStatus"];
+            status: components["schemas"]["ScreenStatus"];
             /** Store Name */
             store_name: string;
             /** Installer */
@@ -905,9 +1058,11 @@ export interface components {
             /** Day */
             day: number;
         };
-        /** ProgressUpdate */
+        /**
+         * ProgressUpdate
+         * @description Field progress other than status (status is per screen: PUT …/screens).
+         */
         ProgressUpdate: {
-            status?: components["schemas"]["StopStatus"] | null;
             /** Comment */
             comment?: string | null;
             /** Additional Task */
@@ -956,6 +1111,10 @@ export interface components {
             stops_per_day: number;
             /** Field Schema */
             field_schema: components["schemas"]["FieldDef-Output"][];
+            /** Import Mappings */
+            import_mappings: {
+                [key: string]: string;
+            };
             /** @default ready */
             routing_status: components["schemas"]["RoutingStatus"];
             /**
@@ -991,12 +1150,12 @@ export interface components {
              * Field Agent
              * @default
              */
-            field_agent: string;
+            field_agent?: string;
             /**
              * Partner Account
              * @default
              */
-            partner_account: string;
+            partner_account?: string;
             /** Pa Percentage */
             pa_percentage: number;
             /** Dolphin Percentage */
@@ -1009,17 +1168,23 @@ export interface components {
              * Stops Per Day
              * @default 8
              */
-            stops_per_day: number;
+            stops_per_day?: number;
             /** Field Schema */
             field_schema?: components["schemas"]["FieldDef-Input"][] | null;
             /** Stops */
             stops?: components["schemas"]["StopInput"][];
+            /** Import Mapping */
+            import_mapping?: {
+                [key: string]: string;
+            };
         };
         /** ProjectCreated */
         ProjectCreated: {
             project: components["schemas"]["Project"];
             /** Job Id */
             job_id: string | null;
+            /** Skipped */
+            skipped: components["schemas"]["SkippedStop"][];
         };
         /**
          * ProjectSummary
@@ -1063,6 +1228,10 @@ export interface components {
             stops_per_day: number;
             /** Field Schema */
             field_schema: components["schemas"]["FieldDef-Output"][];
+            /** Import Mappings */
+            import_mappings: {
+                [key: string]: string;
+            };
             /** @default ready */
             routing_status: components["schemas"]["RoutingStatus"];
             /**
@@ -1158,20 +1327,283 @@ export interface components {
          * @enum {string}
          */
         RoutingStatus: "ready" | "building" | "failed";
-        /** SkippedStop */
+        /**
+         * Screen
+         * @description One screen (stick) at a store (§4.1). Ids are minted by the server and kept when a list is sent back.
+         */
+        Screen: {
+            /** Id */
+            id: string;
+            /**
+             * Stick Number
+             * @default
+             */
+            stick_number: string;
+            /**
+             * Venue Id
+             * @default
+             */
+            venue_id: string;
+            /**
+             * Screen Size
+             * @default
+             */
+            screen_size: string;
+            /**
+             * Is Dolphin Screen
+             * @default true
+             */
+            is_dolphin_screen: boolean;
+            /**
+             * Has Mount
+             * @default false
+             */
+            has_mount: boolean;
+            /**
+             * Has Ceiling Mount
+             * @default false
+             */
+            has_ceiling_mount: boolean;
+            /** @default Upcoming */
+            status: components["schemas"]["ScreenStatus"];
+        };
+        /**
+         * ScreenInput
+         * @description A screen row as a client sends it: `id` only when it already exists (kept on a screens PUT).
+         */
+        ScreenInput: {
+            /** Id */
+            id?: string | null;
+            /**
+             * Stick Number
+             * @default
+             */
+            stick_number?: string;
+            /**
+             * Venue Id
+             * @default
+             */
+            venue_id?: string;
+            /**
+             * Screen Size
+             * @default
+             */
+            screen_size?: string;
+            /**
+             * Is Dolphin Screen
+             * @default true
+             */
+            is_dolphin_screen?: boolean;
+            /**
+             * Has Mount
+             * @default false
+             */
+            has_mount?: boolean;
+            /**
+             * Has Ceiling Mount
+             * @default false
+             */
+            has_ceiling_mount?: boolean;
+            /** @default Upcoming */
+            status?: components["schemas"]["ScreenStatus"];
+        };
+        /**
+         * ScreenStatus
+         * @description Per-screen status (STORE-MODEL §4.2). A store's status is derived from its screens.
+         * @enum {string}
+         */
+        ScreenStatus: "Upcoming" | "Invitation Email Sent" | "Shipped" | "Delivered" | "Completed" | "Offline" | "Archived" | "Cancelled";
+        /**
+         * ScreensUpdate
+         * @description The full list of a store's screen rows (PUT replaces it). Send `id` back to keep a row's identity.
+         */
+        ScreensUpdate: {
+            /** Screens */
+            screens: components["schemas"]["ScreenInput"][];
+            /**
+             * Updated By
+             * @default
+             */
+            updated_by?: string;
+        };
+        /**
+         * SkippedStop
+         * @description A submitted stop that was not written because it repeats another (STORE-MODEL §1.4).
+         */
         SkippedStop: {
+            /** Index */
+            index: number;
+            /** External Id */
+            external_id: string;
+            /** Store Name */
+            store_name: string;
             /** Addr */
             addr: string;
-            /** Venue Code */
-            venue_code: string;
-            /** Reason */
-            reason: string;
+            /**
+             * Reason
+             * @enum {string}
+             */
+            reason: "external_id" | "address";
+        };
+        /** StateCount */
+        StateCount: {
+            /** State */
+            state: string;
+            /** Count */
+            count: number;
         };
         /**
          * Stop
-         * @description Planning data and field progress for one store, stored as one item.
+         * @description Planning data, store details, screens and field progress for one store, stored as one item.
+         *
+         *     `status` is derived from `screens` (§4.2) on every validation; a stop always has at least one screen. Items
+         *     written before v2 (one v1 status, no screens) read as one screen carrying that status.
          */
         Stop: {
+            /**
+             * External Id
+             * @default
+             */
+            external_id: string;
+            /**
+             * Pa
+             * @default
+             */
+            pa: string;
+            /**
+             * Dma
+             * @default
+             */
+            dma: string;
+            /**
+             * Venue Type
+             * @default
+             */
+            venue_type: string;
+            /**
+             * Source Date
+             * @default
+             */
+            source_date: string;
+            /**
+             * Onsite Contact Name
+             * @default
+             */
+            onsite_contact_name: string;
+            /**
+             * Onsite Contact Phone
+             * @default
+             */
+            onsite_contact_phone: string;
+            /**
+             * Owner Name
+             * @default
+             */
+            owner_name: string;
+            /**
+             * Owner Phone
+             * @default
+             */
+            owner_phone: string;
+            /**
+             * Owner Email
+             * @default
+             */
+            owner_email: string;
+            /**
+             * Best Contact Time
+             * @default
+             */
+            best_contact_time: string;
+            /**
+             * Preferred Language
+             * @default
+             */
+            preferred_language: string;
+            /**
+             * Products To Avoid
+             * @default
+             */
+            products_to_avoid: string;
+            /**
+             * Store Ssid
+             * @default
+             */
+            store_ssid: string;
+            /**
+             * Store Ssid Password
+             * @default
+             */
+            store_ssid_password: string;
+            /**
+             * Installation Notes
+             * @default
+             */
+            installation_notes: string;
+            /**
+             * Image Url
+             * @default
+             */
+            image_url: string;
+            /**
+             * Cms Details Added
+             * @default false
+             */
+            cms_details_added: boolean;
+            /**
+             * Outlet Status
+             * @default
+             */
+            outlet_status: string;
+            /** Committed Dolphin Screens */
+            committed_dolphin_screens: number | null;
+            /** Committed Store Tvs */
+            committed_store_tvs: number | null;
+            /**
+             * Preferred Area
+             * @default
+             */
+            preferred_area: string;
+            /**
+             * Ceiling Type
+             * @default
+             */
+            ceiling_type: string;
+            /**
+             * Ceiling Height
+             * @default
+             */
+            ceiling_height: string;
+            /**
+             * Nearest Power Outlet
+             * @default
+             */
+            nearest_power_outlet: string;
+            /**
+             * Ethernet Route
+             * @default
+             */
+            ethernet_route: string;
+            /**
+             * Blocked Dates Notes
+             * @default
+             */
+            blocked_dates_notes: string;
+            /**
+             * Preferred Install Datetime
+             * @default
+             */
+            preferred_install_datetime: string;
+            /** Spot Visible */
+            spot_visible: boolean | null;
+            /** Power Within 6Ft */
+            power_within_6ft: boolean | null;
+            /** Ethernet Possible */
+            ethernet_possible: boolean | null;
+            /** Low Volume Audio Ok */
+            low_volume_audio_ok: boolean | null;
+            /** Ceiling Suitable */
+            ceiling_suitable: boolean | null;
             /** Uid */
             uid: string;
             /**
@@ -1226,8 +1658,10 @@ export interface components {
             fields: {
                 [key: string]: unknown;
             };
-            /** @default Incomplete */
-            status: components["schemas"]["StopStatus"];
+            /** Screens */
+            screens: components["schemas"]["Screen"][];
+            /** @default Upcoming */
+            status: components["schemas"]["ScreenStatus"];
             /**
              * Comment
              * @default
@@ -1259,8 +1693,154 @@ export interface components {
         /**
          * StopInput
          * @description One stop as the client submits it on create or append. The server mints uid, display_id, seq and day.
+         *
+         *     Without `screens` the stop gets one screen with `initial_status` (or Upcoming).
          */
         StopInput: {
+            /**
+             * External Id
+             * @default
+             */
+            external_id?: string;
+            /**
+             * Pa
+             * @default
+             */
+            pa?: string;
+            /**
+             * Dma
+             * @default
+             */
+            dma?: string;
+            /**
+             * Venue Type
+             * @default
+             */
+            venue_type?: string;
+            /**
+             * Source Date
+             * @default
+             */
+            source_date?: string;
+            /**
+             * Onsite Contact Name
+             * @default
+             */
+            onsite_contact_name?: string;
+            /**
+             * Onsite Contact Phone
+             * @default
+             */
+            onsite_contact_phone?: string;
+            /**
+             * Owner Name
+             * @default
+             */
+            owner_name?: string;
+            /**
+             * Owner Phone
+             * @default
+             */
+            owner_phone?: string;
+            /**
+             * Owner Email
+             * @default
+             */
+            owner_email?: string;
+            /**
+             * Best Contact Time
+             * @default
+             */
+            best_contact_time?: string;
+            /**
+             * Preferred Language
+             * @default
+             */
+            preferred_language?: string;
+            /**
+             * Products To Avoid
+             * @default
+             */
+            products_to_avoid?: string;
+            /**
+             * Store Ssid
+             * @default
+             */
+            store_ssid?: string;
+            /**
+             * Store Ssid Password
+             * @default
+             */
+            store_ssid_password?: string;
+            /**
+             * Installation Notes
+             * @default
+             */
+            installation_notes?: string;
+            /**
+             * Image Url
+             * @default
+             */
+            image_url?: string;
+            /**
+             * Cms Details Added
+             * @default false
+             */
+            cms_details_added?: boolean;
+            /**
+             * Outlet Status
+             * @default
+             */
+            outlet_status?: string;
+            /** Committed Dolphin Screens */
+            committed_dolphin_screens?: number | null;
+            /** Committed Store Tvs */
+            committed_store_tvs?: number | null;
+            /**
+             * Preferred Area
+             * @default
+             */
+            preferred_area?: string;
+            /**
+             * Ceiling Type
+             * @default
+             */
+            ceiling_type?: string;
+            /**
+             * Ceiling Height
+             * @default
+             */
+            ceiling_height?: string;
+            /**
+             * Nearest Power Outlet
+             * @default
+             */
+            nearest_power_outlet?: string;
+            /**
+             * Ethernet Route
+             * @default
+             */
+            ethernet_route?: string;
+            /**
+             * Blocked Dates Notes
+             * @default
+             */
+            blocked_dates_notes?: string;
+            /**
+             * Preferred Install Datetime
+             * @default
+             */
+            preferred_install_datetime?: string;
+            /** Spot Visible */
+            spot_visible?: boolean | null;
+            /** Power Within 6Ft */
+            power_within_6ft?: boolean | null;
+            /** Ethernet Possible */
+            ethernet_possible?: boolean | null;
+            /** Low Volume Audio Ok */
+            low_volume_audio_ok?: boolean | null;
+            /** Ceiling Suitable */
+            ceiling_suitable?: boolean | null;
             /** Store Name */
             store_name: string;
             /** Addr */
@@ -1269,17 +1849,17 @@ export interface components {
              * City
              * @default
              */
-            city: string;
+            city?: string;
             /**
              * State
              * @default
              */
-            state: string;
+            state?: string;
             /**
              * Zip
              * @default
              */
-            zip: string;
+            zip?: string;
             /** Lat */
             lat?: number | null;
             /** Lng */
@@ -1288,12 +1868,14 @@ export interface components {
              * Geocoded
              * @default
              */
-            geocoded: string;
+            geocoded?: string;
             /** Fields */
             fields?: {
                 [key: string]: unknown;
             };
-            initial_status?: components["schemas"]["StopStatus"] | null;
+            /** Screens */
+            screens?: components["schemas"]["ScreenInput"][];
+            initial_status?: components["schemas"]["ScreenStatus"] | null;
         };
         /** StopReassign */
         StopReassign: {
@@ -1301,13 +1883,9 @@ export interface components {
             installer: string;
         };
         /**
-         * StopStatus
-         * @enum {string}
-         */
-        StopStatus: "Incomplete" | "Complete" | "Technical Issue" | "Other";
-        /**
          * StoreDetailsUpdate
-         * @description Detail edit. Omitted keys are unchanged; `fields` merges per key into the stop's custom fields.
+         * @description Detail edit (STORE-MODEL §2, "editable in planner"). Omitted keys are unchanged; `fields` merges per key
+         *     into the stop's extra fields. Anything else (IBC#, PA, routing, progress, screens) is a 422.
          */
         StoreDetailsUpdate: {
             /** Store Name */
@@ -1320,10 +1898,94 @@ export interface components {
             state?: string | null;
             /** Zip */
             zip?: string | null;
+            /** Dma */
+            dma?: string | null;
+            /** Venue Type */
+            venue_type?: string | null;
+            /** Onsite Contact Name */
+            onsite_contact_name?: string | null;
+            /** Onsite Contact Phone */
+            onsite_contact_phone?: string | null;
+            /** Owner Name */
+            owner_name?: string | null;
+            /** Owner Phone */
+            owner_phone?: string | null;
+            /** Owner Email */
+            owner_email?: string | null;
+            /** Best Contact Time */
+            best_contact_time?: string | null;
+            /** Preferred Language */
+            preferred_language?: string | null;
+            /** Products To Avoid */
+            products_to_avoid?: string | null;
+            /** Store Ssid */
+            store_ssid?: string | null;
+            /** Store Ssid Password */
+            store_ssid_password?: string | null;
+            /** Installation Notes */
+            installation_notes?: string | null;
+            /** Image Url */
+            image_url?: string | null;
+            /** Cms Details Added */
+            cms_details_added?: boolean | null;
+            /** Outlet Status */
+            outlet_status?: string | null;
+            /** Committed Dolphin Screens */
+            committed_dolphin_screens?: number | null;
+            /** Committed Store Tvs */
+            committed_store_tvs?: number | null;
+            /** Preferred Area */
+            preferred_area?: string | null;
+            /** Ceiling Type */
+            ceiling_type?: string | null;
+            /** Ceiling Height */
+            ceiling_height?: string | null;
+            /** Nearest Power Outlet */
+            nearest_power_outlet?: string | null;
+            /** Ethernet Route */
+            ethernet_route?: string | null;
+            /** Blocked Dates Notes */
+            blocked_dates_notes?: string | null;
+            /** Preferred Install Datetime */
+            preferred_install_datetime?: string | null;
+            /** Spot Visible */
+            spot_visible?: boolean | null;
+            /** Power Within 6Ft */
+            power_within_6ft?: boolean | null;
+            /** Ethernet Possible */
+            ethernet_possible?: boolean | null;
+            /** Low Volume Audio Ok */
+            low_volume_audio_ok?: boolean | null;
+            /** Ceiling Suitable */
+            ceiling_suitable?: boolean | null;
             /** Fields */
             fields?: {
                 [key: string]: unknown;
             } | null;
+        };
+        /**
+         * StoreFilterOptions
+         * @description Per filter, the values present (STORE-MODEL §5). An empty list: no store has a value; grey it out.
+         */
+        StoreFilterOptions: {
+            /** Status */
+            status: components["schemas"]["FilterOption"][];
+            /** Installer */
+            installer: components["schemas"]["FilterOption"][];
+            /** Pa */
+            pa: components["schemas"]["FilterOption"][];
+            /** State */
+            state: components["schemas"]["FilterOption"][];
+            /** City */
+            city: components["schemas"]["FilterOption"][];
+            /** Dma */
+            dma: components["schemas"]["FilterOption"][];
+            /** Venue Type */
+            venue_type: components["schemas"]["FilterOption"][];
+            /** Dd Code */
+            dd_code: components["schemas"]["FilterOption"][];
+            /** Screen Size */
+            screen_size: components["schemas"]["FilterOption"][];
         };
         /** Suggestions */
         Suggestions: {
@@ -1587,7 +2249,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Project"];
+                    "application/json": components["schemas"]["ProjectSummary"];
                 };
             };
             /** @description Validation Error */
@@ -1871,11 +2533,25 @@ export interface operations {
             query?: {
                 limit?: number;
                 cursor?: string | null;
-                status?: components["schemas"]["StopStatus"][] | null;
+                status?: components["schemas"]["ScreenStatus"][] | null;
                 /** @description Repeatable; empty value = unassigned */
                 installer?: string[] | null;
+                /** @description Repeatable; a store matches any of the values */
+                pa?: string[] | null;
+                /** @description Repeatable; a store matches any of the values */
+                state?: string[] | null;
+                /** @description Repeatable; a store matches any of the values */
+                city?: string[] | null;
+                /** @description Repeatable; a store matches any of the values */
+                dma?: string[] | null;
+                /** @description Repeatable; a store matches any of the values */
+                venue_type?: string[] | null;
+                /** @description Repeatable; any screen's venue id */
+                dd_code?: string[] | null;
+                /** @description Repeatable; any screen's size */
+                screen_size?: string[] | null;
                 q?: string;
-                /** @description store_name, addr, status, installer, day, updated_at, fields.<key> */
+                /** @description a store attribute, status, installer, day, screens, fields.<key> */
                 sort?: string;
                 dir?: string;
             };
@@ -1910,11 +2586,25 @@ export interface operations {
     list_pins_api_projects__project_id__stores_pins_get: {
         parameters: {
             query?: {
-                status?: components["schemas"]["StopStatus"][] | null;
+                status?: components["schemas"]["ScreenStatus"][] | null;
                 /** @description Repeatable; empty value = unassigned */
                 installer?: string[] | null;
+                /** @description Repeatable; a store matches any of the values */
+                pa?: string[] | null;
+                /** @description Repeatable; a store matches any of the values */
+                state?: string[] | null;
+                /** @description Repeatable; a store matches any of the values */
+                city?: string[] | null;
+                /** @description Repeatable; a store matches any of the values */
+                dma?: string[] | null;
+                /** @description Repeatable; a store matches any of the values */
+                venue_type?: string[] | null;
+                /** @description Repeatable; any screen's venue id */
+                dd_code?: string[] | null;
+                /** @description Repeatable; any screen's size */
+                screen_size?: string[] | null;
                 q?: string;
-                /** @description store_name, addr, status, installer, day, updated_at, fields.<key> */
+                /** @description a store attribute, status, installer, day, screens, fields.<key> */
                 sort?: string;
                 dir?: string;
             };
@@ -1933,6 +2623,114 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Pin"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    filter_options_api_projects__project_id__stores_filters_get: {
+        parameters: {
+            query?: {
+                status?: components["schemas"]["ScreenStatus"][] | null;
+                /** @description Repeatable; empty value = unassigned */
+                installer?: string[] | null;
+                /** @description Repeatable; a store matches any of the values */
+                pa?: string[] | null;
+                /** @description Repeatable; a store matches any of the values */
+                state?: string[] | null;
+                /** @description Repeatable; a store matches any of the values */
+                city?: string[] | null;
+                /** @description Repeatable; a store matches any of the values */
+                dma?: string[] | null;
+                /** @description Repeatable; a store matches any of the values */
+                venue_type?: string[] | null;
+                /** @description Repeatable; any screen's venue id */
+                dd_code?: string[] | null;
+                /** @description Repeatable; any screen's size */
+                screen_size?: string[] | null;
+                q?: string;
+                /** @description a store attribute, status, installer, day, screens, fields.<key> */
+                sort?: string;
+                dir?: string;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoreFilterOptions"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stores_by_state_api_projects__project_id__stores_by_state_get: {
+        parameters: {
+            query?: {
+                pending?: boolean;
+                limit?: number;
+                status?: components["schemas"]["ScreenStatus"][] | null;
+                /** @description Repeatable; empty value = unassigned */
+                installer?: string[] | null;
+                /** @description Repeatable; a store matches any of the values */
+                pa?: string[] | null;
+                /** @description Repeatable; a store matches any of the values */
+                state?: string[] | null;
+                /** @description Repeatable; a store matches any of the values */
+                city?: string[] | null;
+                /** @description Repeatable; a store matches any of the values */
+                dma?: string[] | null;
+                /** @description Repeatable; a store matches any of the values */
+                venue_type?: string[] | null;
+                /** @description Repeatable; any screen's venue id */
+                dd_code?: string[] | null;
+                /** @description Repeatable; any screen's size */
+                screen_size?: string[] | null;
+                q?: string;
+                /** @description a store attribute, status, installer, day, screens, fields.<key> */
+                sort?: string;
+                dir?: string;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StateCount"][];
                 };
             };
             /** @description Validation Error */
@@ -1982,11 +2780,25 @@ export interface operations {
     export_csv_api_projects__project_id__stores_export_csv_get: {
         parameters: {
             query?: {
-                status?: components["schemas"]["StopStatus"][] | null;
+                status?: components["schemas"]["ScreenStatus"][] | null;
                 /** @description Repeatable; empty value = unassigned */
                 installer?: string[] | null;
+                /** @description Repeatable; a store matches any of the values */
+                pa?: string[] | null;
+                /** @description Repeatable; a store matches any of the values */
+                state?: string[] | null;
+                /** @description Repeatable; a store matches any of the values */
+                city?: string[] | null;
+                /** @description Repeatable; a store matches any of the values */
+                dma?: string[] | null;
+                /** @description Repeatable; a store matches any of the values */
+                venue_type?: string[] | null;
+                /** @description Repeatable; any screen's venue id */
+                dd_code?: string[] | null;
+                /** @description Repeatable; any screen's size */
+                screen_size?: string[] | null;
                 q?: string;
-                /** @description store_name, addr, status, installer, day, updated_at, fields.<key> */
+                /** @description a store attribute, status, installer, day, screens, fields.<key> */
                 sort?: string;
                 dir?: string;
             };
@@ -2098,6 +2910,42 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["StoreDetailsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Stop"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_screens_api_projects__project_id__stores__stop_uid__screens_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                stop_uid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScreensUpdate"];
             };
         };
         responses: {

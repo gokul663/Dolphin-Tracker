@@ -109,9 +109,9 @@ class TransformTests(unittest.TestCase):
         self.assertEqual((report.stops, report.states, report.matched_states), (5, 4, 3))
         self.assertEqual(report.orphan_states, ["atl-route-v2|Bo|S4|4 Pine St|32.7|-96.7"])
         # v1's dashboard looked up the Python spelling, so it never saw S2's or S3's page-written state.
-        self.assertEqual((report.old_kpi.complete, report.old_kpi.technical, report.old_kpi.other), (1, 0, 0))
+        self.assertEqual((report.old_kpi.complete, report.old_kpi.offline, report.old_kpi.other), (1, 0, 0))
         # New: S2 Technical Issue -> Offline; S3 Other -> Upcoming (pending, as v1 showed it).
-        self.assertEqual((report.new_kpi.complete, report.new_kpi.technical, report.new_kpi.other), (1, 1, 0))
+        self.assertEqual((report.new_kpi.complete, report.new_kpi.offline, report.new_kpi.other), (1, 1, 0))
         self.assertFalse(report.kpi_matches)
         text = format_report([report])
         self.assertIn("KPI differs", text)

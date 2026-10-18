@@ -13,7 +13,7 @@ import type { Stop } from "@/lib/api/types";
 
 const STOPS: Stop[] = [
   makeStop(),
-  makeStop({ uid: "u2", display_id: "S2", store_name: "Beta Deli", addr: "2 Oak St", status: "Complete", installer: "Bo", lat: 33.8 }),
+  makeStop({ uid: "u2", display_id: "S2", store_name: "Beta Deli", addr: "2 Oak St", status: "Completed", installer: "Bo", lat: 33.8 }),
 ];
 
 /** A tiny stateful fake: successful PATCHes change what later GETs return, like the real API. */
@@ -111,8 +111,8 @@ describe("StoresTab", () => {
     expect(screen.getByRole("columnheader", { name: /Owner Phone/ })).toBeTruthy();
     expect(screen.getByText(/no Google Maps browser key/)).toBeTruthy(); // map degrades, table works
 
-    await userEvent.click(screen.getByRole("button", { name: "Complete" }));
-    await waitFor(() => expect(lastList(calls)?.searchParams.getAll("status")).toEqual(["Complete"]));
+    await userEvent.click(screen.getByRole("button", { name: "Completed" }));
+    await waitFor(() => expect(lastList(calls)?.searchParams.getAll("status")).toEqual(["Completed"]));
     await userEvent.type(screen.getByLabelText("Search stores"), "oak");
     await waitFor(() => expect(lastList(calls)?.searchParams.get("q")).toBe("oak"), { timeout: 2000 });
     const pins = [...calls].reverse().find((call) => call.url.pathname.endsWith("/pins"))?.url;
@@ -125,7 +125,7 @@ describe("StoresTab", () => {
 
     const csv = screen.getByRole("link", { name: /CSV/ }).getAttribute("href") ?? "";
     expect(csv).toContain("/api/projects/p1/stores/export.csv");
-    expect(new URL(csv).searchParams.getAll("status")).toEqual(["Complete"]);
+    expect(new URL(csv).searchParams.getAll("status")).toEqual(["Completed"]);
   });
 
   it("edits a store name inline with the B1 rule and sends only that field", async () => {
@@ -144,14 +144,15 @@ describe("StoresTab", () => {
   it("updates status optimistically and rolls back on error", async () => {
     let release: (value: Response) => void = () => {};
     const { calls } = renderTab({
-      "PATCH /api/projects/p1/stores/u1/progress": () => new Promise<Response>((resolve) => (release = resolve)),
+      "PUT /api/projects/p1/stores/u1/screens": () => new Promise<Response>((resolve) => (release = resolve)),
     });
     await screen.findByText("Alpha Mart");
     await userEvent.click(screen.getByRole("combobox", { name: "Status of S1" }));
-    await userEvent.click(await screen.findByRole("option", { name: "Complete" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Completed" }));
     // Before the server answers, the row already shows the new status.
-    await waitFor(() => expect(screen.getByRole("combobox", { name: "Status of S1" }).textContent).toContain("Complete"));
-    expect(calls.find((call) => call.method === "PATCH")?.body).toEqual({ status: "Complete" });
+    await waitFor(() => expect(screen.getByRole("combobox", { name: "Status of S1" }).textContent).toContain("Completed"));
+    // Status is per screen: every screen of the store is sent with the new status, ids kept.
+    expect(calls.find((call) => call.method === "PUT")?.body).toMatchObject({ screens: [{ id: "u1-s1", status: "Completed" }] });
     await act(async () => release(jsonError(500, "boom")));
     await waitFor(() => expect(screen.getByRole("combobox", { name: "Status of S1" }).textContent).toContain("Upcoming"));
   });

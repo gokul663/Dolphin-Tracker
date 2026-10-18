@@ -7,7 +7,7 @@ from moto import mock_aws
 from dolphin_tracker.api.app import create_app
 from dolphin_tracker.api.deps import get_project_repository, get_store_repository
 from dolphin_tracker.domain.kpi import KPI_ATTRIBUTES, kpi_summary
-from dolphin_tracker.domain.models import Project, ProjectType, Stop
+from dolphin_tracker.domain.models import Project, ProjectType, Screen, Stop
 from dolphin_tracker.repositories.dynamo import TABLE_DEFINITION
 from dolphin_tracker.repositories.memory import InMemoryProjectRepository, InMemoryStoreRepository
 from dolphin_tracker.repositories.projects import DynamoProjectRepository
@@ -35,7 +35,7 @@ STOPS = [
 class KpiSummaryTests(unittest.TestCase):
     def test_matches_v1_rules(self):
         kpi = kpi_summary(s.model_dump(mode="json") for s in STOPS)
-        self.assertEqual((kpi.total, kpi.complete, kpi.pending, kpi.technical, kpi.other), (6, 3, 1, 1, 1))
+        self.assertEqual((kpi.total, kpi.complete, kpi.pending, kpi.offline, kpi.other), (6, 3, 1, 1, 1))
         self.assertEqual(
             kpi.by_status,
             {"Upcoming": 1, "Invitation Email Sent": 0, "Shipped": 0, "Delivered": 0, "Completed": 3, "Offline": 1,
@@ -60,6 +60,36 @@ class KpiSummaryTests(unittest.TestCase):
         )]
         kpi = kpi_summary(rows)  # v1 values (the migration's parity side) read through the legacy map
         self.assertEqual((kpi.pending, kpi.complete, kpi.other), (5, 1, 1))
+
+
+class KpiV2Tests(unittest.TestCase):
+    def test_screens_and_committed_vs_actual(self):
+        stops = [
+            Stop(uid="a", store_name="a", addr="1", committed_dolphin_screens=3, committed_store_tvs=1,
+                 screens=[Screen(status="Completed"), Screen(status="Shipped"),
+                          Screen(status="Completed", is_dolphin_screen=False)]),
+            Stop(uid="b", store_name="b", addr="2", committed_dolphin_screens=None,
+                 screens=[Screen(status="Offline")]),
+            Stop(uid="c", store_name="c", addr="3", screens=[Screen(status="Cancelled")]),
+        ]
+        kpi = kpi_summary(stop.model_dump(mode="json") for stop in stops)
+        self.assertEqual((kpi.total, kpi.pending, kpi.complete, kpi.offline, kpi.other), (3, 1, 0, 1, 1))
+        self.assertEqual(kpi.by_status["Shipped"], 1)  # a: least-progressed screen
+        self.assertEqual(kpi.screens_total, 5)
+        self.assertEqual({k: v for k, v in kpi.screens_by_status.items() if v},
+                         {"Completed": 2, "Shipped": 1, "Offline": 1, "Cancelled": 1})
+        self.assertEqual((kpi.committed_dolphin_screens, kpi.committed_store_tvs), (3, 1))
+        self.assertEqual((kpi.actual_dolphin_screens, kpi.actual_store_tvs), (4, 1))
+
+    def test_project_detail_carries_kpis(self):
+        projects, stores = InMemoryProjectRepository(), InMemoryStoreRepository()
+        projects.put(Project(id="p1", name="One", project_type=ProjectType.OFFLINE))
+        stores.put_many("p1", STOPS)
+        app = create_app()
+        app.dependency_overrides[get_project_repository] = lambda: projects
+        app.dependency_overrides[get_store_repository] = lambda: stores
+        body = TestClient(app).get("/api/projects/p1").json()
+        self.assertEqual((body["name"], body["kpi"]["total"], body["kpi"]["screens_total"]), ("One", 6, 6))
 
 
 class ProjectListKpiDynamoTests(unittest.TestCase):

@@ -16,24 +16,19 @@ from dolphin_tracker.domain.validation import FIELDS_BY_NAME, normalize_external
 PHONE_RE = re.compile(r"[+()\d\s.-]{7,20}")
 EMAIL_RE = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
 KEY_RE = re.compile(r"[a-z][a-z0-9_]{0,63}")
+# Attribute names a schema key may not take: the stop's own attributes, including every first-class store field
+# (STORE-MODEL §2), so an extra field can never shadow one.
 CORE_KEYS = frozenset(
     {
-        "uid", "display_id", "store_name", "addr", "city", "state", "zip", "lat", "lng", "geocoded",
-        "installer", "day", "seq", "status", "comment", "additional_task", "installer_name", "updated_by",
-        "route_stale", "updated_at", "fields",
+        "uid", "display_id", "lat", "lng", "geocoded", "installer", "day", "seq", "status", "screens", "comment",
+        "additional_task", "installer_name", "updated_by", "route_stale", "updated_at", "fields",
+        *FIELDS_BY_NAME,
     }
 )
 
-DEFAULT_FIELD_SCHEMA: tuple[FieldDef, ...] = (
-    FieldDef(key="pa", label="PA"),
-    FieldDef(key="venue_type", label="Venue Type"),
-    FieldDef(key="dma", label="DMA"),
-    FieldDef(key="venue_code", label="Venue Code"),
-    FieldDef(key="owner_name", label="Owner Name"),
-    FieldDef(key="owner_phone", label="Owner Phone", type=FieldType.PHONE),
-    FieldDef(key="owner_email", label="Owner Email", type=FieldType.EMAIL),
-    FieldDef(key="payee_name", label="Payee Name"),
-)
+# The store model v2 makes the round-1 defaults (PA, DMA, venue type, owner contacts) first-class attributes, so
+# a new project starts with no extra fields; unrecognised sheet columns are added by the import (§1.2).
+DEFAULT_FIELD_SCHEMA: tuple[FieldDef, ...] = ()
 
 
 def default_field_schema() -> list[FieldDef]:
@@ -152,14 +147,18 @@ def validate_stop_inputs(schema: Iterable[FieldDef], stops: Iterable[Any]) -> li
     return bad
 
 
-def validate_schema(schema: Iterable[FieldDef]) -> list[str]:
-    """Problems with a schema definition itself: key format, duplicates, clashes with core attributes."""
+def validate_schema(schema: Iterable[FieldDef], existing_keys: Iterable[str] = ()) -> list[str]:
+    """Problems with a schema definition itself: key format, duplicates, clashes with core attributes.
+
+    `existing_keys` (the project's current schema) are allowed even if now reserved: projects created before the
+    store model v2 carry e.g. `dma` as an extra field, and editing their schema must keep working."""
     errors: list[str] = []
     seen: set[str] = set()
+    grandfathered = set(existing_keys)
     for field in schema:
         if not KEY_RE.fullmatch(field.key):
             errors.append(f"Field key '{field.key}' must be lowercase letters, digits or _ and start with a letter")
-        elif field.key in CORE_KEYS:
+        elif field.key in CORE_KEYS and field.key not in grandfathered:
             errors.append(f"Field key '{field.key}' is reserved")
         if field.key in seen:
             errors.append(f"Duplicate field key '{field.key}'")

@@ -68,6 +68,13 @@ class ProjectService:
             items = list(pool.map(summarise, page.items))
         return Page(items=items, next_cursor=page.next_cursor)
 
+    def summary(self, project_id: str) -> ProjectSummary:
+        """One project with its KPIs (the project header, STORE-MODEL §5)."""
+        assert self._stores is not None
+        project = self.get(project_id)
+        rows = self._stores.list_projected(project_id, KPI_ATTRIBUTES)
+        return ProjectSummary(**project.model_dump(), kpi=kpi_summary(rows))
+
     def get(self, project_id: str) -> Project:
         project = self._projects.get(project_id)
         if project is None:
@@ -173,13 +180,14 @@ class ProjectService:
         errors = [f"{key} cannot be null" for key in self.NOT_NULL if key in changes and changes[key] is None]
         update = {key: value.strip() if isinstance(value, str) else value for key, value in changes.items()}
         errors += [f"{key} cannot be blank" for key in self.REQUIRED_TEXT if update.get(key, "x") == ""]
+        current = self.get(project_id)
         if update.get("field_schema") is not None:
-            errors += validate_schema(FieldDef.model_validate(field) for field in update["field_schema"])
+            existing = [field.key for field in current.field_schema]
+            errors += validate_schema((FieldDef.model_validate(field) for field in update["field_schema"]), existing)
         if errors:
             raise ValidationFailed("; ".join(errors), errors=errors)
         if not update:
             raise ValidationFailed("No fields to update", errors=[])
-        self.get(project_id)
         return self._projects.update(project_id, update, expected_version=expected_version)
 
     def delete(self, project_id: str, *, confirm: str) -> None:

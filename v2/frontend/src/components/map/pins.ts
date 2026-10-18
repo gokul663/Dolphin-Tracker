@@ -1,5 +1,5 @@
 /** Pure helpers behind MapView: same-location stacking, status colours, legend counts, bounds. */
-import type { Pin, StopStatus } from "@/lib/api/types";
+import { deriveStatus, STOP_STATUSES, type Pin, type StopStatus } from "@/lib/api/types";
 import { STATUS_META } from "@/lib/status";
 
 export interface PinGroup {
@@ -7,7 +7,7 @@ export interface PinGroup {
   lat: number;
   lng: number;
   pins: Pin[];
-  /** One status when every record agrees, otherwise "Other" (v1 behaviour). */
+  /** The least-progressed status of the records at this point (how a store derives its status, too). */
   status: StopStatus;
 }
 
@@ -26,9 +26,8 @@ export function groupPins(pins: Pin[]): PinGroup[] {
     else groups.set(key, [pin]);
   }
   return [...groups].map(([key, members]) => {
-    const statuses = new Set(members.map((pin) => pin.status));
     const first = members[0] as Pin;
-    return { key, lat: first.lat, lng: first.lng, pins: members, status: statuses.size === 1 ? first.status : "Other" };
+    return { key, lat: first.lat, lng: first.lng, pins: members, status: deriveStatus(members.map((pin) => pin.status)) };
   });
 }
 
@@ -37,7 +36,7 @@ export function filterByStatus(pins: Pin[], active: ReadonlySet<StopStatus>): Pi
 }
 
 export function statusCounts(pins: Pin[]): Record<StopStatus, number> {
-  const counts: Record<StopStatus, number> = { Complete: 0, Incomplete: 0, "Technical Issue": 0, Other: 0 };
+  const counts = Object.fromEntries(STOP_STATUSES.map((status) => [status, 0])) as Record<StopStatus, number>;
   for (const pin of pins) counts[pin.status] += 1;
   return counts;
 }

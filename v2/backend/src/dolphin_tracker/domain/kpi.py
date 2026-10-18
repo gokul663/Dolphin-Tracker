@@ -1,4 +1,8 @@
-"""Project KPIs, computed on read (AGENT-HANDOFF §4.1, decided in §8). Pure port of v1 `kpi_summary`."""
+"""Project KPIs, computed on read (AGENT-HANDOFF §4.1, STORE-MODEL §5). Pure.
+
+Stores count by their derived status; screens count by their own status. Committed screen totals (from the
+sheet) sit next to the actual totals derived from the screen rows.
+"""
 from __future__ import annotations
 
 import re
@@ -14,8 +18,13 @@ from dolphin_tracker.domain.statuses import LEGACY_STATUSES, PENDING_STATUSES, S
 STATUSES = tuple(status.value for status in ScreenStatus)
 FINISHED = frozenset({ScreenStatus.ARCHIVED, ScreenStatus.CANCELLED})
 KPI_ATTRIBUTES = (
-    "uid", "status", "installer", "installer_name", "fields", "dma", "venue_type", "addr", "city", "state", "zip"
+    "uid", "status", "screens", "installer", "installer_name", "fields", "dma", "venue_type",
+    "committed_dolphin_screens", "committed_store_tvs", "addr", "city", "state", "zip",
 )
+
+
+def _zeroes() -> dict[str, int]:
+    return dict.fromkeys(STATUSES, 0)
 
 
 class Breakdown(ApiModel):
@@ -25,12 +34,18 @@ class Breakdown(ApiModel):
 
 
 class Kpi(ApiModel):
-    total: int = 0
-    complete: int = 0
-    pending: int = 0
-    technical: int = 0
-    other: int = 0
-    by_status: dict[str, int] = Field(default_factory=lambda: dict.fromkeys(STATUSES, 0))
+    total: int = 0  # stores
+    pending: int = 0  # stores still needing a visit (derived status in the pending set)
+    complete: int = 0  # Completed
+    offline: int = 0  # Offline: shown on its own, not routed (STORE-MODEL §7 #2)
+    other: int = 0  # Archived + Cancelled
+    by_status: dict[str, int] = Field(default_factory=_zeroes)  # stores by derived status, all eight
+    screens_total: int = 0
+    screens_by_status: dict[str, int] = Field(default_factory=_zeroes)
+    committed_dolphin_screens: int = 0  # sum of the sheet's committed values
+    committed_store_tvs: int = 0
+    actual_dolphin_screens: int = 0  # screen rows with is_dolphin_screen
+    actual_store_tvs: int = 0  # the other screen rows
     by_installer: dict[str, int] = Field(default_factory=dict)
     by_dma: dict[str, Breakdown] = Field(default_factory=dict)
     by_venue_type: dict[str, Breakdown] = Field(default_factory=dict)
@@ -46,7 +61,16 @@ def _address_key(row: Mapping[str, Any]) -> str:
     return "|".join(parts) or f"missing-address|{row.get('uid', '')}"
 
 
-def _add(target: dict[str, Breakdown], label: Any, status: str) -> None:
+def _status(value: Any) -> ScreenStatus:
+    """A stored status, v2 or v1 (the migration's parity side and items written before v2)."""
+    raw = value or ScreenStatus.UPCOMING.value
+    try:
+        return ScreenStatus(LEGACY_STATUSES.get(raw, raw))
+    except ValueError:
+        return ScreenStatus.UPCOMING
+
+
+def _add(target: dict[str, Breakdown], label: Any, status: ScreenStatus) -> None:
     entry = target.setdefault(clean_cell(label) or "Not provided", Breakdown())
     entry.total += 1
     if status == ScreenStatus.COMPLETED:
@@ -56,15 +80,24 @@ def _add(target: dict[str, Breakdown], label: Any, status: str) -> None:
 
 
 def kpi_summary(rows: Iterable[Mapping[str, Any]]) -> Kpi:
-    """`rows` are stop items or projections with KPI_ATTRIBUTES. Same numbers as v1 for the same data."""
+    """`rows` are stop items or projections with KPI_ATTRIBUTES (or v1 rows: status + fields only)."""
     kpi = Kpi()
-    address_groups: dict[str, list[str]] = {}
+    address_groups: dict[str, list[ScreenStatus]] = {}
     for row in rows:
-        raw = row.get("status") or ScreenStatus.UPCOMING.value
-        status = LEGACY_STATUSES.get(raw, raw)  # v1 values (the migration's parity side) read as v2
+        status = _status(row.get("status"))
         fields = row.get("fields") or {}
         kpi.total += 1
-        kpi.by_status[status] = kpi.by_status.get(status, 0) + 1
+        kpi.by_status[status.value] += 1
+        screens = row.get("screens") or [{"status": status.value, "is_dolphin_screen": True}]
+        for screen in screens:
+            kpi.screens_total += 1
+            kpi.screens_by_status[_status(screen.get("status")).value] += 1
+            if screen.get("is_dolphin_screen", True):
+                kpi.actual_dolphin_screens += 1
+            else:
+                kpi.actual_store_tvs += 1
+        kpi.committed_dolphin_screens += row.get("committed_dolphin_screens") or 0
+        kpi.committed_store_tvs += row.get("committed_store_tvs") or 0
         installer = row.get("installer_name") or row.get("installer") or ""
         if installer:
             kpi.by_installer[installer] = kpi.by_installer.get(installer, 0) + 1
@@ -72,10 +105,10 @@ def kpi_summary(rows: Iterable[Mapping[str, Any]]) -> Kpi:
         _add(kpi.by_dma, row.get("dma") or fields.get("dma", ""), status)
         _add(kpi.by_venue_type, row.get("venue_type") or fields.get("venue_type", ""), status)
         address_groups.setdefault(_address_key(row), []).append(status)
-    kpi.complete = kpi.by_status.get(ScreenStatus.COMPLETED, 0)
-    kpi.pending = sum(kpi.by_status.get(status, 0) for status in PENDING_STATUSES)
-    kpi.technical = kpi.by_status.get(ScreenStatus.OFFLINE, 0)
-    kpi.other = sum(kpi.by_status.get(status, 0) for status in FINISHED)
+    kpi.complete = kpi.by_status[ScreenStatus.COMPLETED.value]
+    kpi.pending = sum(kpi.by_status[status.value] for status in PENDING_STATUSES)
+    kpi.offline = kpi.by_status[ScreenStatus.OFFLINE.value]
+    kpi.other = sum(kpi.by_status[status.value] for status in FINISHED)
     unique_complete = sum(
         all(status == ScreenStatus.COMPLETED for status in group) for group in address_groups.values()
     )

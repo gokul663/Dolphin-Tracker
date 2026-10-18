@@ -261,12 +261,11 @@ function WizardBody({ appendTo, onClose }: { appendTo: Project | null; onClose: 
           </p>
           {appended.skipped.length > 0 && (
             <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-              <p className="font-medium">{appended.skipped.length} skipped as duplicates (same venue code or address):</p>
+              <p className="font-medium">{appended.skipped.length} skipped as duplicates (same IBC# or address):</p>
               <ul className="mt-1 max-h-40 list-disc overflow-y-auto pl-5">
-                {appended.skipped.map((skip, index) => (
-                  <li key={`${skip.addr}-${index}`}>
-                    {skip.addr}
-                    {skip.venue_code ? ` (venue ${skip.venue_code})` : ""}
+                {appended.skipped.map((skip) => (
+                  <li key={skip.index}>
+                    {skip.store_name || skip.addr} · {skip.reason === "external_id" ? `IBC# ${skip.external_id}` : skip.addr}
                   </li>
                 ))}
               </ul>

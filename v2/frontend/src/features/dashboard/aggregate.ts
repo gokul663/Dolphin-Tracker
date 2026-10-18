@@ -1,4 +1,4 @@
-import type { ProjectSummary } from "@/lib/api/types";
+import { STOP_STATUSES, type ProjectSummary, type ScreenStatus } from "@/lib/api/types";
 import { PROJECT_TYPE_LABELS } from "@/lib/status";
 
 export interface DashboardTotals {
@@ -7,21 +7,28 @@ export interface DashboardTotals {
   installers: number;
   complete: number;
   pending: number;
-  technical: number;
+  offline: number;
   other: number;
+  /** Stores by derived status, all eight (STORE-MODEL §5). */
+  byStatus: Record<ScreenStatus, number>;
 }
+
+const zeroStatuses = () => Object.fromEntries(STOP_STATUSES.map((status) => [status, 0])) as Record<ScreenStatus, number>;
 
 /** v1 Dashboard `filteredKpi`: totals across the selected projects; installers counted once by name. */
 export function aggregateTotals(projects: ProjectSummary[]): DashboardTotals {
   const installers = new Set<string>();
-  const totals: DashboardTotals = { projects: projects.length, sites: 0, installers: 0, complete: 0, pending: 0, technical: 0, other: 0 };
+  const totals: DashboardTotals = {
+    projects: projects.length, sites: 0, installers: 0, complete: 0, pending: 0, offline: 0, other: 0, byStatus: zeroStatuses(),
+  };
   for (const project of projects) {
     project.installers.forEach((name) => installers.add(name));
     totals.sites += project.kpi.total;
     totals.complete += project.kpi.complete;
     totals.pending += project.kpi.pending;
-    totals.technical += project.kpi.technical;
+    totals.offline += project.kpi.offline;
     totals.other += project.kpi.other;
+    for (const status of STOP_STATUSES) totals.byStatus[status] += project.kpi.by_status[status] ?? 0;
   }
   totals.installers = installers.size;
   return totals;
@@ -36,12 +43,7 @@ export function sitesByInstaller(projects: ProjectSummary[]): { name: string; va
 }
 
 export function statusBreakdown(totals: DashboardTotals) {
-  return [
-    { status: "Complete" as const, value: totals.complete },
-    { status: "Incomplete" as const, value: totals.pending },
-    { status: "Technical Issue" as const, value: totals.technical },
-    { status: "Other" as const, value: totals.other },
-  ].filter((entry) => entry.value > 0);
+  return STOP_STATUSES.map((status) => ({ status, value: totals.byStatus[status] })).filter((entry) => entry.value > 0);
 }
 
 export function sitesPerProject(projects: ProjectSummary[]) {
@@ -51,9 +53,9 @@ export function sitesPerProject(projects: ProjectSummary[]) {
   }));
 }
 
-/** v1: a project is completed once it has sites and nothing pending or with a technical issue. */
+/** v1: a project is completed once it has sites and nothing pending or offline (v1's "technical issue"). */
 export function isCompleted(project: ProjectSummary): boolean {
-  return project.kpi.total > 0 && project.kpi.pending === 0 && project.kpi.technical === 0;
+  return project.kpi.total > 0 && project.kpi.pending === 0 && project.kpi.offline === 0;
 }
 
 export function progressPercent(project: ProjectSummary): number {

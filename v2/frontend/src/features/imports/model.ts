@@ -147,7 +147,10 @@ export function mappedValueProblems(rows: ReviewRow[], mapping: ColumnMapping, s
       const value = column ? columnValue(row, column) : "";
       const definition = byKey.get(field.key);
       if (!definition) continue;
-      const message = fieldError({ ...definition, required: Boolean(definition.required), options: definition.options ?? [] }, value);
+      const message = fieldError(
+        { ...definition, type: definition.type ?? "text", required: Boolean(definition.required), options: definition.options ?? [] },
+        value,
+      );
       if (message) problems.push({ index: row.index, key: field.key, message });
     }
   }

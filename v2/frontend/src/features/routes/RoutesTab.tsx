@@ -235,7 +235,7 @@ export function RoutesTab() {
                     <span className="rounded bg-slate-100 px-1.5 font-mono text-[10px] text-slate-600">{territoryTag(bundle.routes, installer)}</span>
                     <span className="font-mono text-xs text-slate-500">
                       {summary.total} sites · {summary.activeDays} active days · ~{summary.averageActive} active stops/day · {summary.complete} done ·{" "}
-                      {summary.pending} upcoming · {summary.technical} tech · {summary.other} other
+                      {summary.pending} upcoming · {summary.offline} offline · {summary.other} other
                     </span>
                   </div>
                   <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3">

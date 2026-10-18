@@ -1,4 +1,5 @@
-"""Store use cases: listing (filter, search, sort, paginate), map pins, CSV export, detail and progress edits.
+"""Store use cases: listing (filter, search, sort, paginate), facets, map pins, CSV export, detail, screen and
+progress edits.
 
 Listing semantics (AGENT-HANDOFF §4.3, decided in §8): a project holds at most ~1000 stops, so every list call
 loads the whole project once (`list_all`), filters and searches in Python, sorts, and pages with an offset cursor
@@ -11,45 +12,98 @@ import csv
 import io
 import re
 import uuid
-from collections import defaultdict
-from dataclasses import dataclass, field
+from collections import Counter, defaultdict
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from dolphin_tracker.domain.cursors import encode_cursor, offset_from_cursor
 from dolphin_tracker.domain.errors import ConflictError, NotFoundError, ValidationFailed
 from dolphin_tracker.domain.import_mapping import clean_mapping, split_duplicates
 from dolphin_tracker.domain.models import (
+    PENDING_STATUSES,
     PROGRESS_FIELDS,
+    STATUS_PRECEDENCE,
     Page,
     Project,
     RoutingStatus,
+    Screen,
+    ScreenInput,
     ScreenStatus,
     Stop,
     StopInput,
-    derive_store_status,
 )
 from dolphin_tracker.domain.parsing import clean_cell
 from dolphin_tracker.domain.route_optimizer import state_key
 from dolphin_tracker.domain.schema import coerce_fields, validate_fields, validate_stop_inputs
-from dolphin_tracker.domain.validation import stop_details
+from dolphin_tracker.domain.validation import (
+    EDITABLE_FIELDS,
+    FIELDS_BY_NAME,
+    STORE_FIELDS,
+    Kind,
+    StoreField,
+    stop_details,
+    validate_store_values,
+)
 from dolphin_tracker.repositories.projects import ProjectRepository
 from dolphin_tracker.repositories.stores import StoreRepository
 from dolphin_tracker.services.geocoding import Geocoder
 from dolphin_tracker.services.routing import sync_routing_slot
 
-SORT_KEYS = ("store_name", "addr", "status", "installer", "day", "updated_at", "display_id")
+FILTER_FIELDS = ("status", "installer", "pa", "state", "city", "dma", "venue_type", "dd_code", "screen_size")
+SORT_KEYS = frozenset(
+    {"store_name", "addr", "status", "installer", "day", "updated_at", "display_id", "screens"}
+    | {spec.name for spec in STORE_FIELDS if spec.kind not in (Kind.TRISTATE, Kind.BOOL)}
+)
 ADDRESS_PARTS = ("addr", "city", "state", "zip")
-DETAIL_TEXT_FIELDS = ("store_name", *ADDRESS_PARTS)
+TEXT_KINDS = frozenset({Kind.TEXT, Kind.MULTILINE, Kind.PHONE, Kind.EMAIL, Kind.URL, Kind.SELECT})
 CSV_FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
+SEARCHED = ("display_id", "external_id", "store_name", "addr", "city", "zip", "comment", "pa", "dma", "venue_type",
+            "owner_name", "onsite_contact_name", "installer_name")
 
 
 @dataclass
 class StoreQuery:
+    """Filters (STORE-MODEL §5), search and sort. Within one filter values are OR'ed; filters are AND'ed."""
+
     status: list[ScreenStatus] = field(default_factory=list)
     installer: list[str] = field(default_factory=list)  # "" matches unassigned stops
+    pa: list[str] = field(default_factory=list)
+    state: list[str] = field(default_factory=list)
+    city: list[str] = field(default_factory=list)
+    dma: list[str] = field(default_factory=list)
+    venue_type: list[str] = field(default_factory=list)
+    dd_code: list[str] = field(default_factory=list)  # any screen's venue_id
+    screen_size: list[str] = field(default_factory=list)  # any screen's size
     q: str = ""
     sort: str = "store_name"
     dir: str = "asc"
+
+    def without(self, name: str) -> StoreQuery:
+        """The same query with one filter cleared (facet counts, the top-states chart)."""
+        return replace(self, **{name: []})
+
+
+def pa_values(stop: Stop, project: Project) -> list[str]:
+    """A store's PA(s): its own when the sheet had a PA column, else the project's (STORE-MODEL §1.3)."""
+    return [part.strip() for part in (stop.pa or project.pa).split(",") if part.strip()]
+
+
+def facet_values(stop: Stop, project: Project, name: str) -> list[str]:
+    """The value(s) a store has for one filter; "" counts as a value only for the installer (unassigned)."""
+    match name:
+        case "status":
+            return [stop.status.value]
+        case "installer":
+            return [stop.installer]
+        case "pa":
+            return pa_values(stop, project)
+        case "dd_code":
+            return [screen.venue_id for screen in stop.screens if screen.venue_id]
+        case "screen_size":
+            return [screen.screen_size for screen in stop.screens if screen.screen_size]
+        case _:
+            value = getattr(stop, name)
+            return [value] if value else []
 
 
 def _natural(value: str) -> tuple:
@@ -60,12 +114,16 @@ def _natural(value: str) -> tuple:
 def _sort_value(stop: Stop, sort: str) -> Any:
     if sort.startswith("fields."):
         value = stop.fields.get(sort.removeprefix("fields."))
+    elif sort == "screens":
+        value = len(stop.screens)
     else:
         value = getattr(stop, sort)
     if value is None or value == "":
         return None
-    if sort == "display_id":
+    if sort in ("display_id", "external_id"):
         return (1, _natural(value))
+    if sort == "status":
+        return (0, STATUS_PRECEDENCE.index(value))  # least progressed first
     if isinstance(value, bool):
         return (0, int(value))
     if isinstance(value, (int, float)):
@@ -74,7 +132,8 @@ def _sort_value(stop: Stop, sort: str) -> Any:
 
 
 def _matches(stop: Stop, needle: str) -> bool:
-    haystack = [stop.display_id, stop.store_name, stop.addr, stop.city, stop.zip, stop.comment]
+    haystack = [str(getattr(stop, name)) for name in SEARCHED]
+    haystack.extend(f"{screen.stick_number} {screen.venue_id}" for screen in stop.screens)
     haystack.extend(str(value) for value in stop.fields.values() if value not in (None, ""))
     return any(needle in text.lower() for text in haystack)
 
@@ -84,6 +143,22 @@ def _csv_cell(value: Any) -> Any:
     if isinstance(value, str) and value.startswith(CSV_FORMULA_PREFIXES):
         return "'" + value
     return value
+
+
+def _csv_value(spec: StoreField, value: Any) -> Any:
+    if spec.kind == Kind.TRISTATE:
+        return "" if value is None else ("yes" if value else "no")
+    if spec.kind == Kind.BOOL:
+        return "yes" if value else "no"
+    return "" if value is None else value
+
+
+def screen_summary(screen: Screen) -> str:
+    """One screen row for the CSV: stick / DD code / size / kind / mount / status."""
+    kind = "Dolphin screen" if screen.is_dolphin_screen else "Store TV"
+    mount = f"{'ceiling' if screen.has_ceiling_mount else 'wall'} mount{'' if screen.has_mount else ' (none yet)'}"
+    parts = [screen.stick_number or "—", screen.venue_id or "—", screen.screen_size or "—", kind, mount]
+    return " / ".join([*parts, screen.status.value])
 
 
 class StoreService:
@@ -106,7 +181,17 @@ class StoreService:
 
     # ---- reads --------------------------------------------------------------------------------------------
 
-    def _query(self, project: Project, query: StoreQuery) -> list[Stop]:
+    def _filter(self, project: Project, stops: list[Stop], query: StoreQuery) -> list[Stop]:
+        for name in FILTER_FIELDS:
+            wanted = {str(value) for value in getattr(query, name)}
+            if wanted:
+                stops = [stop for stop in stops if wanted.intersection(facet_values(stop, project, name))]
+        needle = query.q.strip().lower()
+        if needle:
+            stops = [stop for stop in stops if _matches(stop, needle)]
+        return stops
+
+    def _query(self, project: Project, query: StoreQuery, stops: list[Stop] | None = None) -> list[Stop]:
         sort = query.sort or "store_name"
         if sort not in SORT_KEYS and not sort.startswith("fields."):
             raise ValueError(f"Unknown sort {sort!r}")
@@ -114,18 +199,7 @@ class StoreService:
             raise ValueError(f"Unknown sort field {sort!r}")
         if query.dir not in ("asc", "desc"):
             raise ValueError("dir must be asc or desc")
-
-        stops = self._stores.list_all(project.id)
-        if query.status:
-            wanted = set(query.status)
-            stops = [stop for stop in stops if stop.status in wanted]
-        if query.installer:
-            wanted_installers = set(query.installer)
-            stops = [stop for stop in stops if stop.installer in wanted_installers]
-        needle = query.q.strip().lower()
-        if needle:
-            stops = [stop for stop in stops if _matches(stop, needle)]
-
+        stops = self._filter(project, self._stores.list_all(project.id) if stops is None else stops, query)
         # Stable two-step sort: a deterministic tie-break first, then the requested key; blanks always last.
         stops.sort(key=lambda stop: (_natural(stop.display_id), stop.uid))
         present = [stop for stop in stops if _sort_value(stop, sort) is not None]
@@ -167,6 +241,40 @@ class StoreService:
             if stop.lat is not None and stop.lng is not None
         ]
 
+    def filters(self, project_id: str, query: StoreQuery | None = None) -> dict[str, list[dict[str, Any]]]:
+        """Distinct values per filter with store counts, for the filter bar (STORE-MODEL §5).
+
+        Each filter's options are counted over the stores matching every *other* active filter and the search,
+        so e.g. the city list narrows to the chosen state. An empty list means the filter has no values (the UI
+        greys it out). Statuses come in precedence order, other values alphabetically."""
+        project = self._project(project_id)
+        query = query or StoreQuery()
+        everything = self._stores.list_all(project_id)
+        result: dict[str, list[dict[str, Any]]] = {}
+        for name in FILTER_FIELDS:
+            counts: Counter[str] = Counter()
+            for stop in self._filter(project, list(everything), query.without(name)):
+                counts.update(set(facet_values(stop, project, name)))
+            if name == "status":
+                ordered = [status.value for status in STATUS_PRECEDENCE if counts[status.value]]
+            else:
+                ordered = sorted(counts, key=lambda value: (value == "", _natural(value)))
+            result[name] = [{"value": value, "count": counts[value]} for value in ordered]
+        return result
+
+    def by_state(
+        self, project_id: str, query: StoreQuery | None = None, *, pending: bool = True, limit: int = 10
+    ) -> list[dict[str, Any]]:
+        """Stores per state, most first (the "Top states by upcoming installs" chart): the active filters apply
+        except State itself, so clicking a bar never empties the chart. `pending` keeps pending-status stores."""
+        project = self._project(project_id)
+        stops = self._filter(project, self._stores.list_all(project_id), (query or StoreQuery()).without("state"))
+        counts = Counter(
+            stop.state for stop in stops if stop.state and (not pending or stop.status in PENDING_STATUSES)
+        )
+        ranked = sorted(counts.items(), key=lambda item: (-item[1], item[0]))[:limit]
+        return [{"state": state, "count": count} for state, count in ranked]
+
     def field_usage(self, project_id: str) -> dict[str, int]:
         """How many stores hold a non-empty value per `fields` key (Settings warns before a field is removed)."""
         self._project(project_id)
@@ -178,25 +286,29 @@ class StoreService:
         return counts
 
     def export_csv(self, project_id: str, query: StoreQuery | None = None) -> str:
-        """Core columns, then schema columns by label, then progress. Same filters and order as the list."""
+        """One row per store: the §2 fields in §3 order, the screens (count, actual counts, rows joined with
+        "; "), routing, progress, then the project's extra fields. Same filters and order as the list."""
         project = self._project(project_id)
         schema = project.field_schema
         header = [
-            "ID", "Store Name", "Address", "City", "State", "ZIP", "Lat", "Lng", "Installer", "Day", "Seq",
-            *[f.label for f in schema],
-            "Status", "Comment", "Additional Task", "Installer Name", "Updated By", "Updated At",
+            "ID", *[spec.label for spec in STORE_FIELDS], "Lat", "Lng", "Status", "Screens",
+            "Dolphin screens (actual)", "Store TVs (actual)", "Screen rows", "Installer", "Day", "Seq",
+            "Completed by", "Additional task", "Comment", *[f.label for f in schema], "Updated by", "Updated at",
         ]
         buffer = io.StringIO()
         writer = csv.writer(buffer)
         writer.writerow(header)
         for stop in self._query(project, query or StoreQuery()):
+            details = {spec.name: _csv_value(spec, getattr(stop, spec.name)) for spec in STORE_FIELDS}
+            details["pa"] = details["pa"] or project.pa
+            dolphin = sum(1 for screen in stop.screens if screen.is_dolphin_screen)
             row = [
-                stop.display_id, stop.store_name, stop.addr, stop.city, stop.state, stop.zip,
+                stop.display_id, *details.values(),
                 "" if stop.lat is None else stop.lat, "" if stop.lng is None else stop.lng,
-                stop.installer, stop.day, stop.seq,
-                *[stop.fields.get(f.key, "") for f in schema],
-                stop.status.value, stop.comment, "yes" if stop.additional_task else "no",
-                stop.installer_name, stop.updated_by, stop.updated_at,
+                stop.status.value, len(stop.screens), dolphin, len(stop.screens) - dolphin,
+                "; ".join(screen_summary(screen) for screen in stop.screens),
+                stop.installer, stop.day, stop.seq, stop.installer_name, "yes" if stop.additional_task else "no",
+                stop.comment, *[stop.fields.get(f.key, "") for f in schema], stop.updated_by, stop.updated_at,
             ]
             writer.writerow([_csv_cell(value) for value in row])
         return buffer.getvalue()
@@ -204,24 +316,26 @@ class StoreService:
     # ---- writes -------------------------------------------------------------------------------------------
 
     def update_details(self, project_id: str, stop_uid: str, changes: dict[str, Any]) -> Stop:
-        """Edit store name, address parts and schema fields. A changed address is geocoded first; partial or
-        failed matches are refused with suggestions. Routing and progress attributes are never part of this write."""
+        """Edit the planner-editable store attributes (STORE-MODEL §2) and the project's extra fields. A changed
+        address is geocoded first; partial or failed matches are refused with suggestions. The IBC#, PA, routing
+        and progress attributes are never part of this write (the API model rejects them)."""
         project = self._project(project_id)
         current = self.get(project_id, stop_uid)
-        update: dict[str, Any] = {}
-        errors: list[str] = []
+        unknown = set(changes) - EDITABLE_FIELDS - {"fields"}
+        if unknown:
+            raise ValidationFailed(f"Not editable here: {', '.join(sorted(unknown))}", errors=sorted(unknown))
 
-        for key in DETAIL_TEXT_FIELDS:
-            if key in changes and changes[key] is not None:
-                update[key] = str(changes[key]).strip()
-        if update.get("store_name", current.store_name) == "":
-            errors.append("Store name is required")
-        if update.get("addr", current.addr) == "":
-            errors.append("Address is required")
+        update: dict[str, Any] = {}
+        for name, value in changes.items():
+            if name == "fields":
+                continue
+            spec = FIELDS_BY_NAME[name]
+            update[name] = ("" if value is None else str(value).strip()) if spec.kind in TEXT_KINDS else value
+        problems = validate_store_values(update, partial=True)
         fields = changes.get("fields") or {}
-        errors.extend(validate_fields(project.field_schema, fields, partial=True))
+        errors = [*problems.values(), *validate_fields(project.field_schema, fields, partial=True)]
         if errors:
-            raise ValidationFailed("; ".join(errors), errors=errors)
+            raise ValidationFailed("; ".join(errors), errors=errors, fields=problems)
 
         address_changed = any(key in update and update[key] != getattr(current, key) for key in ADDRESS_PARTS)
         if address_changed:
@@ -237,33 +351,43 @@ class StoreService:
                 )
             update.update(lat=geo.get("lat"), lng=geo.get("lng"), geocoded=geo.get("formatted") or lookup)
             update["route_stale"] = True  # the routes were built for the old location
-        else:
-            for key in ADDRESS_PARTS:  # unchanged parts need no write
-                if key in update and update[key] == getattr(current, key):
-                    update.pop(key)
+        update = {
+            key: value for key, value in update.items() if key not in EDITABLE_FIELDS or value != getattr(current, key)
+        }  # unchanged values need no write
 
         for key, value in coerce_fields(project.field_schema, fields).items():
             update[f"fields.{key}"] = value  # one entry each, so concurrent edits to other fields survive
-        if "store_name" in update and update["store_name"] == current.store_name:
-            update.pop("store_name")
         if not update:
             return current
         return self._stores.update_fields(project_id, stop_uid, update)
 
-    def update_progress(self, project_id: str, stop_uid: str, changes: dict[str, Any]) -> Stop:
-        """Status / comment / additional task / installer name / updated_by only."""
+    def update_screens(
+        self, project_id: str, stop_uid: str, screens: list[ScreenInput], *, updated_by: str = ""
+    ) -> Stop:
+        """Replace a store's screen rows (full list, ≥ 1). Rows sent back with the id of one of this store's
+        screens keep it; any other row gets a new server-minted id. The derived status follows."""
         current = self.get(project_id, stop_uid)
+        if not screens:
+            raise ValidationFailed("A store needs at least one screen")
+        known = {screen.id for screen in current.screens}
+        rows = [
+            screen.model_copy(update={"id": screen.id if screen.id in known else None}).to_screen()
+            for screen in screens
+        ]
+        ids = [row.id for row in rows]
+        if len(set(ids)) != len(ids):
+            raise ValidationFailed("The same screen appears twice")
+        return self._stores.update_screens(project_id, stop_uid, rows, updated_by=updated_by.strip())
+
+    def update_progress(self, project_id: str, stop_uid: str, changes: dict[str, Any]) -> Stop:
+        """Comment / additional task / installer name / updated_by. Status is per screen (`update_screens`)."""
+        self.get(project_id, stop_uid)
         update = {key: value for key, value in changes.items() if value is not None}
-        extra = set(update) - PROGRESS_FIELDS
+        extra = set(update) - (PROGRESS_FIELDS - {"screens", "status"})
         if extra:
             raise ValueError(f"Not progress fields: {sorted(extra)}")
         if not update:
             raise ValidationFailed("Nothing to update")
-        if "status" in update:  # status lives on the screens: set every screen, then the derived summary
-            status = ScreenStatus(update["status"])
-            screens = [screen.model_copy(update={"status": status}) for screen in current.screens]
-            update["screens"] = [screen.model_dump(mode="json") for screen in screens]
-            update["status"] = derive_store_status(screens).value
         return self._stores.update_fields(project_id, stop_uid, update)
 
     # ---- append -------------------------------------------------------------------------------------------
@@ -346,7 +470,7 @@ class StoreService:
             self._stores.put_many(project_id, appended)
             pa_values = {clean_cell(part) for part in project.pa.split(",") if clean_cell(part)}
             pa_values |= {clean_cell(part) for part in pa.split(",") if clean_cell(part)}
-            pa_values |= {value for stop in appended if (value := clean_cell(stop.fields.get("pa")))}
+            pa_values |= {value for stop in appended if (value := clean_cell(stop.pa))}
             assert self._projects is not None
             changes: dict[str, Any] = {
                 "stop_count": len(existing) + len(appended), "pa": ", ".join(sorted(pa_values)) or project.pa

@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
 import { useValidateAddress } from "@/features/places/api";
-import { useStore, useUpdateProgress, useUpdateStoreDetails } from "@/features/stores/api";
+import { useStore, useUpdateProgress, useUpdateScreens, useUpdateStoreDetails, withStatus } from "@/features/stores/api";
 import { addressChanged, detailsErrors, detailsFormFrom, detailsPatch, type DetailsForm } from "@/features/stores/details";
 import { ApiError, STOP_STATUSES, type FieldDef, type Project, type Stop } from "@/lib/api/types";
 import { STATUS_META } from "@/lib/status";
@@ -50,6 +50,7 @@ export function StoreDrawer({ project, stopId, open, onClose }: Props) {
 
 function ProgressForm({ project, stop }: { project: Project; stop: Stop }) {
   const progress = useUpdateProgress(project.id);
+  const screens = useUpdateScreens(project.id);
   const [comment, setComment] = useState(stop.comment);
   const [installerName, setInstallerName] = useState(stop.installer_name);
   useEffect(() => setComment(stop.comment), [stop.comment]);
@@ -65,7 +66,15 @@ function ProgressForm({ project, stop }: { project: Project; stop: Stop }) {
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="space-y-1.5">
           <Label>Status</Label>
-          <Select value={stop.status} onValueChange={(value) => save({ status: value as Stop["status"] })}>
+          <Select
+            value={stop.status}
+            onValueChange={(value) =>
+              screens.mutate(
+                { uid: stop.uid, screens: withStatus(stop, value as Stop["status"]) },
+                { onError: (error) => toast.error(error instanceof Error ? error.message : "Could not save the status") },
+              )
+            }
+          >
             <SelectTrigger aria-label="Status" className="w-full">
               <SelectValue />
             </SelectTrigger>

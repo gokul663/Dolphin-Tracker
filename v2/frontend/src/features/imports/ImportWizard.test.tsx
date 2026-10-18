@@ -12,16 +12,17 @@ function row(index: number, overrides: Partial<ImportRow> = {}): ImportRow {
     index, address: `${index} Main St`, store_name: `Store ${index}`, pa: "North", status: "valid", confidence: 100,
     verified_by: ["geocoding", "places"], formatted: `${index} Main St, Atlanta, GA 30303, USA`, addr: `${index} Main St`,
     city: "Atlanta", state: "GA", zip: "30303", lat: 33.7 + index / 100, lng: -84.4, place_name: "", suggestions: [],
-    error: "", venue_status: "Incomplete", venue_status_valid: true, venue_status_raw: "",
+    error: "", coordinates_source: "geocode", installer_name: "", details: {}, screens: [], problems: {},
+    duplicate_of: null, duplicate_reason: "", external_id: `IBC-${index}`, venue_status: "Upcoming", venue_status_valid: true, venue_status_raw: "",
     fields: { dma: "ATL", screens: String(index) }, ...overrides,
   };
 }
 
 const RESULT: ImportResult = {
-  columns: ["store_name", "address", "pa", "dma", "screens"], address_column: "address", store_column: "store_name",
-  extra_columns: ["screens"], summary: { total: 3, valid: 2, needs_review: 1, invalid: 0 }, pa_names: ["North"],
+  columns: ["store_name", "address", "pa", "dma", "screens"], mapping: {}, address_column: "address", store_column: "store_name",
+  extra_columns: ["screens"], summary: { total: 3, valid: 2, needs_review: 1, invalid: 0, duplicates: 0 }, pa_names: ["North"],
   rows: [
-    row(0, { venue_status: "Complete" }),
+    row(0, { venue_status: "Completed" }),
     row(1, { store_name: "" }),
     row(2, { status: "needs_review", confidence: 0, lat: null, lng: null, formatted: "", suggestions: ["2 Main St NW, Atlanta, GA, USA"] }),
   ],
@@ -100,9 +101,9 @@ describe("ImportWizard: new project", () => {
       stops: { store_name: string; addr: string; lat: number; fields: Record<string, string>; initial_status: string }[];
     };
     expect(body).toMatchObject({ name: "Wave 3", installers: ["Ann"], stops_per_day: 8, pa_percentage: 40 });
-    expect(body.field_schema.at(-1)).toMatchObject({ key: "screens", source_column: "screens" });
+    expect(body.field_schema.at(-1)).toMatchObject({ key: "screens_field", source_column: "screens" }); // reserved key
     expect(body.stops.map((stop) => stop.store_name)).toEqual(["Store 0", "Named Store", "Store 2"]); // typing kept the row mounted
-    expect(body.stops[0]).toMatchObject({ initial_status: "Complete", fields: { pa: "North", dma: "ATL", screens: "0" } });
+    expect(body.stops[0]).toMatchObject({ initial_status: "Completed", fields: { pa: "North", dma: "ATL", screens_field: "0" } });
     expect(body.stops[2]).toMatchObject({ addr: "2 Main St NW", lat: 33.72 });
   });
 });
@@ -157,7 +158,7 @@ describe("ImportWizard: append", () => {
     expect(screen.getByText(/1 skipped as duplicates/)).toBeTruthy();
     const patch = calls.find((call) => call.method === "PATCH")?.body as { field_schema: { key: string }[]; expected_version: number };
     expect(patch.expected_version).toBe(4);
-    expect(patch.field_schema.at(-1)?.key).toBe("screens");
+    expect(patch.field_schema.at(-1)?.key).toBe("screens_field");
     const appended = calls.find((call) => call.url.pathname.endsWith("/stores/append"))?.body as { stops: unknown[]; pa: string };
     expect(appended.stops).toHaveLength(3);
     expect(appended.pa).toBe("North");

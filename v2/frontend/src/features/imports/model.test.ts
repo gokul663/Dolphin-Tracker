@@ -23,16 +23,17 @@ function row(index: number, overrides: Partial<ImportRow> = {}): ImportRow {
     index, address: `${index} Main St`, store_name: `Store ${index}`, pa: "North", status: "valid", confidence: 100,
     verified_by: ["geocoding"], formatted: `${index} Main St, Atlanta, GA 30303, USA`, addr: `${index} Main St`,
     city: "Atlanta", state: "GA", zip: "30303", lat: 33.7, lng: -84.4, place_name: "", suggestions: [], error: "",
-    venue_status: "Incomplete", venue_status_valid: true, venue_status_raw: "", fields: {}, ...overrides,
+    coordinates_source: "geocode", installer_name: "", details: {}, screens: [], problems: {}, duplicate_of: null,
+    duplicate_reason: "", external_id: `IBC-${index}`,
+    venue_status: "Upcoming", venue_status_valid: true, venue_status_raw: "", fields: {}, ...overrides,
   };
 }
 
 const RESULT: ImportResult = {
-  columns: ["store_name", "address", "pa", "dma", "owner_phone", "screens"],
-  address_column: "address", store_column: "store_name", extra_columns: ["owner_phone", "screens"],
-  summary: { total: 4, valid: 2, needs_review: 1, invalid: 1 }, pa_names: ["North"],
+  columns: ["store_name", "address", "pa", "dma", "owner_phone", "screens"], mapping: {}, address_column: "address", store_column: "store_name", extra_columns: ["owner_phone", "screens"],
+  summary: { total: 4, valid: 2, needs_review: 1, invalid: 1, duplicates: 0 }, pa_names: ["North"],
   rows: [
-    row(0, { fields: { dma: "ATL", owner_phone: "555-010-0100", screens: "3" }, venue_status: "Complete" }),
+    row(0, { fields: { dma: "ATL", owner_phone: "555-010-0100", screens: "3" }, venue_status: "Completed" }),
     row(1, { store_name: "", fields: { dma: "ATL", owner_phone: "call me", screens: "" } }),
     row(2, { status: "needs_review", confidence: 0, lat: null, lng: null, suggestions: ["2 Main St, Atlanta, GA"] }),
     row(3, { status: "invalid", address: "", lat: null, lng: null }),
@@ -84,9 +85,9 @@ describe("column mapping", () => {
   it("adds unknown columns to the schema with unique keys and catches double mappings", () => {
     const mapping = { ...autoMap(mappableColumns(RESULT), SCHEMA) };
     mapping.screens = newFieldTarget("screens", SCHEMA, mapping);
-    expect(mapping.screens).toEqual({ kind: "new", key: "screens", label: "Screens" });
+    expect(mapping.screens).toEqual({ kind: "new", key: "screens_field", label: "Screens" }); // "screens" is reserved
     const schema = extendedSchema(SCHEMA, mapping);
-    expect(schema.at(-1)).toMatchObject({ key: "screens", source_column: "screens", type: "text" });
+    expect(schema.at(-1)).toMatchObject({ key: "screens_field", source_column: "screens", type: "text" });
     expect(mappingErrors({ ...mapping, dma: { kind: "field", key: "pa" } })).toEqual(["pa and dma both map to pa"]);
   });
 
@@ -100,9 +101,9 @@ describe("column mapping", () => {
     const stops = buildStops(rows, mapping, schema);
     expect(stops).toHaveLength(2); // rows 2 and 3 are not verified
     expect(stops[0]).toMatchObject({
-      store_name: "Store 0", addr: "0 Main St", lat: 33.7, initial_status: "Complete",
+      store_name: "Store 0", addr: "0 Main St", lat: 33.7, initial_status: "Completed",
       geocoded: "0 Main St, Atlanta, GA 30303, USA",
-      fields: { pa: "North", dma: "ATL", owner_phone: "555-010-0100", screens: "3" },
+      fields: { pa: "North", dma: "ATL", owner_phone: "555-010-0100", screens_field: "3" },
     });
     expect(stops[1]?.fields).toEqual({ pa: "North", dma: "ATL", owner_phone: "call me" });
     expect(buildStops(rows, mapping, schema, { dropInvalid: true })[1]?.fields).toEqual({ pa: "North", dma: "ATL" });

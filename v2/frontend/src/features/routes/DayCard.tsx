@@ -20,7 +20,7 @@ import {
   toCsv,
   uniqueCities,
 } from "@/features/routes/routeModel";
-import { useUpdateProgress } from "@/features/stores/api";
+import { useUpdateScreens, withStatus } from "@/features/stores/api";
 import { downloadText } from "@/lib/download";
 import { STOP_STATUSES, type Project, type Stop } from "@/lib/api/types";
 import { STATUS_META } from "@/lib/status";
@@ -42,7 +42,7 @@ interface Props {
 export function DayCard({ project, installer, color, day, totalDays, stops, collapsed, onToggle, onEdit, onReassign }: Props) {
   const [showAddresses, setShowAddresses] = useState(false);
   const [copied, setCopied] = useState(false);
-  const progress = useUpdateProgress(project.id);
+  const screens = useUpdateScreens(project.id);
   const active = routableStops(stops);
   const chunks = routeChunks(active);
   const counts = tally(stops);
@@ -73,7 +73,7 @@ export function DayCard({ project, installer, color, day, totalDays, stops, coll
           <div className="flex flex-wrap justify-end gap-1 font-mono text-[10px]">
             <span className="rounded bg-emerald-50 px-1.5 text-emerald-700">{counts.complete} done</span>
             <span className="rounded bg-amber-50 px-1.5 text-amber-700">{counts.pending} upcoming</span>
-            {counts.technical > 0 && <span className="rounded bg-rose-50 px-1.5 text-rose-700">{counts.technical} tech</span>}
+            {counts.offline > 0 && <span className="rounded bg-rose-50 px-1.5 text-rose-700">{counts.offline} offline</span>}
             {counts.other > 0 && <span className="rounded bg-violet-50 px-1.5 text-violet-700">{counts.other} other</span>}
           </div>
           <span className="font-mono text-[10px] text-slate-500">
@@ -108,7 +108,7 @@ export function DayCard({ project, installer, color, day, totalDays, stops, coll
                       <div className="truncate font-mono text-[10px] text-slate-400">
                         {stop.display_id}
                         {stopPAs(stop).length ? ` · PA ${stopPAs(stop).join(", ")}` : ""}
-                        {stop.fields.venue_code ? ` · ${String(stop.fields.venue_code)}` : ""}
+                        {stop.external_id ? ` · ${stop.external_id}` : ""}
                         {stop.installer_name && stop.installer_name !== installer ? ` · by ${stop.installer_name}` : ""}
                       </div>
                     </div>
@@ -120,8 +120,8 @@ export function DayCard({ project, installer, color, day, totalDays, stops, coll
                     <Select
                       value={stop.status}
                       onValueChange={(value) =>
-                        progress.mutate(
-                          { uid: stop.uid, body: { status: value as Stop["status"] } },
+                        screens.mutate(
+                          { uid: stop.uid, screens: withStatus(stop, value as Stop["status"]) },
                           { onError: (error) => toast.error(`Status not saved: ${error.message}`) },
                         )
                       }

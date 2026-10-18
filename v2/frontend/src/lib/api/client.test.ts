@@ -15,9 +15,9 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe("apiUrl", () => {
   it("repeats array params and drops empty ones", () => {
-    const url = new URL(apiUrl("/projects/p1/stores", { status: ["Complete", "Other"], installer: [""], q: undefined, limit: 50 }));
+    const url = new URL(apiUrl("/projects/p1/stores", { status: ["Completed", "Other"], installer: [""], q: undefined, limit: 50 }));
     expect(url.pathname).toBe("/api/projects/p1/stores");
-    expect(url.searchParams.getAll("status")).toEqual(["Complete", "Other"]);
+    expect(url.searchParams.getAll("status")).toEqual(["Completed", "Other"]);
     expect(url.searchParams.getAll("installer")).toEqual([""]);
     expect(url.searchParams.has("q")).toBe(false);
     expect(url.searchParams.get("limit")).toBe("50");

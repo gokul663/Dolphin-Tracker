@@ -293,15 +293,15 @@ def format_report(reports: Iterable[ProjectReport]) -> str:
     lines = []
     header = (
         f"{'project':<38} {'stops':>6} {'states':>7} {'matched':>8} {'orphan':>7} "
-        f"{'old c/p/t/o':>16} {'new c/p/t/o':>16}"
+        f"{'old c/p/off/o':>16} {'new c/p/off/o':>16}"
     )
     lines.append(header)
     lines.append("-" * len(header))
     totals = defaultdict(int)
     for report in reports:
         old, new = report.old_kpi, report.new_kpi
-        old_counts = f"{old.complete}/{old.pending}/{old.technical}/{old.other}" if old else "-"
-        new_counts = f"{new.complete}/{new.pending}/{new.technical}/{new.other}" if new else "-"
+        old_counts = f"{old.complete}/{old.pending}/{old.offline}/{old.other}" if old else "-"
+        new_counts = f"{new.complete}/{new.pending}/{new.offline}/{new.other}" if new else "-"
         flag = "" if report.kpi_matches else "  << KPI differs"
         lines.append(
             f"{report.name[:38]:<38} {report.stops:>6} {report.states:>7} {report.matched_states:>8} "

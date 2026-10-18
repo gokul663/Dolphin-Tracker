@@ -19,10 +19,19 @@ export type FieldDefInput = Schemas["FieldDef-Input"];
 export type FieldType = Schemas["FieldType"];
 export type Stop = Schemas["Stop"];
 export type StopInput = Schemas["StopInput"];
-export type StopStatus = Schemas["StopStatus"];
+export type ScreenStatus = Schemas["ScreenStatus"];
+/** A store's status is its screens' derived status, so one vocabulary covers both. */
+export type StopStatus = ScreenStatus;
+export type Screen = Schemas["Screen"];
+export type ScreenInput = Schemas["ScreenInput"];
+export type ScreensUpdate = Schemas["ScreensUpdate"];
 export type Pin = Schemas["Pin"];
 export type StoreDetailsUpdate = Schemas["StoreDetailsUpdate"];
 export type ProgressUpdate = Schemas["ProgressUpdate"];
+export type StoreFilterOptions = Schemas["StoreFilterOptions"];
+export type FilterOption = Schemas["FilterOption"];
+export type StateCount = Schemas["StateCount"];
+export type SkippedStop = Schemas["SkippedStop"];
 export type AppendStops = Schemas["AppendStops"];
 export type AppendResult = Schemas["AppendResult"];
 export type RoutesBundle = Schemas["RoutesBundle"];
@@ -46,13 +55,36 @@ export interface Page<T> {
   next_cursor: string | null;
 }
 
-export const STOP_STATUSES: readonly StopStatus[] = ["Incomplete", "Complete", "Technical Issue", "Other"];
+/** STORE-MODEL §4.2, in derivation precedence (least progressed first). */
+export const STOP_STATUSES: readonly ScreenStatus[] = [
+  "Upcoming",
+  "Invitation Email Sent",
+  "Shipped",
+  "Delivered",
+  "Offline",
+  "Completed",
+  "Archived",
+  "Cancelled",
+];
+
+/** Still needs a technician visit, so it is routed. Offline is not (STORE-MODEL §7 #2). */
+export const PENDING_STATUSES: ReadonlySet<ScreenStatus> = new Set(["Upcoming", "Invitation Email Sent", "Shipped", "Delivered"]);
+
+export const isPending = (status: ScreenStatus) => PENDING_STATUSES.has(status);
+
+/** The least-progressed status among `statuses` (how a store's status derives from its screens). */
+export function deriveStatus(statuses: Iterable<ScreenStatus>): ScreenStatus {
+  const present = new Set(statuses);
+  return STOP_STATUSES.find((status) => present.has(status)) ?? "Upcoming";
+}
 
 /** Body of a 422 raised by a service rule (`ValidationFailed`): message plus optional structured parts. */
 export interface ValidationDetail {
   message: string;
   errors?: string[];
   stops?: { index: number; errors: string[] }[];
+  /** Detail edits: attribute → message for the store fields that broke a rule. */
+  fields?: Record<string, string>;
   suggestions?: string[];
   google_status?: string | null;
 }

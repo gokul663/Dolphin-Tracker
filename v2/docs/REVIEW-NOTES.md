@@ -1688,3 +1688,89 @@ attribute/fields split; status parity (match and a forced mismatch) and the new 
 
 **Verified:** gates green (289 backend, 102 frontend). The Mongo round trip from round 1 (throwaway container)
 was not re-run; the transform is covered by the fixture tests and the writer is S3's `put_many`.
+
+---
+
+## S4 · Store API v2, KPI v2, client regenerated (and S5's frontend half)
+
+**Changed — backend**
+- `PATCH …/stores/{uid}` (`StoreDetailsUpdate`, `extra="forbid"`):
+  - Accepts every planner-editable §2 attribute, including both committed counts, plus `fields`. Text
+    `null` reads as ""; tri-states and counts accept `null` (back to unknown).
+  - Rules come from the registry (phone, email, url, outlet status, counts ≥ 0, name and address required).
+    The 422 detail carries `fields: {attribute: message}`.
+  - `external_id`, `pa`, `source_date`, routing, progress and `screens` keys are a 422.
+  - The address geocode-on-save is unchanged.
+- `PUT …/stores/{uid}/screens` (`ScreensUpdate`) is a full replace of ≥ 1 rows:
+  - an `id` that belongs to the store is kept; any other id, or none, is minted;
+  - duplicate ids → 422;
+  - the derived status and `updated_by` are written by `update_screens` (S3).
+- `PATCH …/progress` no longer takes `status` (`extra="forbid"` → 422); status is per screen.
+- `GET …/stores/filters` → `StoreFilterOptions`: per filter, `[{value, count}]`.
+  - Each facet is counted over the stores matching all **other** active filters and the search, so City
+    narrows to the chosen State (this supersedes the X9 city item).
+  - Empty list = nothing to filter (grey it out).
+  - Statuses come in precedence order, the rest naturally sorted, unassigned installer last.
+- `GET …/stores/by-state?pending=true&limit=10` → `[{state, count}]`. Every filter applies except State, so
+  clicking a bar never removes the other bars.
+- List, pins, export, filters and by-state share the filters (repeatable query params):
+  `pa` (falls back to the project's PA), `state`, `city`, `dma`, `venue_type`, `dd_code` (any screen's
+  venue id), `screen_size` (any screen's size).
+  - Search also covers IBC#, PA, DMA, venue type, owner/on-site names, installer name and screen
+    sticks/venue ids.
+  - Sort accepts any non-boolean store attribute, `status` (least progressed first) and `screens` (row count).
+- `GET …/stores/export.csv` columns:
+  - ID, then the §2 fields in §3 order by label, with PA falling back to the project, tri-states as
+    yes/no/blank, bools as yes/no;
+  - Lat/Lng, Status, Screens, Dolphin screens (actual), Store TVs (actual);
+  - "Screen rows": each row as `stick / DD code / size / kind / mount / status`, joined with "; ";
+  - routing, Completed by, Additional task, Comment, the project's extra fields, Updated by/at.
+  - Blanks inside a screen row are "—", because a leading "-" would trip the CSV formula guard.
+- KPI v2 (`domain/kpi.py`):
+  - `total`, `pending`, `complete`, `offline` (renamed from `technical`), `other` (Archived + Cancelled);
+  - `by_status` over all eight; `screens_total` and `screens_by_status`;
+  - `committed_*` next to `actual_dolphin_screens` / `actual_store_tvs`;
+  - DMA/venue-type breakdowns as before.
+  - `GET /projects/{id}` now returns `ProjectSummary`, i.e. with `kpi`.
+- New projects start with **no extra fields** (`DEFAULT_FIELD_SCHEMA = ()`; `/config/field-schema` → `[]`).
+  - Every store attribute name, plus `screens`, is a reserved schema key.
+  - `validate_schema` grandfathers keys the project already has, so pre-v2 projects can still save their
+    schema.
+
+**Changed — frontend (minimal, to compile and keep working; the real UI is S7–S10)**
+- `make gen-api`, now with openapi-typescript `--default-non-nullable false`.
+  - Without it, every defaulted **request** field became required, which would force the wizard to send all
+    40 attributes.
+  - Response types are unaffected: their `required` lists are explicit.
+  - Regeneration is reproducible (identical file on a second run).
+- `lib/api/types.ts`: v2 aliases, the eight `STOP_STATUSES` in precedence order, `PENDING_STATUSES`,
+  `isPending`, `deriveStatus`. `lib/status.ts` has an eight-colour palette (Upcoming keeps v1 amber,
+  Completed v1 green, Offline v1 red).
+- Status selects (table, drawer, day card) now call `useUpdateScreens` with `withStatus(stop, s)`, i.e. every
+  screen set to that status.
+  - It is optimistic through the extracted `applyOptimistic` / `rollback` shared with progress.
+  - This is the interim one-click status until the screens editor (S7) and the day-card follow-through (S10).
+- **S5 frontend half:**
+  - `routableStops` keeps only the pending set;
+  - `tally` is pending / complete / offline / other;
+  - a day is active, and "Route complete" shows, by the pending set;
+  - labels read "Offline" instead of "Tech".
+- Dashboard: `offline` replaces `technical`; the status pie uses `by_status` (eight slices).
+- Map stacks show their least-progressed status instead of v1's "Other".
+- Append results list skipped rows by IBC#/address.
+- `CORE_KEYS` mirror updated, with the same grandfathering in the schema editor.
+
+**Tests**
+- Backend:
+  - `tests/test_stores_api.py` rewritten into List / FilterOption / ByState / Export / DetailEdit / Screens /
+    Progress classes;
+  - KPI v2 (screens, committed vs actual) and the project detail KPI;
+  - default schema and reserved-key tests; create/append tests on attributes instead of `fields`.
+- Frontend:
+  - v2 fixtures (`makeStop` with every attribute, `makeKpi`, `makeScreen`);
+  - new `lib/api/types.test.ts` (derivation, pending set, `withStatus`);
+  - route-model pending-set tests;
+  - legend, aggregate, reserved-key and status tests moved to v2; the table and day-card status tests now
+    expect the screens PUT.
+
+**Verified:** gates green (301 backend, 108 frontend); `make gen-api` twice → identical file.

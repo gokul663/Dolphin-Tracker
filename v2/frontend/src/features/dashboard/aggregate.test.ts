@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ProjectSummary } from "@/lib/api/types";
+import { makeKpi } from "@/test/fixtures";
 import {
   aggregateTotals,
   applySelection,
@@ -18,25 +19,33 @@ function project(id: string, overrides: Partial<ProjectSummary["kpi"]> & { insta
     pa_percentage: 40, dolphin_percentage: 60, store_percentage: null, fa_percentage: null, stops_per_day: 8,
     field_schema: [], routing_status: "ready", routing_job_id: "", stop_count: 0, version: 1,
     created_at: "", updated_at: "",
-    kpi: {
-      total: 0, complete: 0, pending: 0, technical: 0, other: 0, by_status: {}, by_installer: {}, by_dma: {},
-      by_venue_type: {}, address_status: { total: 0, complete: 0, pending: 0 }, ...kpi,
-    },
+    import_mappings: {},
+    kpi: makeKpi({
+      total: 0, complete: 0, pending: 0, offline: 0, other: 0, by_status: {}, by_installer: {}, ...kpi,
+    }),
   };
 }
 
-const A = project("a", { total: 10, complete: 4, pending: 5, technical: 1, installers: ["Ann", "Bo"], by_installer: { Ann: 6, Bo: 4 } });
-const B = project("b", { total: 3, complete: 3, installers: ["Bo"], by_installer: { Bo: 3 }, name: "Atlanta wave", pa: "South" });
+const A = project("a", {
+  total: 10, complete: 4, pending: 5, offline: 1, installers: ["Ann", "Bo"], by_installer: { Ann: 6, Bo: 4 },
+  by_status: { Upcoming: 3, Shipped: 2, Completed: 4, Offline: 1 },
+});
+const B = project("b", {
+  total: 3, complete: 3, installers: ["Bo"], by_installer: { Bo: 3 }, name: "Atlanta wave", pa: "South",
+  by_status: { Completed: 3 },
+});
 const EMPTY = project("c");
 
 describe("dashboard aggregation", () => {
   it("totals projects, sites and unique installers", () => {
-    expect(aggregateTotals([A, B])).toEqual({ projects: 2, sites: 13, installers: 2, complete: 7, pending: 5, technical: 1, other: 0 });
+    expect(aggregateTotals([A, B])).toMatchObject({ projects: 2, sites: 13, installers: 2, complete: 7, pending: 5, offline: 1, other: 0 });
+    expect(aggregateTotals([A, B]).byStatus).toMatchObject({ Upcoming: 3, Shipped: 2, Completed: 7, Offline: 1, Cancelled: 0 });
   });
 
   it("sums installers across projects and drops empty status slices", () => {
     expect(sitesByInstaller([A, B])).toEqual([{ name: "Ann", value: 6 }, { name: "Bo", value: 7 }]);
-    expect(statusBreakdown(aggregateTotals([A])).map((entry) => entry.status)).toEqual(["Complete", "Incomplete", "Technical Issue"]);
+    // All eight statuses in precedence order, empty ones dropped.
+    expect(statusBreakdown(aggregateTotals([A])).map((entry) => entry.status)).toEqual(["Upcoming", "Shipped", "Offline", "Completed"]);
   });
 
   it("classifies completed projects and progress like v1", () => {

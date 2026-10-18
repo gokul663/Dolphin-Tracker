@@ -11,10 +11,10 @@ describe("useStoresUi", () => {
     expect(useStoresUi.getState().dir).toBe("desc");
     ui.setSort("day");
     expect(useStoresUi.getState()).toMatchObject({ sort: "day", dir: "asc" });
-    ui.toggleStatus("Complete");
-    ui.toggleStatus("Other");
-    ui.toggleStatus("Complete");
-    expect(useStoresUi.getState().status).toEqual(["Other"]);
+    ui.toggleStatus("Completed");
+    ui.toggleStatus("Archived");
+    ui.toggleStatus("Completed");
+    expect(useStoresUi.getState().status).toEqual(["Archived"]);
     ui.select("u1", true);
     ui.enterProject("p1"); // same project: keep state
     expect(useStoresUi.getState().selectedId).toBe("u1");

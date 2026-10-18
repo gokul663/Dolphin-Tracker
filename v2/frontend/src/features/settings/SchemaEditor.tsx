@@ -48,7 +48,7 @@ export function SchemaEditor({ project }: { project: Project }) {
     setBaseline(project.version);
   }
   const schema = useMemo(() => toSchema(rows), [rows]);
-  const errors = useMemo(() => schemaErrors(schema), [schema]);
+  const errors = useMemo(() => schemaErrors(schema, project.field_schema.map((field) => field.key)), [schema, project.field_schema]);
   const invalid = Object.keys(errors).length > 0;
   const removedSaved = project.field_schema.filter((field) => !rows.some((row) => row.key === field.key));
   const dirty = JSON.stringify(schema) !== JSON.stringify(toSchema(toRows(project)));

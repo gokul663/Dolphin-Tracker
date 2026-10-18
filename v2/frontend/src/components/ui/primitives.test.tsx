@@ -10,12 +10,12 @@ describe("shadcn primitives", () => {
     render(
       <div>
         <Button>Save</Button>
-        <Badge variant="secondary">Complete</Badge>
+        <Badge variant="secondary">Completed</Badge>
         <Checkbox aria-label="Additional task" />
       </div>,
     );
     expect(screen.getByRole("button", { name: "Save" }).className).toContain("bg-primary");
-    expect(screen.getByText("Complete")).toBeTruthy();
+    expect(screen.getByText("Completed")).toBeTruthy();
     const box = screen.getByRole("checkbox", { name: "Additional task" });
     await userEvent.click(box);
     expect(box.getAttribute("data-state")).toBe("checked");

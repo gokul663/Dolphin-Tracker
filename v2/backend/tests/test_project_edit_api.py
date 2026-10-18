@@ -1,6 +1,6 @@
 from dolphin_tracker.domain.errors import ConflictError
-from dolphin_tracker.domain.models import Project, ProjectType, RoutingStatus, Stop
-from dolphin_tracker.domain.schema import default_field_schema
+from dolphin_tracker.domain.models import FieldDef, Project, ProjectType, RoutingStatus, Stop
+from dolphin_tracker.domain.validation import FIELDS_BY_NAME
 from dolphin_tracker.services.routing import RoutingService
 from tests.test_projects_api import NoopInvoker, ProjectApiTestCase
 
@@ -12,9 +12,12 @@ def existing_stop(uid: str, display: str, installer: str, day: int, seq: int, st
     )
 
 
-def new_stop(name: str, addr: str, state: str = "GA", *, external_id: str | None = None, **fields) -> dict:
+def new_stop(name: str, addr: str, state: str = "GA", *, external_id: str | None = None, **values) -> dict:
+    """Store attributes go on the stop; anything else is an extra field."""
+    attributes = {key: value for key, value in values.items() if key in FIELDS_BY_NAME}
+    fields = {key: value for key, value in values.items() if key not in FIELDS_BY_NAME}
     return {"external_id": external_id or f"IBC-{name}", "store_name": name, "addr": addr, "city": "Atlanta",
-            "state": state, "zip": "30303", "fields": fields}
+            "state": state, "zip": "30303", **attributes, "fields": fields}
 
 
 class AppendTests(ProjectApiTestCase):
@@ -23,7 +26,7 @@ class AppendTests(ProjectApiTestCase):
         self.projects.put(
             Project(
                 id="p1", name="Seeded", pa="North", project_type=ProjectType.OFFLINE, installers=["Ann", "Bo"],
-                stops_per_day=2, field_schema=default_field_schema(), stop_count=4,
+                stops_per_day=2, field_schema=[FieldDef(key="venue_code", label="Venue Code")], stop_count=4,
             )
         )
         self.stores.put_many(
@@ -79,7 +82,7 @@ class AppendTests(ProjectApiTestCase):
         stop = {**new_stop("N1", "1 New Rd", pa="South", dma="ATL"), "initial_status": "Completed"}
         self.append([stop], pa="East, North").json()
         added = next(s for s in self.stores.list_all("p1") if s.store_name == "N1")
-        self.assertEqual((added.status.value, added.fields), ("Completed", {"pa": "South", "dma": "ATL"}))
+        self.assertEqual((added.status.value, added.pa, added.dma, added.fields), ("Completed", "South", "ATL", {}))
         self.assertEqual(self.projects.get("p1").pa, "East, North, South")
 
     def test_errors(self):
@@ -147,7 +150,7 @@ class DeleteAndPatchTests(ProjectApiTestCase):
 
     def test_patch_metadata_cap_and_schema(self):
         tier = {"key": "tier", "label": "Tier", "type": "select", "options": ["A", "B"]}
-        schema = [*(f.model_dump(mode="json") for f in default_field_schema()), tier]
+        schema = [tier]
         response = self.patch({"name": " Renamed ", "stops_per_day": 30, "store_percentage": None,
                                "field_schema": schema})
         self.assertEqual(response.status_code, 200, response.text)

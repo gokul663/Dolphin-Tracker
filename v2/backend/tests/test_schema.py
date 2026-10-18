@@ -20,21 +20,15 @@ SCHEMA = [
 
 
 class DefaultSchemaTests(unittest.TestCase):
-    def test_default_schema_matches_handoff(self):
-        keys = [field.key for field in DEFAULT_FIELD_SCHEMA]
-        self.assertEqual(
-            keys, ["pa", "venue_type", "dma", "venue_code", "owner_name", "owner_phone", "owner_email", "payee_name"]
-        )
-        types = {field.key: field.type for field in DEFAULT_FIELD_SCHEMA}
-        self.assertEqual(types["owner_phone"], FieldType.PHONE)
-        self.assertEqual(types["owner_email"], FieldType.EMAIL)
-        self.assertFalse(any(field.required for field in DEFAULT_FIELD_SCHEMA))
-        self.assertEqual(validate_schema(DEFAULT_FIELD_SCHEMA), [])
+    def test_new_projects_start_without_extra_fields(self):
+        self.assertEqual(DEFAULT_FIELD_SCHEMA, ())
+        self.assertEqual(default_field_schema(), [])
 
-    def test_default_copy_is_independent(self):
-        copy = default_field_schema()
-        copy[0].label = "Changed"
-        self.assertEqual(DEFAULT_FIELD_SCHEMA[0].label, "PA")
+    def test_store_attributes_are_reserved_keys_unless_the_project_already_has_them(self):
+        dma = FieldDef(key="dma", label="DMA")
+        self.assertEqual(validate_schema([dma]), ["Field key 'dma' is reserved"])
+        self.assertEqual(validate_schema([FieldDef(key="screens", label="S")]), ["Field key 'screens' is reserved"])
+        self.assertEqual(validate_schema([dma], existing_keys=["dma"]), [])  # a pre-v2 project keeps its schema
 
 
 class ValidateFieldsTests(unittest.TestCase):

@@ -113,7 +113,7 @@ export function ProjectCard({ project, onAppend, onEdit, onDelete }: Props) {
         <Stat value={kpi.total} label="Sites" tone="border-slate-200 bg-slate-50 text-brand" />
         <Stat value={kpi.complete} label="Done" tone="border-emerald-200 bg-emerald-50 text-emerald-700" />
         <Stat value={kpi.pending} label="Upcoming" tone="border-amber-200 bg-amber-50 text-amber-700" />
-        <Stat value={kpi.technical} label="Tech" tone="border-rose-200 bg-rose-50 text-rose-700" />
+        <Stat value={kpi.offline} label="Offline" tone="border-rose-200 bg-rose-50 text-rose-700" />
       </div>
       <div className="grid grid-cols-3 gap-2 [&_.font-mono]:font-sans [&_.font-mono]:text-xs">
         <Stat value={project.pa || "—"} label="PA" tone="border-violet-200 bg-violet-50 text-violet-700" />

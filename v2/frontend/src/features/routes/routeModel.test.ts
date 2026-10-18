@@ -41,18 +41,18 @@ describe("Google Maps links (v1 mapsUrlForStops / routeChunks)", () => {
     const stops = Array.from({ length: 23 }, (_, i) => i);
     expect(routeChunks(stops).map(({ start, end }) => [start, end])).toEqual([[0, 9], [9, 18], [18, 22]]);
     expect(routeChunks(stops.slice(0, 10))).toHaveLength(1);
-    expect(routableStops([s("a", { status: "Complete" }), s("b")]).map((stop) => stop.uid)).toEqual(["b"]);
+    expect(routableStops([s("a", { status: "Completed" }), s("b")]).map((stop) => stop.uid)).toEqual(["b"]);
   });
 });
 
 describe("day details", () => {
   const day = [
-    s("a", { status: "Complete", city: "Atlanta " }),
+    s("a", { status: "Completed", city: "Atlanta " }),
     s("b", { addr: "A Main St", city: "Decatur" }), // same address as a once normalised
-    s("c", { status: "Technical Issue", state: "Georgia" }),
+    s("c", { status: "Offline", state: "Georgia" }),
   ];
   it("tallies statuses, cities, states and shared addresses", () => {
-    expect(tally(day)).toEqual({ complete: 1, pending: 1, technical: 1, other: 0 });
+    expect(tally(day)).toEqual({ complete: 1, pending: 1, offline: 1, other: 0 });
     expect(uniqueCities(day)).toEqual(["Atlanta", "Decatur"]);
     expect(dayStateLabel(day)).toBe("Georgia");
     expect(dayStateLabel([s("x", { state: "TX" }), s("y")])).toBe("2 states");
@@ -76,7 +76,7 @@ const BUNDLE: RoutesBundle = {
   stats: {},
   routes: {
     Ann: [
-      [s("a", { lat: 33.80, lng: -84.39, fields: { pa: "North, South", dma: "ATL" } }), s("b", { lat: 33.81, lng: -84.39, status: "Complete" })],
+      [s("a", { lat: 33.80, lng: -84.39, fields: { pa: "North, South", dma: "ATL" } }), s("b", { lat: 33.81, lng: -84.39, status: "Completed" })],
       [s("c", { lat: 33.82, lng: -84.39, city: "decatur", fields: { venue_type: "Bar" } })],
     ],
     Bo: [[s("d", { lat: 33.60, lng: -84.39, state: "AL", comment: "gate code 1234" })]],
@@ -100,7 +100,7 @@ describe("filters and summaries", () => {
 
   it("summarises an installer like v1's section header", () => {
     expect(installerSummary(BUNDLE.routes.Ann as Stop[][], NO_FILTERS)).toEqual({
-      total: 3, activeDays: 2, averageActive: "1.0", complete: 1, pending: 2, technical: 0, other: 0,
+      total: 3, activeDays: 2, averageActive: "1.0", complete: 1, pending: 2, offline: 0, other: 0,
     });
   });
 
@@ -129,5 +129,25 @@ describe("CSV export", () => {
 
   it("quotes and guards formulas but leaves numbers alone", () => {
     expect(toCsv([["a,b", 'say "hi"', "=SUM(A1)", -84.4, 1]])).toBe('"a,b","say ""hi""",\'=SUM(A1),-84.4,1');
+  });
+});
+
+describe("pending set (STORE-MODEL §4.2)", () => {
+  const statuses = ["Upcoming", "Invitation Email Sent", "Shipped", "Delivered", "Offline", "Completed", "Archived", "Cancelled"] as const;
+  const all = statuses.map((status, index) => s(`x${index}`, { status }));
+
+  it("routes only the four pending statuses; Offline is not routed", () => {
+    expect(routableStops(all).map((stop) => stop.status)).toEqual(["Upcoming", "Invitation Email Sent", "Shipped", "Delivered"]);
+  });
+
+  it("tallies pending, completed, offline and the rest", () => {
+    expect(tally(all)).toEqual({ pending: 4, complete: 1, offline: 1, other: 2 });
+  });
+
+  it("a day is active while it has a pending stop", () => {
+    const summary = installerSummary([[s("a", { status: "Completed" }), s("b", { status: "Offline" })], [s("c", { status: "Shipped" })]], NO_FILTERS);
+    expect((({ activeDays, averageActive, pending }) => ({ activeDays, averageActive, pending }))(summary)).toEqual({
+      activeDays: 1, averageActive: "1.0", pending: 1,
+    });
   });
 });

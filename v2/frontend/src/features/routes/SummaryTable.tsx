@@ -13,7 +13,7 @@ export function SummaryTable({ bundle, installers, filters }: { bundle: RoutesBu
       <table className="w-full min-w-[820px] text-sm">
         <thead className="bg-slate-50 font-mono text-[10px] uppercase tracking-wider text-slate-500">
           <tr className="text-left">
-            {["Installer", "Day", "Stops", "Completed", "Upcoming", "Tech", "Other", "Cities covered", "Open route"].map((label) => (
+            {["Installer", "Day", "Stops", "Completed", "Upcoming", "Offline", "Other", "Cities covered", "Open route"].map((label) => (
               <th key={label} className="p-2">
                 {label}
               </th>
@@ -33,7 +33,7 @@ export function SummaryTable({ bundle, installers, filters }: { bundle: RoutesBu
                 <td className="p-2">{stops.length}</td>
                 <td className="p-2 font-bold text-emerald-700">{counts.complete}</td>
                 <td className="p-2 font-bold text-amber-700">{counts.pending}</td>
-                <td className="p-2 font-bold text-rose-700">{counts.technical}</td>
+                <td className="p-2 font-bold text-rose-700">{counts.offline}</td>
                 <td className="p-2 font-bold text-violet-700">{counts.other}</td>
                 <td className="p-2 text-slate-500">{uniqueCities(stops).slice(0, 5).join(", ")}</td>
                 <td className="p-2">

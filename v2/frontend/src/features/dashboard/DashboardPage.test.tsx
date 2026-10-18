@@ -7,7 +7,7 @@ import { makeSummary } from "@/test/fixtures";
 
 const done = makeSummary({
   id: "p2", name: "Macon wave", installers: ["Cy"],
-  kpi: { ...makeSummary().kpi, total: 3, complete: 3, pending: 0, technical: 0, by_installer: { Cy: 3 } },
+  kpi: { ...makeSummary().kpi, total: 3, complete: 3, pending: 0, offline: 0, by_installer: { Cy: 3 } },
 });
 
 function kpi(label: string) {

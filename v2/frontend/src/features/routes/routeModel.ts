@@ -1,5 +1,5 @@
 /** Pure logic ported from the v1 legacy route planner page (removed at cutover), keyed by stop uid. */
-import type { FieldDef, RoutesBundle, Stop, StopStatus } from "@/lib/api/types";
+import { isPending, type FieldDef, type RoutesBundle, type Stop } from "@/lib/api/types";
 import { STATUS_META } from "@/lib/status";
 
 export const MAP_MAX_STOPS = 10; // Google Maps directions accept origin + 8 waypoints + destination
@@ -35,8 +35,8 @@ export function mapsUrlForStops(stops: Pick<Stop, "addr" | "city" | "state" | "z
   return `https://www.google.com/maps/dir/?api=1&origin=${encoded[0]}&destination=${encoded.at(-1)}${waypoints ? `&waypoints=${waypoints}` : ""}`;
 }
 
-/** Completed stops drop out of the route the installer still has to drive. */
-export const routableStops = <T extends Pick<Stop, "status">>(stops: T[]) => stops.filter((stop) => stop.status !== "Complete");
+/** Only pending stops (STORE-MODEL §4.2) stay on the route the installer still has to drive. */
+export const routableStops = <T extends Pick<Stop, "status">>(stops: T[]) => stops.filter((stop) => isPending(stop.status));
 
 /** Up to 10 stops per link; each chunk starts where the previous one ended (v1 `routeChunks`). */
 export function routeChunks<T>(stops: T[]): { start: number; end: number; stops: T[] }[] {
@@ -56,17 +56,19 @@ export function routeChunks<T>(stops: T[]): { start: number; end: number; stops:
 
 export interface StatusTally {
   complete: number;
-  pending: number;
-  technical: number;
-  other: number;
+  pending: number; // Upcoming, Invitation Email Sent, Shipped, Delivered: still needs a visit
+  offline: number;
+  other: number; // Archived, Cancelled
 }
 
 export function tally(stops: Pick<Stop, "status">[]): StatusTally {
-  const counts: StatusTally = { complete: 0, pending: 0, technical: 0, other: 0 };
-  const field: Record<StopStatus, keyof StatusTally> = {
-    Complete: "complete", Incomplete: "pending", "Technical Issue": "technical", Other: "other",
-  };
-  for (const stop of stops) counts[field[stop.status]] += 1;
+  const counts: StatusTally = { complete: 0, pending: 0, offline: 0, other: 0 };
+  for (const { status } of stops) {
+    if (isPending(status)) counts.pending += 1;
+    else if (status === "Completed") counts.complete += 1;
+    else if (status === "Offline") counts.offline += 1;
+    else counts.other += 1;
+  }
   return counts;
 }
 
@@ -190,12 +192,12 @@ export function filterDays(days: Stop[][], filters: RouteFilters): FilteredDay[]
     .filter(({ day, stops }) => stops.length > 0 && (!wanted || wanted.includes(day)));
 }
 
-/** v1 section header numbers: active days have an unfinished stop; the average counts active stops only. */
+/** v1 section header numbers: active days have a pending stop; the average counts pending stops only. */
 export function installerSummary(days: Stop[][], filters: RouteFilters) {
   const matching = days.map((stops) => stops.filter((stop) => matchesFilters(stop, filters)));
   const counts = tally(matching.flat());
-  const activeDays = matching.filter((stops) => stops.some((stop) => stop.status !== "Complete")).length;
-  const active = counts.pending + counts.technical + counts.other;
+  const activeDays = matching.filter((stops) => stops.some((stop) => isPending(stop.status))).length;
+  const active = counts.pending;
   return { total: matching.flat().length, activeDays, averageActive: activeDays ? (active / activeDays).toFixed(1) : "0", ...counts };
 }
 

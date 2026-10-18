@@ -16,6 +16,7 @@ import type {
   Page,
   Pin,
   ProgressUpdate,
+  ScreensUpdate,
   Project,
   ProjectCreate,
   ProjectCreated,
@@ -99,6 +100,8 @@ export const storesApi = {
   get: (projectId: string, uid: string) => api<Stop>(`/projects/${enc(projectId)}/stores/${enc(uid)}`),
   updateDetails: (projectId: string, uid: string, body: StoreDetailsUpdate) =>
     api<Stop>(`/projects/${enc(projectId)}/stores/${enc(uid)}`, { method: "PATCH", body }),
+  updateScreens: (projectId: string, uid: string, body: ScreensUpdate) =>
+    api<Stop>(`/projects/${enc(projectId)}/stores/${enc(uid)}/screens`, { method: "PUT", body }),
   updateProgress: (projectId: string, uid: string, body: ProgressUpdate) =>
     api<Stop>(`/projects/${enc(projectId)}/stores/${enc(uid)}/progress`, { method: "PATCH", body }),
   append: (projectId: string, body: AppendStops) =>

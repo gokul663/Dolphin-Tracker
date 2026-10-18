@@ -1,7 +1,17 @@
 import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { keys } from "@/lib/api/keys";
 import { storesApi, type StoreFilters } from "@/lib/api/resources";
-import type { AppendStops, Pin, ProgressUpdate, RoutesBundle, Stop, StoreDetailsUpdate } from "@/lib/api/types";
+import {
+  deriveStatus,
+  type AppendStops,
+  type Pin,
+  type ProgressUpdate,
+  type RoutesBundle,
+  type ScreenInput,
+  type ScreenStatus,
+  type Stop,
+  type StoreDetailsUpdate,
+} from "@/lib/api/types";
 import { patchPin, patchStopInPages, patchStopInRoutes, type StopPages } from "@/features/stores/cache";
 
 export const STORE_PAGE_SIZE = 100;
@@ -76,6 +86,47 @@ export function editedKeys(body: StoreDetailsUpdate): Set<string> {
   return keysTouched;
 }
 
+type Client = ReturnType<typeof useQueryClient>;
+type Snapshot = {
+  lists: [readonly unknown[], StopPages | undefined][];
+  pins: [readonly unknown[], Pin[] | undefined][];
+  detail: Stop | undefined;
+  routes: RoutesBundle | undefined;
+};
+
+/** Patch one stop in every cached view (lists, pins, detail, routes bundle) and return what to roll back to. */
+async function applyOptimistic(client: Client, projectId: string, uid: string, patch: Partial<Stop>): Promise<Snapshot> {
+  await Promise.all([
+    client.cancelQueries({ queryKey: keys.stores(projectId) }),
+    client.cancelQueries({ queryKey: keys.routes(projectId) }),
+  ]);
+  const snapshot: Snapshot = {
+    lists: client.getQueriesData<StopPages>({ queryKey: [...keys.stores(projectId), "list"] }),
+    pins: client.getQueriesData<Pin[]>({ queryKey: [...keys.stores(projectId), "pins"] }),
+    detail: client.getQueryData<Stop>(keys.store(projectId, uid)),
+    routes: client.getQueryData<RoutesBundle>(keys.routes(projectId)),
+  };
+  for (const [key, data] of snapshot.lists) client.setQueryData(key, patchStopInPages(data, uid, patch));
+  for (const [key, data] of snapshot.pins) client.setQueryData(key, patchPin(data, uid, patch));
+  if (snapshot.detail) client.setQueryData(keys.store(projectId, uid), { ...snapshot.detail, ...patch });
+  if (snapshot.routes) client.setQueryData(keys.routes(projectId), patchStopInRoutes(snapshot.routes, uid, patch));
+  return snapshot;
+}
+
+function rollback(client: Client, projectId: string, uid: string, snapshot: Snapshot | undefined) {
+  for (const [key, data] of snapshot?.lists ?? []) client.setQueryData(key, data);
+  for (const [key, data] of snapshot?.pins ?? []) client.setQueryData(key, data);
+  if (snapshot?.detail) client.setQueryData(keys.store(projectId, uid), snapshot.detail);
+  if (snapshot?.routes) client.setQueryData(keys.routes(projectId), snapshot.routes);
+}
+
+function settle(client: Client, projectId: string) {
+  return Promise.all([
+    client.invalidateQueries({ queryKey: [...keys.stores(projectId), "pins"] }),
+    client.invalidateQueries({ queryKey: keys.routes(projectId) }),
+  ]);
+}
+
 /** Progress edits are optimistic: lists, detail, pins and the routes bundle update at once and roll back on error. */
 export function useUpdateProgress(projectId: string) {
   const client = useQueryClient();
@@ -83,34 +134,36 @@ export function useUpdateProgress(projectId: string) {
   return useMutation({
     mutationFn: ({ uid, body }: { uid: string; body: ProgressUpdate }) =>
       storesApi.updateProgress(projectId, uid, body),
-    onMutate: async ({ uid, body }) => {
-      await Promise.all([
-        client.cancelQueries({ queryKey: keys.stores(projectId) }),
-        client.cancelQueries({ queryKey: keys.routes(projectId) }),
-      ]);
-      const lists = client.getQueriesData<StopPages>({ queryKey: [...keys.stores(projectId), "list"] });
-      const pins = client.getQueriesData<Pin[]>({ queryKey: [...keys.stores(projectId), "pins"] });
-      const detail = client.getQueryData<Stop>(keys.store(projectId, uid));
-      const routes = client.getQueryData<RoutesBundle>(keys.routes(projectId));
+    onMutate: ({ uid, body }) => {
       const patch = Object.fromEntries(Object.entries(body).filter(([, value]) => value !== undefined)) as Partial<Stop>;
-      for (const [key, data] of lists) client.setQueryData(key, patchStopInPages(data, uid, patch));
-      for (const [key, data] of pins) client.setQueryData(key, patchPin(data, uid, patch));
-      if (detail) client.setQueryData(keys.store(projectId, uid), { ...detail, ...patch });
-      if (routes) client.setQueryData(keys.routes(projectId), patchStopInRoutes(routes, uid, patch));
-      return { lists, pins, detail, routes };
+      return applyOptimistic(client, projectId, uid, patch);
     },
-    onError: (_error, { uid }, context) => {
-      for (const [key, data] of context?.lists ?? []) client.setQueryData(key, data);
-      for (const [key, data] of context?.pins ?? []) client.setQueryData(key, data);
-      if (context?.detail) client.setQueryData(keys.store(projectId, uid), context.detail);
-      if (context?.routes) client.setQueryData(keys.routes(projectId), context.routes);
-    },
+    onError: (_error, { uid }, snapshot) => rollback(client, projectId, uid, snapshot),
     onSuccess: (stop) => store(stop),
-    onSettled: () =>
-      Promise.all([
-        client.invalidateQueries({ queryKey: [...keys.stores(projectId), "pins"] }),
-        client.invalidateQueries({ queryKey: keys.routes(projectId) }),
-      ]),
+    onSettled: () => settle(client, projectId),
+  });
+}
+
+/** Every screen of `stop` with `status` (the table's and day cards' one-click status, until the screens editor). */
+export function withStatus(stop: Pick<Stop, "screens">, status: ScreenStatus): ScreenInput[] {
+  return stop.screens.map((screen) => ({ ...screen, status }));
+}
+
+/** Replace a store's screen rows (PUT …/screens). Optimistic: the rows and the derived status show at once. */
+export function useUpdateScreens(projectId: string) {
+  const client = useQueryClient();
+  const store = useStoreStopInCaches(projectId);
+  return useMutation({
+    mutationFn: ({ uid, screens, updatedBy = "" }: { uid: string; screens: ScreenInput[]; updatedBy?: string }) =>
+      storesApi.updateScreens(projectId, uid, { screens, updated_by: updatedBy }),
+    onMutate: ({ uid, screens }) => {
+      const status = deriveStatus(screens.map((screen) => screen.status ?? "Upcoming"));
+      const rows = screens.map((screen, index) => ({ id: screen.id ?? `pending-${index}`, ...screen })) as Stop["screens"];
+      return applyOptimistic(client, projectId, uid, { screens: rows, status });
+    },
+    onError: (_error, { uid }, snapshot) => rollback(client, projectId, uid, snapshot),
+    onSuccess: (stop) => store(stop),
+    onSettled: () => settle(client, projectId),
   });
 }
 

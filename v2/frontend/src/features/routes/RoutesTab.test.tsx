@@ -16,12 +16,12 @@ const BUNDLE: RoutesBundle = {
   stops_per_day: 8,
   routing_status: "ready",
   stats: {
-    Ann: { total: 3, days: 2, avg_stops: 1.5, miles: 4.2 },
-    Bo: { total: 1, days: 1, avg_stops: 1, miles: 0 },
+    Ann: { total: 3, pending: 2, days: 2, avg_stops: 1.5, miles: 4.2 },
+    Bo: { total: 1, pending: 1, days: 1, avg_stops: 1, miles: 0 },
   },
   routes: {
     Ann: [
-      [s("a", { lat: 33.8, fields: { pa: "North" } }), s("b", { lat: 33.81, status: "Complete" })],
+      [s("a", { lat: 33.8, fields: { pa: "North" } }), s("b", { lat: 33.81, status: "Completed" })],
       [s("c", { lat: 33.82, city: "Decatur", day: 2 })],
     ],
     Bo: [[s("d", { lat: 33.6, installer: "Bo", fields: { pa: "South" } })]],
@@ -84,15 +84,15 @@ describe("RoutesTab", () => {
   it("updates a day-card status at once, before the bundle refetches, and rolls back on error", async () => {
     let fail: () => void = () => {};
     renderRoutes(makeProject(), {
-      "PATCH /api/projects/p1/stores/a/progress": () =>
+      "PUT /api/projects/p1/stores/a/screens": () =>
         new Promise((resolve) => {
           fail = () => resolve(new Response(JSON.stringify({ detail: "nope" }), { status: 500 }));
         }),
     });
     const status = () => screen.getByRole("combobox", { name: "Status of Store a" }).textContent;
     await userEvent.click(await screen.findByRole("combobox", { name: "Status of Store a" }));
-    await userEvent.click(await screen.findByRole("option", { name: "Complete" }));
-    await waitFor(() => expect(status()).toContain("Complete")); // the PATCH is still pending
+    await userEvent.click(await screen.findByRole("option", { name: "Completed" }));
+    await waitFor(() => expect(status()).toContain("Completed")); // the PATCH is still pending
     fail();
     await waitFor(() => expect(status()).toContain("Upcoming"));
   });

@@ -48,9 +48,9 @@ def create_project(body: ProjectCreate, service: ServiceDep, response: Response)
     return ProjectCreated(project=project, job_id=job_id, skipped=skipped)
 
 
-@router.get("/{project_id}", response_model=Project)
-def get_project(project_id: str, service: ServiceDep) -> Project:
-    return service.get(project_id)
+@router.get("/{project_id}", response_model=ProjectSummary)
+def get_project(project_id: str, service: ServiceDep) -> ProjectSummary:
+    return service.summary(project_id)
 
 
 @router.patch("/{project_id}", response_model=Project)

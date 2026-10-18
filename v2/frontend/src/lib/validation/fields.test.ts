@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { coreError, fieldError, keyFromLabel, moveItem, schemaErrors } from "@/lib/validation/fields";
 import type { FieldDefInput } from "@/lib/api/types";
 
-const def = (type: FieldDefInput["type"], extra: Partial<FieldDefInput> = {}) => ({
+const def = (type: NonNullable<FieldDefInput["type"]>, extra: Partial<FieldDefInput> = {}) => ({
   label: "Field", type, required: false, options: [] as string[], ...extra,
 });
 
@@ -42,8 +42,9 @@ describe("schema editor helpers", () => {
   });
 
   it("makes unique keys from labels", () => {
-    expect(keyFromLabel("Owner Phone #", [])).toBe("owner_phone");
-    expect(keyFromLabel("Owner Phone", ["owner_phone"])).toBe("owner_phone_2");
+    expect(keyFromLabel("Payee Name #", [])).toBe("payee_name");
+    expect(keyFromLabel("Payee Name", ["payee_name"])).toBe("payee_name_2");
+    expect(keyFromLabel("Owner Phone", [])).toBe("owner_phone_field"); // a store attribute since v2: reserved
     expect(keyFromLabel("2nd contact", [])).toBe("field_2nd_contact");
     expect(keyFromLabel("Status", [])).toBe("status_field");
     expect(keyFromLabel("!!!", [])).toBe("field");

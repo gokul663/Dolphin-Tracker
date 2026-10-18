@@ -6,7 +6,7 @@ from typing import Any, Literal
 from pydantic import ConfigDict, Field
 
 from dolphin_tracker.domain.base import ApiModel
-from dolphin_tracker.domain.models import FieldDef, Project, ProjectType, ScreenStatus, StopInput
+from dolphin_tracker.domain.models import FieldDef, Project, ProjectType, ScreenInput, ScreenStatus, StopInput
 
 
 class MapsConfig(ApiModel):
@@ -76,22 +76,91 @@ class Pin(ApiModel):
 
 
 class StoreDetailsUpdate(ApiModel):
-    """Detail edit. Omitted keys are unchanged; `fields` merges per key into the stop's custom fields."""
+    """Detail edit (STORE-MODEL §2, "editable in planner"). Omitted keys are unchanged; `fields` merges per key
+    into the stop's extra fields. Anything else (IBC#, PA, routing, progress, screens) is a 422."""
+
+    model_config = ConfigDict(extra="forbid")
 
     store_name: str | None = Field(default=None, max_length=300)
     addr: str | None = Field(default=None, max_length=500)
     city: str | None = Field(default=None, max_length=200)
     state: str | None = Field(default=None, max_length=50)
     zip: str | None = Field(default=None, max_length=20)
+    dma: str | None = Field(default=None, max_length=200)
+    venue_type: str | None = Field(default=None, max_length=200)
+    onsite_contact_name: str | None = Field(default=None, max_length=200)
+    onsite_contact_phone: str | None = Field(default=None, max_length=50)
+    owner_name: str | None = Field(default=None, max_length=200)
+    owner_phone: str | None = Field(default=None, max_length=50)
+    owner_email: str | None = Field(default=None, max_length=200)
+    best_contact_time: str | None = Field(default=None, max_length=200)
+    preferred_language: str | None = Field(default=None, max_length=100)
+    products_to_avoid: str | None = Field(default=None, max_length=2000)
+    store_ssid: str | None = Field(default=None, max_length=200)
+    store_ssid_password: str | None = Field(default=None, max_length=200)
+    installation_notes: str | None = Field(default=None, max_length=5000)
+    image_url: str | None = Field(default=None, max_length=5000)
+    cms_details_added: bool | None = None
+    outlet_status: str | None = Field(default=None, max_length=20)
+    committed_dolphin_screens: int | None = Field(default=None, ge=0)  # null clears it (unknown)
+    committed_store_tvs: int | None = Field(default=None, ge=0)
+    preferred_area: str | None = Field(default=None, max_length=500)
+    ceiling_type: str | None = Field(default=None, max_length=200)
+    ceiling_height: str | None = Field(default=None, max_length=100)
+    nearest_power_outlet: str | None = Field(default=None, max_length=500)
+    ethernet_route: str | None = Field(default=None, max_length=500)
+    blocked_dates_notes: str | None = Field(default=None, max_length=2000)
+    preferred_install_datetime: str | None = Field(default=None, max_length=500)
+    spot_visible: bool | None = None  # tri-state: null = unknown
+    power_within_6ft: bool | None = None
+    ethernet_possible: bool | None = None
+    low_volume_audio_ok: bool | None = None
+    ceiling_suitable: bool | None = None
     fields: dict[str, Any] | None = None
 
 
+class ScreensUpdate(ApiModel):
+    """The full list of a store's screen rows (PUT replaces it). Send `id` back to keep a row's identity."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    screens: list[ScreenInput] = Field(min_length=1, max_length=200)
+    updated_by: str = Field(default="", max_length=200)
+
+
 class ProgressUpdate(ApiModel):
-    status: ScreenStatus | None = None  # sets every screen of the stop to this status
+    """Field progress other than status (status is per screen: PUT …/screens)."""
+
+    model_config = ConfigDict(extra="forbid")
+
     comment: str | None = Field(default=None, max_length=2000)
     additional_task: bool | None = None
     installer_name: str | None = Field(default=None, max_length=200)
     updated_by: str | None = Field(default=None, max_length=200)
+
+
+class FilterOption(ApiModel):
+    value: str  # "" = unassigned (installer only)
+    count: int  # stores with this value, under the other active filters
+
+
+class StoreFilterOptions(ApiModel):
+    """Per filter, the values present (STORE-MODEL §5). An empty list: no store has a value; grey it out."""
+
+    status: list[FilterOption]
+    installer: list[FilterOption]
+    pa: list[FilterOption]
+    state: list[FilterOption]
+    city: list[FilterOption]
+    dma: list[FilterOption]
+    venue_type: list[FilterOption]
+    dd_code: list[FilterOption]
+    screen_size: list[FilterOption]
+
+
+class StateCount(ApiModel):
+    state: str
+    count: int
 
 
 class ProjectUpdate(ApiModel):

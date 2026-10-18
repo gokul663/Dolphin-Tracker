@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { EditableCell } from "@/features/stores/EditableCell";
 import { addressLine } from "@/features/stores/details";
-import { useUpdateProgress, useUpdateStoreDetails } from "@/features/stores/api";
+import { useUpdateScreens, useUpdateStoreDetails, withStatus } from "@/features/stores/api";
 import { STOP_STATUSES, type Project, type Stop } from "@/lib/api/types";
 import { STATUS_META } from "@/lib/status";
 import { cn } from "@/lib/utils";
@@ -45,7 +45,7 @@ const SORT_KEYS: Record<string, string> = {
 export function StoresTable(props: Props) {
   const { project, stops, sort, dir, onSort, selectedId, hoveredId, onHover, onOpen } = props;
   const details = useUpdateStoreDetails(project.id);
-  const progress = useUpdateProgress(project.id);
+  const screens = useUpdateScreens(project.id);
 
   const columns = useMemo<ColumnDef<Stop, string>[]>(() => {
     const saveDetails = (uid: string, body: Parameters<typeof details.mutateAsync>[0]["body"]) =>
@@ -94,8 +94,8 @@ export function StoresTable(props: Props) {
               <Select
                 value={stop.status}
                 onValueChange={(value) =>
-                  progress.mutate(
-                    { uid: stop.uid, body: { status: value as Stop["status"] } },
+                  screens.mutate(
+                    { uid: stop.uid, screens: withStatus(stop, value as Stop["status"]) },
                     { onError: (error) => toast.error(`Status not saved: ${error.message}`) },
                   )
                 }

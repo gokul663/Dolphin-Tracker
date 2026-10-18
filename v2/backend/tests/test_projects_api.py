@@ -31,7 +31,7 @@ def stop_input(i: int, **extra) -> dict:
     return {
         "external_id": f"IBC-{i}", "store_name": f"Store {i}", "addr": f"{i} Main St", "city": "Atlanta",
         "state": "GA", "zip": "30303",
-        "lat": 33.70 + i * 0.01, "lng": -84.40 + i * 0.01, "fields": {"dma": "ATL"}, **extra,
+        "lat": 33.70 + i * 0.01, "lng": -84.40 + i * 0.01, "dma": "ATL", **extra,
     }
 
 
@@ -105,7 +105,7 @@ class CreateProjectApiTests(ProjectApiTestCase):
         self.assertEqual(project["name"], "Atlanta refresh")
         self.assertEqual((project["routing_status"], project["routing_job_id"]), ("building", job_id))
         self.assertEqual(project["stop_count"], 10)
-        self.assertEqual([field["key"] for field in project["field_schema"]][:3], ["pa", "venue_type", "dma"])
+        self.assertEqual(project["field_schema"], [])  # store attributes are first-class; no default extras
         self.invoker.wait()
 
         job = self.client.get(f"/api/jobs/{job_id}").json()
@@ -144,7 +144,7 @@ class CreateProjectApiTests(ProjectApiTestCase):
         stops = [
             stop_input(0),
             stop_input(1, store_name=" "),
-            stop_input(2, addr="", fields={"owner_email": "nope"}),
+            stop_input(2, addr="", owner_email="nope"),
             stop_input(3, fields={"mystery": "x"}),
         ]
         response = self.client.post("/api/projects", json=project_body(stops=stops, installers=["A", "A"]))
@@ -152,7 +152,8 @@ class CreateProjectApiTests(ProjectApiTestCase):
         detail = response.json()["detail"]
         self.assertEqual(detail["errors"], ["Duplicate installer names: A"])
         self.assertEqual([row["index"] for row in detail["stops"]], [1, 2, 3])
-        self.assertEqual(detail["stops"][1]["errors"], ["Address is required", "Owner Email: enter a valid email"])
+        expected = ["Address is required", "Store owner email: enter a valid email"]
+        self.assertEqual(detail["stops"][1]["errors"], expected)
         self.assertIn("3 stop(s)", detail["message"])
         self.assertEqual(self.projects.list().items, [])
 
@@ -162,12 +163,14 @@ class CreateProjectApiTests(ProjectApiTestCase):
             self.assertEqual(response.status_code, 422, overrides)
 
     def test_custom_field_schema(self):
-        schema = [{"key": "screens", "label": "Screens", "type": "number", "required": True}]
+        schema = [{"key": "screens_wanted", "label": "Screens wanted", "type": "number", "required": True}]
         bad = self.client.post("/api/projects", json=project_body(field_schema=schema))
-        self.assertEqual(bad.status_code, 422)  # stops carry dma, which is not in this schema, and lack screens
-        stops = [stop_input(0, fields={"screens": "3"})]
+        self.assertEqual(bad.status_code, 422)  # the stops lack the required extra field
+        stops = [stop_input(0, fields={"screens_wanted": "3"})]
         project = self.create_project(field_schema=schema, stops=stops)["project"]
-        self.assertEqual(self.stores.list_all(project["id"])[0].fields, {"screens": 3})
+        self.assertEqual(self.stores.list_all(project["id"])[0].fields, {"screens_wanted": 3})
+        reserved = self.client.post("/api/projects", json=project_body(field_schema=[{"key": "dma", "label": "D"}]))
+        self.assertIn("Field key 'dma' is reserved", reserved.json()["detail"]["errors"])
 
     def test_routes_404_for_unknown_project(self):
         self.assertEqual(self.client.get("/api/projects/nope/routes").status_code, 404)

@@ -23,9 +23,9 @@ class ImportServiceParseTests(unittest.TestCase):
         self.assertEqual(parsed.pa_names, ["North"])
         self.assertEqual(parsed.venue_columns, [])
         first, second = parsed.rows
-        self.assertEqual((first.status, first.status_valid), ("Complete", True))
+        self.assertEqual((first.status, first.status_valid), ("Completed", True))
         self.assertEqual(first.extra, {"owner_phone": "555-0100"})
-        self.assertEqual((second.status, second.status_valid, second.status_raw), ("Incomplete", False, "weird"))
+        self.assertEqual((second.status, second.status_valid, second.status_raw), ("Upcoming", False, "weird"))
 
     def test_records_which_venue_columns_exist(self):
         parsed = ImportService.parse("s.csv", b"address,dma,site_code\n1 Main St,ATL,V1\n")
@@ -158,10 +158,10 @@ class ImportRunTests(unittest.TestCase):
         self.assertEqual([row["index"] for row in result["rows"]], list(range(27)))  # input order kept
         first = result["rows"][0]
         self.assertEqual(first["fields"], {"dma": "ATL", "owner_phone": "555-0100"})  # only present venue columns
-        self.assertEqual((first["venue_status"], first["venue_status_valid"]), ("Complete", True))
+        self.assertEqual((first["venue_status"], first["venue_status_valid"]), ("Completed", True))
         lost = result["rows"][26]
         status = (lost["venue_status"], lost["venue_status_valid"], lost["venue_status_raw"])
-        self.assertEqual(status, ("Incomplete", False, "bogus"))
+        self.assertEqual(status, ("Upcoming", False, "bogus"))
 
     def test_redelivered_event_does_not_rerun_the_import(self):
         job_id = self._job(b"address\n1 Main St\n")

@@ -103,12 +103,12 @@ class CreateProjectApiTests(ProjectApiTestCase):
 
     def test_minted_stop_fields(self):
         self.app.dependency_overrides[get_worker_invoker] = lambda: NoopInvoker()  # inspect stops before routing
-        body = project_body(stops=[stop_input(0, initial_status="Complete"), stop_input(1)])
+        body = project_body(stops=[stop_input(0, initial_status="Completed"), stop_input(1)])
         project = self.client.post("/api/projects", json=body).json()["project"]
         stops = sorted(self.stores.list_all(project["id"]), key=lambda stop: stop.seq)
         minted = [(s.display_id, s.seq, s.day, s.installer) for s in stops]
         self.assertEqual(minted, [("S1", 0, 1, ""), ("S2", 1, 1, "")])
-        self.assertEqual([s.status.value for s in stops], ["Complete", "Incomplete"])
+        self.assertEqual([s.status.value for s in stops], ["Completed", "Upcoming"])
         self.assertEqual(len({s.uid for s in stops}), 2)
 
     def test_create_without_stops_returns_201_and_no_job(self):

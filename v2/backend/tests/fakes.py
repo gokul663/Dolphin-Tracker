@@ -62,3 +62,10 @@ class FakeGeocoder:
     def find_place(self, query: str) -> dict[str, Any]:
         self._log("find_place", query)
         return self.places.get(query, {"ok": False, "status": "ZERO_RESULTS"})
+
+
+def status_write(status, **extra):
+    """An update_fields payload that sets every screen to `status` (status is derived from screens)."""
+    from dolphin_tracker.domain.models import Screen
+
+    return {"screens": [Screen(status=status).model_dump(mode="json")], "status": str(status), **extra}

@@ -1,14 +1,32 @@
 """Core records shared by services, repositories and the API. Field details are refined in DETAILED-PLAN.md."""
 from __future__ import annotations
 
+import uuid
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Any, Generic, TypeVar
+from typing import Any, Generic, Self, TypeVar
 
-from pydantic import Field
+from pydantic import Field, field_validator, model_validator
 
 from dolphin_tracker.domain.base import ApiModel
 from dolphin_tracker.domain.kpi import Kpi
+from dolphin_tracker.domain.statuses import (  # re-exported: callers import statuses from models
+    LEGACY_STATUSES,
+    ScreenStatus,
+    derive_store_status,
+)
+from dolphin_tracker.domain.statuses import (
+    PENDING_STATUSES as PENDING_STATUSES,
+)
+from dolphin_tracker.domain.statuses import (
+    STATUS_ALIASES as STATUS_ALIASES,
+)
+from dolphin_tracker.domain.statuses import (
+    STATUS_PRECEDENCE as STATUS_PRECEDENCE,
+)
+from dolphin_tracker.domain.statuses import (
+    normalize_screen_status as normalize_screen_status,
+)
 
 T = TypeVar("T")
 
@@ -23,11 +41,26 @@ class ProjectType(StrEnum):
     NEW_INSTALLATION_AND_OFFLINE = "new_installation_and_offline"
 
 
-class StopStatus(StrEnum):
-    INCOMPLETE = "Incomplete"  # shown as "Upcoming" in the UI
-    COMPLETE = "Complete"
-    TECHNICAL_ISSUE = "Technical Issue"
-    OTHER = "Other"
+def _new_id() -> str:
+    return uuid.uuid4().hex
+
+
+class Screen(ApiModel):
+    """One screen (stick) at a store (§4.1). Ids are minted by the server and kept when a list is sent back."""
+
+    id: str = Field(default_factory=_new_id)
+    stick_number: str = Field(default="", max_length=200)
+    venue_id: str = Field(default="", max_length=200)  # the "DD code"
+    screen_size: str = Field(default="", max_length=50)
+    is_dolphin_screen: bool = True
+    has_mount: bool = False
+    has_ceiling_mount: bool = False  # False: wall mount, the default
+    status: ScreenStatus = ScreenStatus.UPCOMING
+
+    @field_validator("status", mode="before")
+    @classmethod
+    def _legacy_status(cls, value: Any) -> Any:
+        return LEGACY_STATUSES.get(value, value) if isinstance(value, str) else value
 
 
 class RoutingStatus(StrEnum):
@@ -90,8 +123,52 @@ class Project(ApiModel):
     updated_at: str = Field(default_factory=now_iso)
 
 
-class Stop(ApiModel):
-    """Planning data and field progress for one store, stored as one item."""
+class StoreDetails(ApiModel):
+    """The first-class store attributes (STORE-MODEL §2) shared by a stored stop and a submitted one.
+
+    Text defaults to "", counts and tri-state checks to None (unknown). Rules per field: `domain/validation.py`.
+    """
+
+    external_id: str = Field(default="", max_length=100)  # IBC#; set on import only, unique per project
+    pa: str = Field(default="", max_length=500)  # only when the sheet has a PA column; display falls back to project
+    dma: str = Field(default="", max_length=200)
+    venue_type: str = Field(default="", max_length=200)
+    source_date: str = Field(default="", max_length=50)  # the sheet row's Date
+    onsite_contact_name: str = Field(default="", max_length=200)
+    onsite_contact_phone: str = Field(default="", max_length=50)
+    owner_name: str = Field(default="", max_length=200)
+    owner_phone: str = Field(default="", max_length=50)
+    owner_email: str = Field(default="", max_length=200)
+    best_contact_time: str = Field(default="", max_length=200)
+    preferred_language: str = Field(default="", max_length=100)
+    products_to_avoid: str = Field(default="", max_length=2000)
+    store_ssid: str = Field(default="", max_length=200)
+    store_ssid_password: str = Field(default="", max_length=200)
+    installation_notes: str = Field(default="", max_length=5000)
+    image_url: str = Field(default="", max_length=5000)  # raw; may hold several URLs
+    cms_details_added: bool = False
+    outlet_status: str = Field(default="", max_length=20)  # "", "New" or "Existing"
+    committed_dolphin_screens: int | None = Field(default=None, ge=0)
+    committed_store_tvs: int | None = Field(default=None, ge=0)
+    preferred_area: str = Field(default="", max_length=500)
+    ceiling_type: str = Field(default="", max_length=200)
+    ceiling_height: str = Field(default="", max_length=100)
+    nearest_power_outlet: str = Field(default="", max_length=500)
+    ethernet_route: str = Field(default="", max_length=500)
+    blocked_dates_notes: str = Field(default="", max_length=2000)
+    preferred_install_datetime: str = Field(default="", max_length=500)
+    spot_visible: bool | None = None
+    power_within_6ft: bool | None = None
+    ethernet_possible: bool | None = None
+    low_volume_audio_ok: bool | None = None
+    ceiling_suitable: bool | None = None
+
+
+class Stop(StoreDetails):
+    """Planning data, store details, screens and field progress for one store, stored as one item.
+
+    `status` is derived from `screens` (§4.2) on every validation; a stop always has at least one screen. Items
+    written before v2 (one v1 status, no screens) read as one screen carrying that status."""
 
     uid: str
     display_id: str = ""
@@ -107,7 +184,8 @@ class Stop(ApiModel):
     day: int = 1
     seq: int = 0
     fields: dict[str, Any] = Field(default_factory=dict)
-    status: StopStatus = StopStatus.INCOMPLETE
+    screens: list[Screen] = Field(default_factory=list)
+    status: ScreenStatus = ScreenStatus.UPCOMING
     comment: str = ""
     additional_task: bool = False
     installer_name: str = ""
@@ -115,14 +193,46 @@ class Stop(ApiModel):
     updated_at: str = Field(default_factory=now_iso)
     updated_by: str = ""
 
+    @field_validator("status", mode="before")
+    @classmethod
+    def _legacy_status(cls, value: Any) -> Any:
+        return LEGACY_STATUSES.get(value, value) if isinstance(value, str) else value
+
+    @model_validator(mode="after")
+    def _derive_status(self) -> Self:
+        if not self.screens:
+            self.screens = [Screen(status=self.status)]
+        self.status = derive_store_status(self.screens)
+        return self
+
 
 # Disjoint write groups on a stop item (AGENT-HANDOFF §2 rule 5). A single write never mixes ROUTING and PROGRESS.
+# Screens carry the per-screen status, so they are progress; `status` is their derived summary.
 ROUTING_FIELDS = frozenset({"installer", "day", "seq"})
-PROGRESS_FIELDS = frozenset({"status", "comment", "additional_task", "installer_name", "updated_by"})
+PROGRESS_FIELDS = frozenset({"screens", "status", "comment", "additional_task", "installer_name", "updated_by"})
 
 
-class StopInput(ApiModel):
-    """One stop as the client submits it on create or append. The server mints uid, display_id, seq and day."""
+class ScreenInput(ApiModel):
+    """A screen row as a client sends it: `id` only when it already exists (kept on a screens PUT)."""
+
+    id: str | None = Field(default=None, max_length=64)
+    stick_number: str = Field(default="", max_length=200)
+    venue_id: str = Field(default="", max_length=200)
+    screen_size: str = Field(default="", max_length=50)
+    is_dolphin_screen: bool = True
+    has_mount: bool = False
+    has_ceiling_mount: bool = False
+    status: ScreenStatus = ScreenStatus.UPCOMING
+
+    def to_screen(self) -> Screen:
+        data = self.model_dump(exclude={"id"})
+        return Screen(**data, **({"id": self.id} if self.id else {}))
+
+
+class StopInput(StoreDetails):
+    """One stop as the client submits it on create or append. The server mints uid, display_id, seq and day.
+
+    Without `screens` the stop gets one screen with `initial_status` (or Upcoming)."""
 
     store_name: str = Field(max_length=300)
     addr: str = Field(max_length=500)
@@ -133,7 +243,13 @@ class StopInput(ApiModel):
     lng: float | None = Field(default=None, ge=-180, le=180)
     geocoded: str = Field(default="", max_length=500)
     fields: dict[str, Any] = Field(default_factory=dict)
-    initial_status: StopStatus | None = None
+    screens: list[ScreenInput] = Field(default_factory=list, max_length=200)
+    initial_status: ScreenStatus | None = None
+
+    def build_screens(self) -> list[Screen]:
+        if self.screens:
+            return [screen.to_screen() for screen in self.screens]
+        return [Screen(status=self.initial_status or ScreenStatus.UPCOMING)]
 
 
 class ProjectCreate(ApiModel):

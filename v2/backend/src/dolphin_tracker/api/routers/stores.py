@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
 from dolphin_tracker.api.deps import get_store_service
 from dolphin_tracker.api.schemas import AppendResult, AppendStops, Pin, ProgressUpdate, StoreDetailsUpdate
-from dolphin_tracker.domain.models import Page, Stop, StopStatus
+from dolphin_tracker.domain.models import Page, ScreenStatus, Stop
 from dolphin_tracker.services.stores import StoreQuery, StoreService
 
 router = APIRouter(prefix="/projects/{project_id}/stores", tags=["stores"])
@@ -14,7 +14,7 @@ ServiceDep = Annotated[StoreService, Depends(get_store_service)]
 
 
 def store_query(
-    status: Annotated[list[StopStatus] | None, Query()] = None,
+    status: Annotated[list[ScreenStatus] | None, Query()] = None,
     installer: Annotated[list[str] | None, Query(description="Repeatable; empty value = unassigned")] = None,
     q: Annotated[str, Query(max_length=200)] = "",
     sort: Annotated[str, Query(description="store_name, addr, status, installer, day, updated_at, fields.<key>")] = (

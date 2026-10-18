@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 
 from dolphin_tracker.api.app import create_app
 from dolphin_tracker.api.deps import get_geocoder, get_project_repository, get_store_repository
-from dolphin_tracker.domain.models import FieldDef, FieldType, Project, ProjectType, Stop, StopStatus
+from dolphin_tracker.domain.models import FieldDef, FieldType, Project, ProjectType, ScreenStatus, Stop
 from dolphin_tracker.domain.schema import default_field_schema
 from dolphin_tracker.repositories.memory import InMemoryProjectRepository, InMemoryStoreRepository
 from tests.fakes import FakeGeocoder, geocode_ok
@@ -18,13 +18,13 @@ SCHEMA = [*default_field_schema(), FieldDef(key="screens", label="Screens", type
 def seed_stops() -> list[Stop]:
     rows = [
         # uid, display, name, addr, city, zip, status, installer, day, fields, comment, lat
-        ("a", "S1", "Bravo Mart", "10 Oak St", "Atlanta", "30303", "Complete", "Ann", 1, {"dma": "ATL", "screens": 2},
+        ("a", "S1", "Bravo Mart", "10 Oak St", "Atlanta", "30303", "Completed", "Ann", 1, {"dma": "ATL", "screens": 2},
          "", 33.7),
-        ("b", "S2", "alpha cafe", "5 Elm St", "Decatur", "30030", "Incomplete", "Bo", 2, {"dma": "ATL", "screens": 10},
+        ("b", "S2", "alpha cafe", "5 Elm St", "Decatur", "30030", "Upcoming", "Bo", 2, {"dma": "ATL", "screens": 10},
          "call owner", 33.8),
-        ("c", "S10", "Charlie Gas", "1 Pine Rd", "Macon", "31201", "Technical Issue", "Ann", 2, {"dma": "MCN"}, "",
+        ("c", "S10", "Charlie Gas", "1 Pine Rd", "Macon", "31201", "Offline", "Ann", 2, {"dma": "MCN"}, "",
          None),
-        ("d", "S3", "Delta Deli", "7 Ash Ave", "Atlanta", "30303", "Incomplete", "", 1, {}, "", 33.75),
+        ("d", "S3", "Delta Deli", "7 Ash Ave", "Atlanta", "30303", "Upcoming", "", 1, {}, "", 33.75),
     ]
     return [
         Stop(
@@ -82,8 +82,8 @@ class StoresApiTests(unittest.TestCase):
         self.assertEqual(self.client.get("/api/projects/p1/stores", params={"dir": "up"}).status_code, 422)
 
     def test_filters_and_search(self):
-        self.assertEqual(self.uids(status="Incomplete"), ["b", "d"])
-        self.assertEqual(sorted(self.uids(status=["Complete", "Technical Issue"])), ["a", "c"])
+        self.assertEqual(self.uids(status="Upcoming"), ["b", "d"])
+        self.assertEqual(sorted(self.uids(status=["Completed", "Offline"])), ["a", "c"])
         self.assertEqual(self.uids(installer="Ann"), ["a", "c"])
         self.assertEqual(self.uids(installer=""), ["d"])  # unassigned
         self.assertEqual(self.uids(q="atlanta"), ["a", "d"])  # city
@@ -91,7 +91,7 @@ class StoresApiTests(unittest.TestCase):
         self.assertEqual(self.uids(q="owner"), ["b"])  # comment
         self.assertEqual(self.uids(q="31201"), ["c"])  # zip
         self.assertEqual(self.uids(q="s10"), ["c"])  # display id
-        self.assertEqual(self.uids(q="atlanta", status="Incomplete"), ["d"])
+        self.assertEqual(self.uids(q="atlanta", status="Upcoming"), ["d"])
         self.assertEqual(self.client.get("/api/projects/p1/stores", params={"status": "Nope"}).status_code, 422)
 
     def test_cursor_pagination(self):
@@ -118,7 +118,7 @@ class StoresApiTests(unittest.TestCase):
         self.assertEqual({pin["uid"] for pin in pins}, {"a", "b", "d"})
         self.assertEqual(set(pins[0]), {"uid", "lat", "lng", "status", "store_name", "installer", "day"})
         self.assertEqual([p["uid"] for p in self.client.get("/api/projects/p1/stores/pins",
-                                                            params={"status": "Complete"}).json()], ["a"])
+                                                            params={"status": "Completed"}).json()], ["a"])
 
     def test_field_usage_counts_stores_with_a_value(self):
         self.stores.update_fields("p1", "d", {"fields.dma": ""})  # blank values don't count
@@ -167,7 +167,7 @@ class StoresApiTests(unittest.TestCase):
         self.assertEqual((stop["addr"], stop["lat"], stop["lng"]), ("99 New St", 33.9, -84.1))
         self.assertEqual(stop["geocoded"], "99 New St, Atlanta, GA 30303, USA")
         self.assertTrue(stop["route_stale"])
-        self.assertEqual((stop["installer"], stop["day"], stop["status"]), ("Ann", 1, "Complete"))  # untouched
+        self.assertEqual((stop["installer"], stop["day"], stop["status"]), ("Ann", 1, "Completed"))  # untouched
 
     def test_partial_or_failed_geocode_is_422_with_suggestions(self):
         partial = self.patch("a", {"addr": "Main"})
@@ -195,14 +195,24 @@ class StoresApiTests(unittest.TestCase):
 
     def test_progress_writes_only_progress_fields(self):
         before = self.stores.get("p1", "b")
-        response = self.patch("b", {"status": "Complete", "comment": "done", "additional_task": True,
+        response = self.patch("b", {"status": "Completed", "comment": "done", "additional_task": True,
                                     "installer_name": "Bob", "updated_by": "tech@x"}, "/progress")
         self.assertEqual(response.status_code, 200, response.text)
         after = self.stores.get("p1", "b")
         self.assertEqual((after.status, after.comment, after.additional_task, after.installer_name, after.updated_by),
-                         (StopStatus.COMPLETE, "done", True, "Bob", "tech@x"))
+                         (ScreenStatus.COMPLETED, "done", True, "Bob", "tech@x"))
         self.assertEqual((after.installer, after.day, after.seq, after.addr, after.fields),
                          (before.installer, before.day, before.seq, before.addr, before.fields))
+
+    def test_progress_status_sets_every_screen(self):
+        two = [{"status": "Upcoming", "stick_number": "1"}, {"status": "Shipped", "stick_number": "2"}]
+        self.stores.update_fields("p1", "b", {"screens": two})
+        ids = [screen.id for screen in self.stores.get("p1", "b").screens]
+        self.assertEqual(self.patch("b", {"status": "Delivered"}, "/progress").status_code, 200)
+        after = self.stores.get("p1", "b")
+        self.assertEqual([(s.id, s.stick_number, s.status) for s in after.screens],
+                         [(ids[0], "1", ScreenStatus.DELIVERED), (ids[1], "2", ScreenStatus.DELIVERED)])
+        self.assertEqual(after.status, ScreenStatus.DELIVERED)
 
     def test_progress_validation(self):
         self.assertEqual(self.patch("b", {}, "/progress").status_code, 422)
@@ -218,7 +228,7 @@ class StoresApiTests(unittest.TestCase):
             return original(project_id, uid, changes)
 
         self.stores.update_fields = spy
-        self.patch("b", {"status": "Other", "comment": "x"}, "/progress")
+        self.patch("b", {"status": "Archived", "comment": "x"}, "/progress")
         self.patch("b", {"addr": "99 New St", "city": "Atlanta", "zip": "30303"})
-        self.assertEqual(writes[0], {"status", "comment"})
+        self.assertEqual(writes[0], {"screens", "status", "comment"})  # status is set on the screens
         self.assertFalse(writes[1] & {"status", "comment", "installer", "day", "seq"})

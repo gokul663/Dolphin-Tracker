@@ -15,7 +15,6 @@ from dolphin_tracker.domain.models import (
     ProjectSummary,
     RoutingStatus,
     Stop,
-    StopStatus,
 )
 from dolphin_tracker.domain.schema import (
     coerce_fields,
@@ -23,6 +22,7 @@ from dolphin_tracker.domain.schema import (
     validate_schema,
     validate_stop_inputs,
 )
+from dolphin_tracker.domain.validation import stop_details
 from dolphin_tracker.repositories.projects import ProjectRepository
 from dolphin_tracker.repositories.stores import StoreRepository
 from dolphin_tracker.services.routing import RoutingService
@@ -131,7 +131,8 @@ class ProjectService:
                 day=1,
                 seq=index,
                 fields=coerce_fields(schema, stop.fields),
-                status=stop.initial_status or StopStatus.INCOMPLETE,
+                **stop_details(stop),
+                screens=stop.build_screens(),
             )
             for index, stop in enumerate(payload.stops)
         ]

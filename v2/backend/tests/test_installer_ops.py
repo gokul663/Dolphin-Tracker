@@ -1,6 +1,7 @@
 from dolphin_tracker.domain.errors import NotFoundError
-from dolphin_tracker.domain.models import JobStatus, Project, RoutingStatus, StopStatus
+from dolphin_tracker.domain.models import JobStatus, Project, RoutingStatus, ScreenStatus
 from dolphin_tracker.services.routing import RoutingService
+from tests.fakes import status_write
 from tests.test_projects_api import NoopInvoker, ProjectApiTestCase, stop_input
 
 
@@ -32,7 +33,7 @@ class InstallerOpsTests(ProjectApiTestCase):
         """Per-day cap. For rebalance (v1 semantics) only Incomplete stops consume capacity."""
         counts: dict[tuple[str, int], int] = {}
         for stop in self.stores.list_all(self.pid):
-            if pending_only and stop.status != StopStatus.INCOMPLETE:
+            if pending_only and stop.status != ScreenStatus.UPCOMING:
                 continue
             counts[(stop.installer, stop.day)] = counts.get((stop.installer, stop.day), 0) + 1
         self.assertTrue(all(count <= cap for count in counts.values()), counts)
@@ -51,7 +52,7 @@ class InstallerOpsTests(ProjectApiTestCase):
     def complete(self, count: int) -> dict[str, tuple[str, int, int]]:
         done = {}
         for stop in sorted(self.stores.list_all(self.pid), key=lambda s: s.uid)[:count]:
-            self.stores.update_fields(self.pid, stop.uid, {"status": StopStatus.COMPLETE.value})
+            self.stores.update_fields(self.pid, stop.uid, status_write(ScreenStatus.COMPLETED))
             done[stop.uid] = (stop.installer, stop.day, stop.seq)
         return done
 
@@ -97,7 +98,7 @@ class InstallerOpsTests(ProjectApiTestCase):
         self.stores.update_fields(self.pid, uid, {"comment": "keep"})
         self.finish(self.post("/routing/recluster"))
         stop = self.stores.get(self.pid, uid)
-        self.assertEqual((stop.status, stop.comment), (StopStatus.COMPLETE, "keep"))
+        self.assertEqual((stop.status, stop.comment), (ScreenStatus.COMPLETED, "keep"))
         self.check_caps()
 
     def test_jobs_conflict_while_one_is_running(self):

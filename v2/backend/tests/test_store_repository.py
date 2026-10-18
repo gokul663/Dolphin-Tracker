@@ -5,10 +5,11 @@ from moto import mock_aws
 
 from dolphin_tracker.domain.cursors import encode_cursor
 from dolphin_tracker.domain.errors import NotFoundError
-from dolphin_tracker.domain.models import Stop, StopStatus
+from dolphin_tracker.domain.models import ScreenStatus, Stop
 from dolphin_tracker.repositories.dynamo import TABLE_DEFINITION
 from dolphin_tracker.repositories.memory import InMemoryStoreRepository
 from dolphin_tracker.repositories.stores import DynamoStoreRepository
+from tests.fakes import status_write
 
 
 def make_stops(count: int, *, prefix: str = "u") -> list[Stop]:
@@ -77,9 +78,9 @@ class StoreRepositoryContract:
         self.repo.put_many("p1", make_stops(1))
         before = self.repo.get("p1", "u000")
         updated = self.repo.update_fields(
-            "p1", "u000", {"status": StopStatus.COMPLETE.value, "comment": "done", "fields.dma": "Macon"}
+            "p1", "u000", status_write(ScreenStatus.COMPLETED, comment="done", **{"fields.dma": "Macon"})
         )
-        self.assertEqual(updated.status, StopStatus.COMPLETE)
+        self.assertEqual(updated.status, ScreenStatus.COMPLETED)
         self.assertEqual(updated.comment, "done")
         self.assertEqual(updated.fields, {"dma": "Macon", "screens": 2})
         self.assertEqual((updated.installer, updated.day, updated.seq), ("A", 1, 0))
@@ -96,7 +97,7 @@ class StoreRepositoryContract:
         self.repo.put_many("p1", make_stops(40))
         changes = [(f"u{i:03d}", {"installer": "B", "day": 9, "seq": i}) for i in range(0, 40, 2)]
         changes.append(("ghost", {"installer": "B", "day": 1, "seq": 0}))
-        self.repo.update_fields("p1", "u000", {"status": "Complete", "comment": "keep me"})
+        self.repo.update_fields("p1", "u000", status_write("Completed", comment="keep me"))
         written = self.repo.update_routing_many("p1", changes)
         self.assertEqual(written, 20)
         moved = self.repo.get("p1", "u004")
@@ -104,7 +105,7 @@ class StoreRepositoryContract:
         untouched = self.repo.get("p1", "u001")
         self.assertEqual((untouched.installer, untouched.day), ("A", 1))
         progress_kept = self.repo.get("p1", "u000")
-        self.assertEqual((progress_kept.status, progress_kept.comment), (StopStatus.COMPLETE, "keep me"))
+        self.assertEqual((progress_kept.status, progress_kept.comment), (ScreenStatus.COMPLETED, "keep me"))
         self.assertIsNone(self.repo.get("p1", "ghost"))  # never created by a routing write
         self.assertEqual(self.repo.update_routing_many("p1", []), 0)
 

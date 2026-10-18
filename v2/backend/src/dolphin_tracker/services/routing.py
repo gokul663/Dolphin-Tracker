@@ -25,8 +25,8 @@ from dolphin_tracker.domain.models import (
     Project,
     RoutesBundle,
     RoutingStatus,
+    ScreenStatus,
     Stop,
-    StopStatus,
 )
 from dolphin_tracker.domain.route_optimizer import (
     build_project_routes,
@@ -259,7 +259,7 @@ class RoutingService:
         coherent cluster first."""
         installers = project.installers
         current = optimizer_routes(stops, installers)
-        incomplete = {stop.uid for stop in stops if stop.status == StopStatus.INCOMPLETE}
+        incomplete = {stop.uid for stop in stops if stop.status == ScreenStatus.UPCOMING}
         if new_installer:
             existing = [name for name in installers if name != new_installer]
             override = split_territory_for_new_installer(current, incomplete, existing, new_installer)

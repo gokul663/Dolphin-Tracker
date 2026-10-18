@@ -9,8 +9,10 @@ from pydantic import Field
 
 from dolphin_tracker.domain.base import ApiModel
 from dolphin_tracker.domain.parsing import clean_cell
+from dolphin_tracker.domain.statuses import LEGACY_STATUSES, PENDING_STATUSES, ScreenStatus
 
-STATUSES = ("Complete", "Incomplete", "Technical Issue", "Other")
+STATUSES = tuple(status.value for status in ScreenStatus)
+FINISHED = frozenset({ScreenStatus.ARCHIVED, ScreenStatus.CANCELLED})
 KPI_ATTRIBUTES = ("uid", "status", "installer", "installer_name", "fields", "addr", "city", "state", "zip")
 
 
@@ -45,9 +47,9 @@ def _address_key(row: Mapping[str, Any]) -> str:
 def _add(target: dict[str, Breakdown], label: Any, status: str) -> None:
     entry = target.setdefault(clean_cell(label) or "Not provided", Breakdown())
     entry.total += 1
-    if status == "Complete":
+    if status == ScreenStatus.COMPLETED:
         entry.complete += 1
-    elif status == "Incomplete":
+    elif status in PENDING_STATUSES:
         entry.pending += 1
 
 
@@ -56,7 +58,8 @@ def kpi_summary(rows: Iterable[Mapping[str, Any]]) -> Kpi:
     kpi = Kpi()
     address_groups: dict[str, list[str]] = {}
     for row in rows:
-        status = row.get("status") or "Incomplete"
+        raw = row.get("status") or ScreenStatus.UPCOMING.value
+        status = LEGACY_STATUSES.get(raw, raw)  # v1 values (the migration's parity side) read as v2
         fields = row.get("fields") or {}
         kpi.total += 1
         kpi.by_status[status] = kpi.by_status.get(status, 0) + 1
@@ -66,11 +69,13 @@ def kpi_summary(rows: Iterable[Mapping[str, Any]]) -> Kpi:
         _add(kpi.by_dma, fields.get("dma", ""), status)
         _add(kpi.by_venue_type, fields.get("venue_type", ""), status)
         address_groups.setdefault(_address_key(row), []).append(status)
-    kpi.complete = kpi.by_status.get("Complete", 0)
-    kpi.pending = kpi.by_status.get("Incomplete", 0)
-    kpi.technical = kpi.by_status.get("Technical Issue", 0)
-    kpi.other = kpi.by_status.get("Other", 0)
-    unique_complete = sum(all(status == "Complete" for status in group) for group in address_groups.values())
+    kpi.complete = kpi.by_status.get(ScreenStatus.COMPLETED, 0)
+    kpi.pending = sum(kpi.by_status.get(status, 0) for status in PENDING_STATUSES)
+    kpi.technical = kpi.by_status.get(ScreenStatus.OFFLINE, 0)
+    kpi.other = sum(kpi.by_status.get(status, 0) for status in FINISHED)
+    unique_complete = sum(
+        all(status == ScreenStatus.COMPLETED for status in group) for group in address_groups.values()
+    )
     kpi.address_status = Breakdown(
         total=len(address_groups), complete=unique_complete, pending=len(address_groups) - unique_complete
     )

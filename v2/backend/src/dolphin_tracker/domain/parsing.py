@@ -12,11 +12,10 @@ from openpyxl import load_workbook
 ADDRESS_ALIASES = {"address", "addr", "street_address", "site_address"}
 STORE_ALIASES = {"store_name", "store", "site_name", "name"}
 PA_ALIASES = {"pa", "pa_name", "principal_agent", "principal_agent_name"}
-STATUS_ALIASES = {"status", "venue_status", "installation_status", "site_status"}
+STATUS_COLUMN_ALIASES = {"status", "venue_status", "installation_status", "site_status"}
 VENUE_TYPE_ALIASES = {"venue_type", "venue", "site_type", "location_type"}
 DMA_ALIASES = {"dma", "dma_name", "market", "market_name"}
 VENUE_CODE_ALIASES = {"venue_code", "site_code", "location_code", "venue_id"}
-ALLOWED_STATUSES = {"Incomplete", "Complete", "Technical Issue", "Other"}
 
 Row = dict[str, str]
 
@@ -43,16 +42,6 @@ def header_keys(cells: Iterable[object]) -> list[str]:
         key = normalize_column(cell) if cell is not None else ""
         keys.append(key or f"column_{index + 1}")
     return keys
-
-
-def normalize_status(value: object) -> tuple[str, bool]:
-    """Map a free-text status onto an allowed value. Returns (status, was_recognised)."""
-    raw = clean_cell(value)
-    if not raw:
-        return "Incomplete", True
-    canonical = {status.lower(): status for status in ALLOWED_STATUSES}
-    matched = canonical.get(raw.lower())
-    return (matched, True) if matched else ("Incomplete", False)
 
 
 def _decode(raw: bytes) -> str:

@@ -9,7 +9,6 @@ from dolphin_tracker.domain.parsing import (
     VENUE_TYPE_ALIASES,
     clean_cell,
     normalize_column,
-    normalize_status,
     read_csv_table,
     read_table,
     read_xlsx_table,
@@ -45,11 +44,6 @@ class CsvParserTests(unittest.TestCase):
         self.assertEqual(
             rows, [{"address": "123 Main St, Dallas, TX 75201", "store_name": "Store A", "pa": "North PA"}]
         )
-
-    def test_normalizes_allowed_venue_status(self):
-        self.assertEqual(normalize_status(" technical issue "), ("Technical Issue", True))
-        self.assertEqual(normalize_status(""), ("Incomplete", True))
-        self.assertEqual(normalize_status("Finished"), ("Incomplete", False))
 
     def test_optional_venue_headers_are_supported(self):
         self.assertIn(normalize_column("Venue Type"), VENUE_TYPE_ALIASES)

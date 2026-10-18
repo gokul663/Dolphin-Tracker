@@ -1462,3 +1462,69 @@ The rename test checks one progress batch with only the stop whose `installer_na
 **Tests:** float-string days; naive and aware datetimes → ISO with offset, comparable with `now_iso()`.
 
 **Verified:** gates green (247 backend, 102 frontend).
+
+---
+
+## Phase 5 transition note (applies to S1–S10)
+
+Phase 5 changes the stop's shape and status vocabulary end to end. To keep every commit green, the backend moves
+first (S1–S6) and the **generated client is regenerated in S4**, as the handoff places it. Between S1 and S4
+the committed `schema.d.ts` is stale against the backend (the D8 `api-drift` CI job would flag those commits),
+and between S1 and S7–S10 the running UI still speaks v1 statuses to a v2 API (a v1 status sent from the old UI
+is a 422). The four gates pass at every commit; a browser session is only expected to work again from S7 on.
+
+## S1 · Domain model v2: screens, statuses, derived status, validation
+
+**Changed**
+- `domain/statuses.py` (new, pure): `ScreenStatus` (8 values, §4.2), `STATUS_PRECEDENCE`, `PENDING_STATUSES`,
+  sheet `STATUS_ALIASES` (§4.3) with `normalize_screen_status(raw) → (status, recognised)`,
+  `LEGACY_STATUSES` (v1's four values, §4.4) and `derive_store_status(screens)`. It is a separate module because
+  `models.py` imports `kpi.py`; `models.py` re-exports everything.
+- `domain/models.py`:
+  - `Screen` (§4.1; server-minted uuid id, Upcoming / dolphin screen / wall mount defaults) and `ScreenInput`
+    (`id` only for existing rows).
+  - `StoreDetails`: the §2 first-class attributes, shared by `Stop` and `StopInput`. Text defaults to "",
+    counts and the five tri-state checks to `None`.
+  - `Stop` gains `screens`. A model validator always derives `status` from them, and a stop with no screens gets
+    one carrying its status. Items written before v2 therefore read as one screen with the v1 value mapped
+    (`Incomplete`→Upcoming, `Complete`→Completed, `Technical Issue`→Offline, `Other`→Upcoming).
+  - `StopInput` gains `screens` and `build_screens()`, which falls back to one screen with `initial_status`.
+  - `screens` joins `PROGRESS_FIELDS` (status is per screen).
+- `domain/validation.py` (new, pure): the store field registry `STORE_FIELDS` in §3 drawer order (name, label,
+  group, kind, editable, required), `validate_store_values` / `field_error`, and the parsers
+  `parse_tri_state`, `parse_count` and `normalize_external_id`. Rules per kind:
+  - phone: 7+ digits;
+  - email;
+  - url: at least one `http(s)://` token;
+  - select: New / Existing;
+  - int: ≥ 0, bool rejected;
+  - required: non-empty IBC#, store name and address.
+- `stop_details(input)` copies a submitted stop's detail attributes for storage (trimmed, IBC# normalised).
+  Create and append now store them and the built screens.
+- `StopStatus` is gone. The swaps:
+  - API schemas, filters and import rows use `ScreenStatus`.
+  - The KPI keeps its round-1 shape over v2 statuses (complete = Completed, pending = the pending set,
+    technical = Offline, other = Archived + Cancelled) until S4's KPI v2.
+  - Routing's rebalance keeps v1 semantics (`== Upcoming`) until S5 widens it to the pending set.
+  - The migration maps v1 values through `LEGACY_STATUSES`; S6 does the rest of §4.4.
+  - `PATCH …/progress` `status` sets every screen to that status (until S4 removes it from progress).
+  - `parsing.STATUS_ALIASES` (header names) is renamed `STATUS_COLUMN_ALIASES` to avoid confusion with the
+    value aliases.
+
+**Deferred on purpose:** the default field schema (still pa/dma/owner_* as `fields`) and reserving the new
+attribute names as schema keys both change in S4, together with the client. Reserving them now would make the
+current default schema invalid.
+
+**Tests:** `tests/test_store_model.py` (17 tests, 28 subtests):
+- precedence and the pending set;
+- derivation, including that a passed `status` is ignored when screens exist;
+- one default screen, and legacy items reading as one screen;
+- all sheet aliases, case- and space-insensitive, plus unknown values;
+- screen id minting and keeping, and `build_screens`;
+- tri-state, counts and IBC# normalisation;
+- registry order and read-only fields, per-kind rules, required fields, `stop_details`.
+
+API: a progress `status` sets both screens of a two-screen store and keeps their ids. Existing tests moved to the
+v2 vocabulary through a `status_write` helper (bare `status` writes are now overridden by the screens, by design).
+
+**Verified:** gates green (265 backend, 102 frontend).

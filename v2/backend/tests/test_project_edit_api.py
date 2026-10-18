@@ -67,10 +67,10 @@ class AppendTests(ProjectApiTestCase):
         self.assertEqual(project.stop_count, 7)
 
     def test_status_fields_and_pa_merge(self):
-        stop = {**new_stop("N1", "1 New Rd", pa="South", dma="ATL"), "initial_status": "Complete"}
+        stop = {**new_stop("N1", "1 New Rd", pa="South", dma="ATL"), "initial_status": "Completed"}
         self.append([stop], pa="East, North").json()
         added = next(s for s in self.stores.list_all("p1") if s.store_name == "N1")
-        self.assertEqual((added.status.value, added.fields), ("Complete", {"pa": "South", "dma": "ATL"}))
+        self.assertEqual((added.status.value, added.fields), ("Completed", {"pa": "South", "dma": "ATL"}))
         self.assertEqual(self.projects.get("p1").pa, "East, North, South")
 
     def test_errors(self):

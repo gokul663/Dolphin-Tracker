@@ -23,12 +23,12 @@ def stop(uid: str, status: str, addr: str, *, installer: str = "Ann", installer_
 
 
 STOPS = [
-    stop("a", "Complete", "1 Main St", dma="ATL", venue_type="Bar"),
-    stop("b", "Complete", "1 MAIN ST.", dma="ATL", venue_type="Bar"),  # same address as a, all complete
-    stop("c", "Incomplete", "2 Oak St", installer="Bo", dma="ATL"),
-    stop("d", "Complete", "2 Oak St", installer="Bo", installer_name="Bobby"),  # same address as c, mixed
-    stop("e", "Technical Issue", "", installer=""),  # blank street, same city/state/zip as f
-    stop("f", "Other", "", installer=""),
+    stop("a", "Completed", "1 Main St", dma="ATL", venue_type="Bar"),
+    stop("b", "Completed", "1 MAIN ST.", dma="ATL", venue_type="Bar"),  # same address as a, all complete
+    stop("c", "Upcoming", "2 Oak St", installer="Bo", dma="ATL"),
+    stop("d", "Completed", "2 Oak St", installer="Bo", installer_name="Bobby"),  # same address as c, mixed
+    stop("e", "Offline", "", installer=""),  # blank street, same city/state/zip as f
+    stop("f", "Archived", "", installer=""),
 ]
 
 
@@ -36,7 +36,11 @@ class KpiSummaryTests(unittest.TestCase):
     def test_matches_v1_rules(self):
         kpi = kpi_summary(s.model_dump(mode="json") for s in STOPS)
         self.assertEqual((kpi.total, kpi.complete, kpi.pending, kpi.technical, kpi.other), (6, 3, 1, 1, 1))
-        self.assertEqual(kpi.by_status, {"Complete": 3, "Incomplete": 1, "Technical Issue": 1, "Other": 1})
+        self.assertEqual(
+            kpi.by_status,
+            {"Upcoming": 1, "Invitation Email Sent": 0, "Shipped": 0, "Delivered": 0, "Completed": 3, "Offline": 1,
+             "Archived": 1, "Cancelled": 0},
+        )
         self.assertEqual(kpi.by_installer, {"Ann": 2, "Bo": 1, "Bobby": 1})  # installer_name wins
         self.assertEqual(kpi.by_dma["ATL"].model_dump(), {"total": 3, "complete": 2, "pending": 1})
         self.assertEqual(kpi.by_dma["Not provided"].model_dump(), {"total": 3, "complete": 1, "pending": 0})
@@ -48,7 +52,14 @@ class KpiSummaryTests(unittest.TestCase):
     def test_empty_project(self):
         kpi = kpi_summary([])
         self.assertEqual((kpi.total, kpi.address_status.total), (0, 0))
-        self.assertEqual(kpi.by_status["Complete"], 0)
+        self.assertEqual(kpi.by_status["Completed"], 0)
+
+    def test_pending_set_and_legacy_values(self):
+        rows = [{"uid": str(i), "status": status} for i, status in enumerate(
+            ["Upcoming", "Invitation Email Sent", "Shipped", "Delivered", "Cancelled", "Incomplete", "Complete"]
+        )]
+        kpi = kpi_summary(rows)  # v1 values (the migration's parity side) read through the legacy map
+        self.assertEqual((kpi.pending, kpi.complete, kpi.other), (5, 1, 1))
 
 
 class ProjectListKpiDynamoTests(unittest.TestCase):

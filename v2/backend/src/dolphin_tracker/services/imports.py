@@ -11,17 +11,16 @@ from typing import Any
 
 from aws_lambda_powertools import Logger
 
-from dolphin_tracker.domain.models import JobStatus
+from dolphin_tracker.domain.models import JobStatus, ScreenStatus, normalize_screen_status
 from dolphin_tracker.domain.parsing import (
     ADDRESS_ALIASES,
     DMA_ALIASES,
     PA_ALIASES,
-    STATUS_ALIASES,
+    STATUS_COLUMN_ALIASES,
     STORE_ALIASES,
     VENUE_CODE_ALIASES,
     VENUE_TYPE_ALIASES,
     find_column,
-    normalize_status,
     read_table,
 )
 from dolphin_tracker.repositories.files import FileStore, result_key
@@ -34,7 +33,7 @@ CORE_ALIASES = (
     ADDRESS_ALIASES
     | STORE_ALIASES
     | PA_ALIASES
-    | STATUS_ALIASES
+    | STATUS_COLUMN_ALIASES
     | VENUE_TYPE_ALIASES
     | DMA_ALIASES
     | VENUE_CODE_ALIASES
@@ -50,7 +49,7 @@ class ParsedRow:
     address: str
     store_name: str = ""
     pa: str = ""
-    status: str = "Incomplete"
+    status: str = ScreenStatus.UPCOMING.value
     status_valid: bool = True
     status_raw: str = ""
     venue_type: str = ""
@@ -159,7 +158,7 @@ class ImportService:
             raise ValueError("Missing 'address' column")
         store_column = find_column(columns, STORE_ALIASES)
         pa_column = find_column(columns, PA_ALIASES)
-        status_column = find_column(columns, STATUS_ALIASES)
+        status_column = find_column(columns, STATUS_COLUMN_ALIASES)
         venue = {
             "venue_type": find_column(columns, VENUE_TYPE_ALIASES),
             "dma": find_column(columns, DMA_ALIASES),
@@ -170,7 +169,9 @@ class ImportService:
         rows: list[ParsedRow] = []
         for index, record in enumerate(table):
             status_raw = record.get(status_column, "") if status_column else ""
-            status, status_valid = normalize_status(status_raw) if status_column else ("Incomplete", True)
+            status, status_valid = (
+                normalize_screen_status(status_raw) if status_column else (ScreenStatus.UPCOMING, True)
+            )
             rows.append(
                 ParsedRow(
                     index=index,

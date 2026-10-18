@@ -15,8 +15,16 @@ from typing import Any
 
 from dolphin_tracker.domain.addresses import apply_parsed_address
 from dolphin_tracker.domain.kpi import Kpi, kpi_summary
-from dolphin_tracker.domain.models import FieldDef, Project, ProjectType, RoutingStatus, Stop, StopStatus
-from dolphin_tracker.domain.parsing import clean_cell, normalize_status
+from dolphin_tracker.domain.models import (
+    LEGACY_STATUSES,
+    FieldDef,
+    Project,
+    ProjectType,
+    RoutingStatus,
+    ScreenStatus,
+    Stop,
+)
+from dolphin_tracker.domain.parsing import clean_cell
 from dolphin_tracker.domain.schema import default_field_schema
 
 LEGACY_PROJECT_IDS = frozenset({"atlanta-default"})
@@ -173,7 +181,7 @@ def transform_project(doc: Mapping[str, Any], states: Iterable[Mapping[str, Any]
         if clean_cell(state.get("venue_code")):
             fields["venue_code"] = clean_cell(state.get("venue_code"))  # v1 detail edits stored it on the state
 
-        status, _ = normalize_status(state.get("status", "Incomplete"))
+        status = LEGACY_STATUSES.get(clean_cell(state.get("status")), ScreenStatus.UPCOMING)
         additional_task = state.get("additional_task")
         if additional_task is None:
             additional_task = state.get("modem", False)  # the legacy ARA flag maps onto additional_task
@@ -194,7 +202,7 @@ def transform_project(doc: Mapping[str, Any], states: Iterable[Mapping[str, Any]
                 day=day,
                 seq=seq,
                 fields=fields,
-                status=StopStatus(status),
+                status=status,
                 comment=clean_cell(state.get("comment")),
                 additional_task=bool(additional_task),
                 installer_name=clean_cell(state.get("installer_name")),

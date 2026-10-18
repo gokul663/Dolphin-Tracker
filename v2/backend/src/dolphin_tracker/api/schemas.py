@@ -6,7 +6,7 @@ from typing import Any, Literal
 from pydantic import ConfigDict, Field
 
 from dolphin_tracker.domain.base import ApiModel
-from dolphin_tracker.domain.models import FieldDef, Project, ProjectType, StopInput, StopStatus
+from dolphin_tracker.domain.models import FieldDef, Project, ProjectType, ScreenStatus, StopInput
 
 
 class MapsConfig(ApiModel):
@@ -58,7 +58,7 @@ class Pin(ApiModel):
     uid: str
     lat: float
     lng: float
-    status: StopStatus
+    status: ScreenStatus
     store_name: str
     installer: str
     day: int
@@ -76,7 +76,7 @@ class StoreDetailsUpdate(ApiModel):
 
 
 class ProgressUpdate(ApiModel):
-    status: StopStatus | None = None
+    status: ScreenStatus | None = None  # sets every screen of the stop to this status
     comment: str | None = Field(default=None, max_length=2000)
     additional_task: bool | None = None
     installer_name: str | None = Field(default=None, max_length=200)
@@ -172,7 +172,7 @@ class ImportRow(ApiModel):
     place_name: str
     suggestions: list[str]
     error: str
-    venue_status: StopStatus
+    venue_status: ScreenStatus
     venue_status_valid: bool
     venue_status_raw: str
     fields: dict[str, str]  # keyed by normalised header; mapped to the schema in the review UI

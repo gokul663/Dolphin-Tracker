@@ -18,10 +18,20 @@ from typing import Any
 from dolphin_tracker.domain.addresses import duplicate_key
 from dolphin_tracker.domain.cursors import encode_cursor, offset_from_cursor
 from dolphin_tracker.domain.errors import ConflictError, NotFoundError, ValidationFailed
-from dolphin_tracker.domain.models import PROGRESS_FIELDS, Page, Project, RoutingStatus, Stop, StopInput, StopStatus
+from dolphin_tracker.domain.models import (
+    PROGRESS_FIELDS,
+    Page,
+    Project,
+    RoutingStatus,
+    ScreenStatus,
+    Stop,
+    StopInput,
+    derive_store_status,
+)
 from dolphin_tracker.domain.parsing import clean_cell
 from dolphin_tracker.domain.route_optimizer import state_key
 from dolphin_tracker.domain.schema import coerce_fields, validate_fields, validate_stop_inputs
+from dolphin_tracker.domain.validation import stop_details
 from dolphin_tracker.repositories.projects import ProjectRepository
 from dolphin_tracker.repositories.stores import StoreRepository
 from dolphin_tracker.services.geocoding import Geocoder
@@ -35,7 +45,7 @@ CSV_FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
 
 @dataclass
 class StoreQuery:
-    status: list[StopStatus] = field(default_factory=list)
+    status: list[ScreenStatus] = field(default_factory=list)
     installer: list[str] = field(default_factory=list)  # "" matches unassigned stops
     q: str = ""
     sort: str = "store_name"
@@ -242,15 +252,18 @@ class StoreService:
 
     def update_progress(self, project_id: str, stop_uid: str, changes: dict[str, Any]) -> Stop:
         """Status / comment / additional task / installer name / updated_by only."""
-        self.get(project_id, stop_uid)
+        current = self.get(project_id, stop_uid)
         update = {key: value for key, value in changes.items() if value is not None}
         extra = set(update) - PROGRESS_FIELDS
         if extra:
             raise ValueError(f"Not progress fields: {sorted(extra)}")
         if not update:
             raise ValidationFailed("Nothing to update")
-        if isinstance(update.get("status"), StopStatus):
-            update["status"] = update["status"].value
+        if "status" in update:  # status lives on the screens: set every screen, then the derived summary
+            status = ScreenStatus(update["status"])
+            screens = [screen.model_copy(update={"status": status}) for screen in current.screens]
+            update["screens"] = [screen.model_dump(mode="json") for screen in screens]
+            update["status"] = derive_store_status(screens).value
         return self._stores.update_fields(project_id, stop_uid, update)
 
     # ---- append -------------------------------------------------------------------------------------------
@@ -344,7 +357,8 @@ class StoreService:
                 day=day,
                 seq=len(days[installer][day]),  # end of that day's route
                 fields=coerce_fields(project.field_schema, stop.fields),
-                status=stop.initial_status or StopStatus.INCOMPLETE,
+                **stop_details(stop),
+                screens=stop.build_screens(),
             )
             days[installer][day].append(new)
             appended.append(new)

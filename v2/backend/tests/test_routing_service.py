@@ -7,8 +7,8 @@ from dolphin_tracker.domain.models import (
     Project,
     ProjectType,
     RoutingStatus,
+    ScreenStatus,
     Stop,
-    StopStatus,
 )
 from dolphin_tracker.repositories.memory import (
     InMemoryJobRepository,
@@ -16,6 +16,7 @@ from dolphin_tracker.repositories.memory import (
     InMemoryStoreRepository,
 )
 from dolphin_tracker.services.routing import SUPERSEDED, RoutingService, day_miles, group_routes
+from tests.fakes import status_write
 
 
 def make_stops(count: int) -> list[Stop]:
@@ -129,7 +130,7 @@ class RoutingBuildTests(unittest.TestCase):
         self.assertEqual(self.projects.get("p1").routing_status, RoutingStatus.READY)
 
     def test_build_writes_routes_and_releases_slot(self):
-        self.stores.update_fields("p1", "u03", {"status": StopStatus.COMPLETE, "comment": "done"})
+        self.stores.update_fields("p1", "u03", status_write(ScreenStatus.COMPLETED, comment="done"))
         self.stores.update_fields("p1", "u04", {"route_stale": True})
         job_id = self._enqueue()
         self.service.run_build(job_id)
@@ -146,7 +147,7 @@ class RoutingBuildTests(unittest.TestCase):
             days[(stop.installer, stop.day)] = days.get((stop.installer, stop.day), 0) + 1
         self.assertTrue(all(count <= 5 for count in days.values()))
         kept = self.stores.get("p1", "u03")
-        self.assertEqual((kept.status, kept.comment), (StopStatus.COMPLETE, "done"))  # progress preserved
+        self.assertEqual((kept.status, kept.comment), (ScreenStatus.COMPLETED, "done"))  # progress preserved
         self.assertFalse(self.stores.get("p1", "u04").route_stale)
 
     def test_redelivered_event_after_success_is_a_no_op(self):

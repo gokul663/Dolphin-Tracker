@@ -2,7 +2,7 @@ import unittest
 from datetime import UTC, datetime
 
 from dolphin_tracker.domain.migration import format_report, is_legacy, legacy_keys, transform_project
-from dolphin_tracker.domain.models import StopStatus, now_iso
+from dolphin_tracker.domain.models import ScreenStatus, now_iso
 
 V1_PROJECT = {
     "id": "proj-1",
@@ -81,14 +81,14 @@ class TransformTests(unittest.TestCase):
 
     def test_state_join_all_key_spellings(self):
         s1, s2, s3 = self.by_id["S1"], self.by_id["S2"], self.by_id["S3"]
-        self.assertEqual((s1.status, s1.comment, s1.additional_task), (StopStatus.COMPLETE, "done", True))
+        self.assertEqual((s1.status, s1.comment, s1.additional_task), (ScreenStatus.COMPLETED, "done", True))
         progress = (s1.installer_name, s1.updated_by, s1.updated_at)
         self.assertEqual(progress, ("Annie", "tech@x", "2026-06-01T10:00:00+00:00"))
         self.assertEqual(s1.store_name, "Alpha Renamed")  # store-name override from progress
-        self.assertEqual((s2.status, s2.additional_task), (StopStatus.TECHNICAL_ISSUE, True))  # modem -> task
-        self.assertEqual(s3.status, StopStatus.OTHER)
+        self.assertEqual((s2.status, s2.additional_task), (ScreenStatus.OFFLINE, True))  # modem -> task
+        self.assertEqual(s3.status, ScreenStatus.UPCOMING)  # v1 "Other" (STORE-MODEL §4.4)
         self.assertEqual((s3.lat, s3.day), (None, 2))
-        self.assertEqual(self.by_id["S4"].status, StopStatus.INCOMPLETE)
+        self.assertEqual(self.by_id["S4"].status, ScreenStatus.UPCOMING)
 
     def test_seq_follows_array_order_within_installer_day(self):
         layout = {d: (s.installer, s.day, s.seq) for d, s in self.by_id.items()}
@@ -112,7 +112,8 @@ class TransformTests(unittest.TestCase):
         self.assertEqual(report.orphan_states, ["atl-route-v2|Bo|S4|4 Pine St|32.7|-96.7"])
         # v1's dashboard looked up the Python spelling, so it never saw S2's or S3's page-written state.
         self.assertEqual((report.old_kpi.complete, report.old_kpi.technical, report.old_kpi.other), (1, 0, 0))
-        self.assertEqual((report.new_kpi.complete, report.new_kpi.technical, report.new_kpi.other), (1, 1, 1))
+        # New: S2 Technical Issue -> Offline; S3 Other -> Upcoming (pending, as v1 showed it).
+        self.assertEqual((report.new_kpi.complete, report.new_kpi.technical, report.new_kpi.other), (1, 1, 0))
         self.assertFalse(report.kpi_matches)
         text = format_report([report])
         self.assertIn("KPI differs", text)

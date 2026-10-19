@@ -34,7 +34,7 @@ type Step = "details" | "upload" | "columns" | "review" | "done";
 export function ImportWizard({ open, onClose, appendTo }: ImportWizardProps) {
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
-      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-6xl">
+      <DialogContent className="max-h-[92vh] grid-cols-[minmax(0,1fr)] overflow-y-auto sm:max-w-6xl">
         {/* Remounting per open resets every step. */}
         {open && <WizardBody key={appendTo?.id ?? "new"} appendTo={appendTo ?? null} onClose={onClose} />}
       </DialogContent>

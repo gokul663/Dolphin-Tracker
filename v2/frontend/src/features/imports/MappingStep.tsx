@@ -79,7 +79,9 @@ export function MappingStep({ result, specs, onRepoint, pending, error }: Props)
                       </Select>
                     )}
                   </td>
-                  <td className="p-2 text-xs text-slate-500">{sampleValues(result, column, target).join(" · ") || "—"}</td>
+                  <td className="p-2 text-xs text-slate-500">
+                    <p className="line-clamp-2 [overflow-wrap:anywhere]">{sampleValues(result, column, target).join(" · ") || "—"}</p>
+                  </td>
                 </tr>
               );
             })}

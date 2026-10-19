@@ -167,7 +167,7 @@ export const STORE_FIELDS_FOR_TESTS: StoreFieldSpec[] = [
   {
     "name": "store_ssid",
     "label": "Store SSID",
-    "group": "Installation",
+    "group": "WiFi",
     "kind": "text",
     "editable": true,
     "required": false,
@@ -176,7 +176,7 @@ export const STORE_FIELDS_FOR_TESTS: StoreFieldSpec[] = [
   {
     "name": "store_ssid_password",
     "label": "Store SSID password",
-    "group": "Installation",
+    "group": "WiFi",
     "kind": "text",
     "editable": true,
     "required": false,
@@ -194,7 +194,7 @@ export const STORE_FIELDS_FOR_TESTS: StoreFieldSpec[] = [
   {
     "name": "image_url",
     "label": "Pictures (image URL)",
-    "group": "Installation",
+    "group": "Pictures",
     "kind": "url",
     "editable": true,
     "required": false,

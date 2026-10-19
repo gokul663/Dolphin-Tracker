@@ -283,6 +283,8 @@ class RoutingService:
             raise ValidationFailed("Installer name cannot be empty")
         if name in project.installers:
             raise ConflictError("Installer name already exists")
+        if not project.installers:  # the project's stores are unrouted: the first installer gets a full build
+            return self.enqueue(project_id, "recluster", add_installer=name)
         return self.enqueue(project_id, "add_installer", add_installer=name, new_installer=name)
 
     def rebalance(self, project_id: str) -> Job:

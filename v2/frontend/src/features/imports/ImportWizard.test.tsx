@@ -64,12 +64,11 @@ async function fixReviewRows() {
   await waitFor(() => expect(screen.getByText("3 ready · 1 excluded")).toBeTruthy());
 }
 
+/** Only the name, the type (preset) and the single PA's name are required; installers can come later. */
 async function fillDetails() {
   await userEvent.type(screen.getByLabelText("Project name *"), "Wave 3");
-  await userEvent.type(screen.getByLabelText("PA *"), "North");
-  await userEvent.type(screen.getByLabelText("PA % *"), "40");
-  await userEvent.type(screen.getByLabelText("Dolphin % *"), "60");
-  await userEvent.type(screen.getByLabelText("Installers *"), "Ann{Enter}");
+  await userEvent.type(screen.getByLabelText("PA name *"), "North");
+  await userEvent.type(screen.getByLabelText("PA %"), "40");
 }
 
 describe("ImportWizard: new project", () => {
@@ -81,7 +80,8 @@ describe("ImportWizard: new project", () => {
 
     await userEvent.click(screen.getByRole("button", { name: /Next/ }));
     expect(await screen.findByText("Project name is required")).toBeTruthy();
-    expect(screen.getByText("Add at least one installer")).toBeTruthy();
+    expect(screen.getByText("PA name is required")).toBeTruthy();
+    expect(screen.queryByLabelText("Field agent")).toBeNull(); // behind "Has a field agent"
     await fillDetails();
     await userEvent.click(screen.getByRole("button", { name: /Next/ }));
     await uploadSheet();
@@ -111,8 +111,10 @@ describe("ImportWizard: new project", () => {
 
     await waitFor(() => expect(calls.some((call) => call.method === "POST" && call.url.pathname === "/api/projects")).toBe(true));
     const body = calls.find((call) => call.method === "POST" && call.url.pathname === "/api/projects")?.body as {
-      stops: StopInput[]; import_mapping: Record<string, string>; pa: string;
+      stops: StopInput[]; import_mapping: Record<string, string>; pa: string; installers: string[];
+      pa_percentage: number | null; dolphin_percentage: number | null; fa_percentage: number | null;
     };
+    expect(body).toMatchObject({ installers: [], pa_percentage: 40, dolphin_percentage: null, fa_percentage: null });
     expect(body.import_mapping).toEqual(REMAPPED.mapping); // saved on the project for its next sheet
     expect(body.pa).toBe("North");
     expect(body.stops.map((stop) => stop.external_id)).toEqual(["IBC-0", "IBC-NEW", "IBC-2"]); // no duplicate
@@ -120,6 +122,24 @@ describe("ImportWizard: new project", () => {
       dma: "ATL", installation_notes: "side door", fields: {}, screens: [{ stick_number: "S1", venue_id: "V1", status: "Completed" }],
     });
     expect(body.stops[2]).toMatchObject({ addr: "2 Main St NW", lat: 33.72 });
+  });
+
+  it("several PAs: no PA name, each store brings its own from the sheet", async () => {
+    const noPa = { ...REMAPPED, rows: REMAPPED.rows.map((r) => (r.index === 2 ? { ...r, pa: "" } : r)) };
+    const { calls } = importRoutes({ "POST /api/jobs/j1/mapping": () => noPa });
+    renderWithProviders(<ImportWizard open onClose={() => {}} />);
+    await userEvent.type(screen.getByLabelText("Project name *"), "Wave 3");
+    await userEvent.click(screen.getByRole("checkbox", { name: /Single PA/ }));
+    expect(screen.queryByLabelText("PA name *")).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: /Next/ }));
+    await uploadSheet();
+    await userEvent.click(screen.getByRole("combobox", { name: "Field for column notes" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Installation comments" }));
+    await waitFor(() => expect(calls.some((call) => call.url.pathname === "/api/jobs/j1/mapping")).toBe(true));
+    await userEvent.click(screen.getByRole("button", { name: /Next: review 4 rows/ }));
+    await fixReviewRows();
+    expect(screen.getByRole("alert").textContent).toContain("Some stores have no PA");
+    expect(screen.getByRole("button", { name: "Create project with 3 stores" }).hasAttribute("disabled")).toBe(true);
   });
 
   it("shows a re-map refusal from the server", async () => {

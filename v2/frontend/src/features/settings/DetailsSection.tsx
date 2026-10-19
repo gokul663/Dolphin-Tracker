@@ -9,12 +9,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ProjectMetaFields } from "@/features/projects/ProjectMetaFields";
 import { useUpdateProject } from "@/features/projects/api";
-import { metaFormFrom, metaPayload, projectMetaSchema } from "@/features/projects/schema";
+import { metaFormFrom, metaPayload, projectMetaObject, withMetaRules } from "@/features/projects/schema";
 import type { Project } from "@/lib/api/types";
 
-const detailsSchema = projectMetaSchema.extend({
-  stops_per_day: z.coerce.number().int("Whole number").min(1, "At least 1").max(50, "At most 50"),
-});
+const detailsSchema = withMetaRules(
+  projectMetaObject.extend({
+    stops_per_day: z.coerce.number().int("Whole number").min(1, "At least 1").max(50, "At most 50"),
+  }),
+);
 type DetailsForm = z.infer<typeof detailsSchema>;
 
 export function DetailsSection({ project }: { project: Project }) {

@@ -164,7 +164,7 @@ class StoreFieldSpec(ApiModel):
     name: str
     label: str
     group: Literal[
-        "Identity & address", "Contacts", "Installation", "Site notes", "Site checklist", "Screens"
+        "WiFi", "Identity & address", "Contacts", "Installation", "Site notes", "Site checklist", "Screens", "Pictures"
     ]
     kind: Literal["text", "multiline", "phone", "email", "url", "select", "int", "bool", "tristate"]
     editable: bool

@@ -94,14 +94,17 @@ Tri-state booleans import `Yes`/`TRUE` → true, `No`/`FALSE` → false, anythin
 
 ---
 
-## 3. Fixed field groups for the store drawer (order to display)
+## 3. Fixed field groups for the store modal (order to display)
 
+The store opens in a large modal (it was a side drawer until 2026-10-19) with every group collapsible. WiFi,
+Identity & address, Screens and Pictures start open; a group with a validation problem is always open.
+
+0. **WiFi:** store_ssid, store_ssid_password (masked, with a show button). First, because the installer needs it on site.
 1. **Identity & address:** external_id, store_name, addr, city, state, zip (geocode on save; show the formatted
    result and suggestions on a 422), pa (read-only), dma, venue_type, source_date (read-only).
 2. **Contacts:** onsite_contact_name, onsite_contact_phone, owner_name, owner_phone, owner_email,
    best_contact_time, preferred_language.
-3. **Installation:** products_to_avoid, store_ssid, store_ssid_password, installation_notes, image_url,
-   cms_details_added, outlet_status.
+3. **Installation:** products_to_avoid, installation_notes, cms_details_added, outlet_status.
 4. **Site notes (comments group):** preferred_area, ceiling_type, ceiling_height, nearest_power_outlet,
    ethernet_route, blocked_dates_notes, preferred_install_datetime.
 5. **Site checklist (tri-state checkboxes):** spot_visible, power_within_6ft, ethernet_possible,
@@ -111,6 +114,10 @@ Tri-state booleans import `Yes`/`TRUE` → true, `No`/`FALSE` → false, anythin
    "Add screen (+)" button.
 7. **Progress:** installer_name, additional_task, comment (unchanged behaviour).
 8. **Other imported data:** the `fields` map, read-only.
+9. **Pictures:** image_url, last; each link is previewed as an image under the field (Google Drive and Dropbox
+   share links are turned into their image forms; a link that is not an image falls back to a plain link).
+
+The registry (`domain/validation.py`) keeps sheet order for the CSV export; only the modal reorders the groups.
 
 ---
 

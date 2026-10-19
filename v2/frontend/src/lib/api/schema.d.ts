@@ -1191,11 +1191,14 @@ export interface components {
         ProjectCreate: {
             /** Name */
             name: string;
-            /** Pa */
-            pa: string;
+            /**
+             * Pa
+             * @default
+             */
+            pa?: string;
             project_type: components["schemas"]["ProjectType"];
             /** Installers */
-            installers: string[];
+            installers?: string[];
             /**
              * Field Agent
              * @default
@@ -1207,9 +1210,9 @@ export interface components {
              */
             partner_account?: string;
             /** Pa Percentage */
-            pa_percentage: number;
+            pa_percentage?: number | null;
             /** Dolphin Percentage */
-            dolphin_percentage: number;
+            dolphin_percentage?: number | null;
             /** Store Percentage */
             store_percentage?: number | null;
             /** Fa Percentage */
@@ -2031,7 +2034,7 @@ export interface components {
              * Group
              * @enum {string}
              */
-            group: "Identity & address" | "Contacts" | "Installation" | "Site notes" | "Site checklist" | "Screens";
+            group: "WiFi" | "Identity & address" | "Contacts" | "Installation" | "Site notes" | "Site checklist" | "Screens" | "Pictures";
             /**
              * Kind
              * @enum {string}

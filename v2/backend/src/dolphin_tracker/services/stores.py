@@ -407,12 +407,33 @@ class StoreService:
         with sync_routing_slot(self._projects, project):
             return self._append(project, stops, pa, clean_mapping(import_mapping or {}))
 
+    @staticmethod
+    def _new_stop(project: Project, stop: StopInput, display_id: str, installer: str, day: int, seq: int) -> Stop:
+        """An appended stop; `installer` "" leaves it unrouted (the project has no installers yet)."""
+        return Stop(
+            uid=uuid.uuid4().hex,
+            display_id=display_id,
+            store_name=stop.store_name.strip(),
+            addr=stop.addr.strip(),
+            city=stop.city.strip(),
+            state=stop.state.strip(),
+            zip=stop.zip.strip(),
+            lat=stop.lat,
+            lng=stop.lng,
+            geocoded=stop.geocoded.strip(),
+            installer=installer,
+            day=day,
+            seq=seq,  # end of that day's route
+            fields=coerce_fields(project.field_schema, stop.fields),
+            **stop_details(stop),
+            screens=stop.build_screens(),
+            installer_name=stop.installer_name.strip(),
+        )
+
     def _append(self, project: Project, stops: list[StopInput], pa: str, mapping: dict[str, str]) -> dict[str, Any]:
         """The append itself, run while holding the routing slot so a build cannot compute over the old stop set."""
         project_id = project.id
-        installers = [name for name in project.installers if name]
-        if not installers:
-            raise ValidationFailed("Project needs at least one installer before appending stops")
+        installers = [name for name in project.installers if name]  # none yet: the new stores stay unrouted
         bad = validate_stop_inputs(project.field_schema, stops)
         if bad:
             raise ValidationFailed(f"{len(bad)} stop(s) need fixing", errors=[], stops=bad)
@@ -434,6 +455,9 @@ class StoreService:
 
         appended: list[Stop] = []
         for offset, stop in enumerate(candidates, start=1):
+            if not installers:
+                appended.append(self._new_stop(project, stop, f"S{max_number + offset}", "", 1, offset - 1))
+                continue
             installer = min(installers, key=lambda name: sum(len(day) for day in days[name].values()))
             stop_state = state_key({"state": stop.state})
             open_days = [
@@ -445,25 +469,7 @@ class StoreService:
                 day = min(open_days, key=lambda number: (len(days[installer][number]), number))
             else:
                 day = max((number for number, rows in days[installer].items() if rows), default=0) + 1
-            new = Stop(
-                uid=uuid.uuid4().hex,
-                display_id=f"S{max_number + offset}",
-                store_name=stop.store_name.strip(),
-                addr=stop.addr.strip(),
-                city=stop.city.strip(),
-                state=stop.state.strip(),
-                zip=stop.zip.strip(),
-                lat=stop.lat,
-                lng=stop.lng,
-                geocoded=stop.geocoded.strip(),
-                installer=installer,
-                day=day,
-                seq=len(days[installer][day]),  # end of that day's route
-                fields=coerce_fields(project.field_schema, stop.fields),
-                **stop_details(stop),
-                screens=stop.build_screens(),
-                installer_name=stop.installer_name.strip(),
-            )
+            new = self._new_stop(project, stop, f"S{max_number + offset}", installer, day, len(days[installer][day]))
             days[installer][day].append(new)
             appended.append(new)
 

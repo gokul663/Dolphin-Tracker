@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { actualCounts, addressChanged, addressLine, detailsErrors, detailsFormFrom, detailsPatch } from "@/features/stores/details";
+import {
+  actualCounts,
+  addressChanged,
+  addressLine,
+  detailsErrors,
+  detailsFormFrom,
+  detailsPatch,
+  filledCount,
+  previewSrc,
+} from "@/features/stores/details";
 import { storeFieldError, urlTokens } from "@/lib/validation/storeFields";
 import { makeScreen, makeStop } from "@/test/fixtures";
 import { STORE_FIELDS_FOR_TESTS as SPECS } from "@/test/storeFields";
@@ -49,5 +58,22 @@ describe("store details model (STORE-MODEL §2)", () => {
   it("formats an address line and counts actual screens", () => {
     expect(addressLine(stop)).toBe("1 Main St, Atlanta, GA 30303");
     expect(actualCounts([makeScreen(), makeScreen(), makeScreen({ is_dolphin_screen: false })])).toEqual({ dolphin: 2, tvs: 1 });
+  });
+});
+
+describe("picture previews", () => {
+  it("turns share pages into images and leaves other links alone", () => {
+    expect(previewSrc("https://drive.google.com/file/d/AbC_1/view?usp=sharing")).toBe("https://drive.google.com/thumbnail?id=AbC_1&sz=w1000");
+    expect(previewSrc("https://drive.google.com/open?id=XyZ")).toBe("https://drive.google.com/thumbnail?id=XyZ&sz=w1000");
+    expect(previewSrc("https://www.dropbox.com/s/k/shop.jpg?dl=0")).toBe("https://www.dropbox.com/s/k/shop.jpg?raw=1");
+    expect(previewSrc("https://img.test/a.jpg")).toBe("https://img.test/a.jpg");
+    expect(previewSrc("https://")).toBe("https://"); // still being typed
+  });
+});
+
+describe("section fill counts", () => {
+  it("counts set text, answered checks and ticked boxes", () => {
+    const specs = SPECS.filter((spec) => ["store_ssid", "store_ssid_password", "spot_visible", "cms_details_added"].includes(spec.name));
+    expect(filledCount({ store_ssid: "Shop", store_ssid_password: "", spot_visible: false, cms_details_added: false }, specs)).toEqual({ filled: 2, total: 4 });
   });
 });

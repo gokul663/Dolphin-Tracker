@@ -65,3 +65,33 @@ export function actualCounts(screens: Pick<Stop["screens"][number], "is_dolphin_
   const dolphin = screens.filter((screen) => screen.is_dolphin_screen).length;
   return { dolphin, tvs: screens.length - dolphin };
 }
+
+/** An image URL the browser can show for a pasted picture link. Google Drive and Dropbox share pages are not
+ *  images, so they are turned into their thumbnail / raw forms; anything else is tried as is. */
+export function previewSrc(url: string): string {
+  try {
+    const parsed = new URL(url);
+    if (parsed.hostname === "drive.google.com") {
+      const id = parsed.pathname.match(/\/file\/d\/([^/]+)/)?.[1] ?? parsed.searchParams.get("id");
+      if (id) return `https://drive.google.com/thumbnail?id=${encodeURIComponent(id)}&sz=w1000`;
+    }
+    if (parsed.hostname.endsWith("dropbox.com")) {
+      parsed.searchParams.delete("dl");
+      parsed.searchParams.set("raw", "1");
+      return parsed.toString();
+    }
+  } catch {
+    // not a URL yet (still being typed): tried as is, and the preview shows its fallback
+  }
+  return url;
+}
+
+/** "3 of 7 filled" for a collapsed section: text that is set, counts that are known, checks that are answered. */
+export function filledCount(form: DetailsForm, specs: StoreFieldSpec[]): { filled: number; total: number } {
+  const editable = editableSpecs(specs);
+  const filled = editable.filter((spec) => {
+    const value = form[spec.name];
+    return spec.kind === "bool" ? value === true : value !== null && value !== undefined && value !== "";
+  }).length;
+  return { filled, total: editable.length };
+}

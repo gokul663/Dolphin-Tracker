@@ -60,7 +60,6 @@ function WizardBody({ appendTo, onClose }: { appendTo: Project | null; onClose: 
   const [step, setStep] = useState<Step>(steps[0] as Step);
   const details = useForm<WizardDetails>({ resolver: zodResolver(wizardDetailsSchema), defaultValues: EMPTY_DETAILS });
   const [installers, setInstallers] = useState<string[]>([]);
-  const [installerError, setInstallerError] = useState<string | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
   const job = useJob(jobId);
   const result = useImportResult(job.data);
@@ -78,28 +77,18 @@ function WizardBody({ appendTo, onClose }: { appendTo: Project | null; onClose: 
     const first = seeded === null;
     setSeeded(result.data);
     setRows(toReviewRows(result.data));
-    if (first) {
-      if (!appendTo && !details.getValues("pa") && result.data.pa_names.length) details.setValue("pa", result.data.pa_names.join(", "));
-      setStep("columns");
-    }
+    if (first) setStep("columns");
   }, [result.data]);
 
   const summary = reviewSummary(rows);
   const create = useCreateProject();
   const append = useAppendStores(appendTo?.id ?? "");
   const saving = create.isPending || append.isPending;
-  const canSubmit = summary.ready > 0 && (summary.withValueProblems === 0 || dropInvalid);
+  // Several PAs (no single PA name): every store must bring its PA from the sheet's PA column.
+  const missingPa = !appendTo && !details.getValues("single_pa") && rows.some((row) => !row.excluded && !row.pa.trim());
+  const canSubmit = summary.ready > 0 && (summary.withValueProblems === 0 || dropInvalid) && !missingPa;
 
-  // Installers live outside the form; report them together with the form's own errors, not after them.
-  const checkInstallers = () => {
-    const error = installers.length === 0 ? "Add at least one installer" : null;
-    setInstallerError(error);
-    return error === null;
-  };
-  const nextFromDetails = details.handleSubmit(
-    () => checkInstallers() && setStep("upload"),
-    () => checkInstallers(),
-  );
+  const nextFromDetails = details.handleSubmit(() => setStep("upload"));
 
   const repoint = (column: string, target: string) => {
     if (!result.data) return;
@@ -129,7 +118,8 @@ function WizardBody({ appendTo, onClose }: { appendTo: Project | null; onClose: 
         import_mapping: importMapping,
       });
       const skipped = created.skipped.length ? `; ${created.skipped.length} skipped as duplicates` : "";
-      toast.success(`Created ${created.project.name} with ${stops.length - created.skipped.length} stores${skipped}${created.job_id ? "; routing has started" : ""}`);
+      const routing = created.job_id ? "; routing has started" : installers.length === 0 ? "; add installers in Settings to build the routes" : "";
+      toast.success(`Created ${created.project.name} with ${stops.length - created.skipped.length} stores${skipped}${routing}`);
       onClose();
       navigate(`/projects/${created.project.id}/stores`);
     } catch (error) {
@@ -170,7 +160,7 @@ function WizardBody({ appendTo, onClose }: { appendTo: Project | null; onClose: 
 
       {step === "details" && (
         <form onSubmit={nextFromDetails} noValidate className="space-y-4">
-          <DetailsStep form={details} installers={installers} onInstallersChange={setInstallers} installerError={installerError} />
+          <DetailsStep form={details} installers={installers} onInstallersChange={setInstallers} />
           <div className="flex justify-end">
             <Button type="submit">
               Next <ArrowRight />
@@ -233,6 +223,12 @@ function WizardBody({ appendTo, onClose }: { appendTo: Project | null; onClose: 
                 {summary.withValueProblems} rows have values that cannot be used (marked above). Import them without those values
               </Label>
             </div>
+          )}
+          {missingPa && (
+            <p role="alert" className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
+              Some stores have no PA. The project is set to several PAs, so each store needs one from the sheet's PA column:
+              map that column in the columns step, or go back to the project details and enter a single PA.
+            </p>
           )}
           <div className="flex justify-between">
             <Button variant="ghost" onClick={() => setStep("columns")}>

@@ -68,6 +68,15 @@ class InstallerOpsTests(ProjectApiTestCase):
         self.assert_fixed_stops_kept(done)
         self.check_caps(pending_only=True)
 
+    def test_first_installer_routes_every_store(self):
+        unrouted = self.create_project(installers=[], stops=[stop_input(i) for i in range(6)])["project"]["id"]
+        self.pid = unrouted
+        payload = self.finish(self.post("/installers", {"name": "Ann"}))
+        self.assertEqual(payload["mode"], "recluster")
+        self.assertEqual(self.projects.get(unrouted).installers, ["Ann"])
+        self.assertEqual({installer for installer, _, _ in self.layout().values()}, {"Ann"})
+        self.check_caps()
+
     def test_add_installer_keeps_a_rename_that_lands_in_between(self):
         routing = RoutingService(self.projects, self.stores, self.jobs, NoopInvoker())
         original = self.projects.get

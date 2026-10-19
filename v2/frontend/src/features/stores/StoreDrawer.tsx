@@ -1,13 +1,13 @@
 import { useEffect, useState } from "react";
-import { AlertTriangle, Eye, EyeOff, Loader2, MapPin } from "lucide-react";
+import { AlertTriangle, ChevronRight, ChevronsDownUp, ChevronsUpDown, Eye, EyeOff, ImageOff, Loader2, MapPin, Wifi } from "lucide-react";
 import { toast } from "sonner";
 import { TriStateCheckbox } from "@/components/TriStateCheckbox";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
 import { useStoreFields, useValidateAddress } from "@/features/places/api";
 import { ScreensEditor } from "@/features/stores/ScreensEditor";
@@ -18,6 +18,8 @@ import {
   detailsErrors,
   detailsFormFrom,
   detailsPatch,
+  filledCount,
+  previewSrc,
   type DetailsForm,
   type FormValue,
 } from "@/features/stores/details";
@@ -34,56 +36,125 @@ interface Props {
 }
 
 type Group = StoreFieldSpec["group"];
-const DETAIL_GROUPS: Group[] = ["Identity & address", "Contacts", "Installation", "Site notes", "Site checklist"];
+/** Detail groups in modal order: WiFi first (what the installer needs on site), the screen counts last. Pictures
+ *  are a detail too but come at the very end, after the screens and progress. */
+const DETAIL_GROUPS: Group[] = ["WiFi", "Identity & address", "Contacts", "Installation", "Site notes", "Site checklist"];
+const SECTIONS = [...DETAIL_GROUPS, "Screen counts", "Screens", "Progress", "Other imported data", "Pictures"] as const;
+type SectionName = (typeof SECTIONS)[number];
+const DEFAULT_OPEN: SectionName[] = ["WiFi", "Identity & address", "Screens", "Pictures"];
 
-/** Full editor for one store, in STORE-MODEL §3 order: details (geocoded on address change), screens, progress,
- *  other imported data. */
+interface Sections {
+  isOpen: (name: SectionName) => boolean;
+  toggle: (name: SectionName) => void;
+}
+
+/** Full editor for one store in a large modal: collapsible sections in STORE-MODEL §3 order with WiFi first —
+ *  details (geocoded on address change), screens, progress, other imported data, then the pictures. */
 export function StoreDrawer({ project, stopId, open, onClose }: Props) {
   const store = useStore(project.id, open ? stopId : null);
   const specs = useStoreFields();
   const stop = store.data;
+  // Kept across stores: a user who collapses Contacts once keeps it collapsed for the next store.
+  const [expanded, setExpanded] = useState<Set<SectionName>>(() => new Set(DEFAULT_OPEN));
+  const sections: Sections = {
+    isOpen: (name) => expanded.has(name),
+    toggle: (name) =>
+      setExpanded((current) => {
+        const next = new Set(current);
+        if (!next.delete(name)) next.add(name);
+        return next;
+      }),
+  };
+  const allOpen = expanded.size === SECTIONS.length;
   return (
-    <Sheet open={open} onOpenChange={(next) => !next && onClose()}>
-      <SheetContent className="w-full overflow-y-auto sm:max-w-2xl">
-        <SheetHeader>
-          <SheetTitle className="font-mono uppercase tracking-wider text-brand">
+    <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
+      <DialogContent className="flex max-h-[92vh] flex-col gap-0 p-0 sm:max-w-5xl">
+        <DialogHeader className="border-b px-6 pt-5 pb-3 pr-12">
+          <DialogTitle className="font-mono uppercase tracking-wider text-brand">
             {stop ? `${stop.external_id || stop.display_id} · ${stop.store_name}` : "Store"}
-          </SheetTitle>
-          <SheetDescription className="flex flex-wrap items-center gap-2">
-            {stop && (
-              <span className={cn("rounded border px-1.5 py-0.5 text-xs font-medium", STATUS_META[stop.status].chip)}>
-                {STATUS_META[stop.status].label}
-              </span>
-            )}
-            {stop?.installer ? `${stop.installer} · day ${stop.day}` : "Not assigned to a route yet"}
-          </SheetDescription>
-        </SheetHeader>
-        {(store.isPending || specs.isPending) && open && <p className="p-4 text-sm text-slate-500">Loading…</p>}
-        {store.isError && <p className="p-4 text-sm text-rose-700">{store.error.message}</p>}
-        {specs.isError && <p className="p-4 text-sm text-rose-700">Could not load the store fields: {specs.error.message}</p>}
-        {stop && specs.data && (
-          <div className="space-y-6 px-4 pb-6">
-            <DetailsEditor key={`${stop.uid}-details`} project={project} stop={stop} specs={specs.data} />
-            <Section title="Screens">
-              {/* Reset only when the saved rows change, so saving details keeps unsaved screen edits. */}
-              <ScreensEditor key={`${stop.uid}-${JSON.stringify(stop.screens)}`} project={project} stop={stop} />
-            </Section>
-            <Section title="Progress">
-              <ProgressForm project={project} stop={stop} />
-            </Section>
-            <OtherData project={project} stop={stop} />
-          </div>
-        )}
-      </SheetContent>
-    </Sheet>
+          </DialogTitle>
+          <DialogDescription asChild>
+            <div className="flex flex-wrap items-center gap-2">
+              {stop && (
+                <span className={cn("rounded border px-1.5 py-0.5 text-xs font-medium", STATUS_META[stop.status].chip)}>
+                  {STATUS_META[stop.status].label}
+                </span>
+              )}
+              <span>{stop?.installer ? `${stop.installer} · day ${stop.day}` : "Not assigned to a route yet"}</span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="ml-auto h-7 text-xs"
+                onClick={() => setExpanded(new Set(allOpen ? [] : SECTIONS))}
+              >
+                {allOpen ? <ChevronsDownUp /> : <ChevronsUpDown />} {allOpen ? "Collapse all" : "Expand all"}
+              </Button>
+            </div>
+          </DialogDescription>
+        </DialogHeader>
+        <div className="min-h-0 flex-1 overflow-y-auto px-6">
+          {(store.isPending || specs.isPending) && open && <p className="py-4 text-sm text-slate-500">Loading…</p>}
+          {store.isError && <p className="py-4 text-sm text-rose-700">{store.error.message}</p>}
+          {specs.isError && <p className="py-4 text-sm text-rose-700">Could not load the store fields: {specs.error.message}</p>}
+          {stop && specs.data && (
+            <DetailsEditor key={`${stop.uid}-details`} project={project} stop={stop} specs={specs.data} sections={sections}>
+              <Section title="Screens" sections={sections}>
+                {/* Reset only when the saved rows change, so saving details keeps unsaved screen edits. */}
+                <ScreensEditor key={`${stop.uid}-${JSON.stringify(stop.screens)}`} project={project} stop={stop} />
+              </Section>
+              <Section title="Progress" sections={sections}>
+                <ProgressForm project={project} stop={stop} />
+              </Section>
+              <OtherData project={project} stop={stop} sections={sections} />
+            </DetailsEditor>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+/** A collapsible section. Closed content stays mounted (hidden), so unsaved edits inside it survive a collapse;
+ *  `forceOpen` keeps a section with a validation problem visible. */
+function Section({
+  title,
+  sections,
+  hint,
+  forceOpen = false,
+  icon,
+  className,
+  children,
+}: {
+  title: SectionName;
+  sections: Sections;
+  hint?: string;
+  forceOpen?: boolean;
+  icon?: React.ReactNode;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  const open = forceOpen || sections.isOpen(title);
+  const bodyId = `store-section-${title.replace(/\W+/g, "-").toLowerCase()}`;
   return (
-    <section className="space-y-3" aria-label={title}>
-      <h3 className="border-b pb-1 font-mono text-[11px] uppercase tracking-wider text-slate-500">{title}</h3>
-      {children}
+    <section className={cn("rounded-lg border", className)} aria-label={title}>
+      <h3>
+        <button
+          type="button"
+          aria-expanded={open}
+          aria-controls={bodyId}
+          onClick={() => sections.toggle(title)}
+          className="flex w-full items-center gap-2 px-3 py-2 text-left font-mono text-[11px] uppercase tracking-wider text-slate-600 hover:bg-slate-50"
+        >
+          <ChevronRight size={14} className={cn("transition-transform", open && "rotate-90")} />
+          {icon}
+          <span>{title}</span>
+          {hint && <span className="ml-auto font-sans text-xs normal-case tracking-normal text-slate-400">{hint}</span>}
+        </button>
+      </h3>
+      <div id={bodyId} hidden={!open} className="space-y-3 border-t p-3">
+        {children}
+      </div>
     </section>
   );
 }
@@ -162,13 +233,14 @@ function FieldControl({ spec, value, onChange, error }: { spec: StoreFieldSpec; 
   }
   const links = spec.kind === "url" ? urlTokens(text) : [];
   return (
-    <div className={cn("space-y-1.5", spec.kind === "multiline" || spec.kind === "url" ? "sm:col-span-2" : "")}>
+    <div className={cn("space-y-1.5", spec.kind === "multiline" || spec.kind === "url" ? "col-span-full" : "")}>
       <Label htmlFor={id}>
         {spec.label}
         {spec.required && " *"}
       </Label>
       {control}
-      {links.length > 0 && (
+      {links.length > 0 && spec.group === "Pictures" && <ImagePreviews label={spec.label} urls={links} />}
+      {links.length > 0 && spec.group !== "Pictures" && (
         <ul className="space-y-0.5 text-xs" aria-label={`${spec.label} links`}>
           {links.map((url) => (
             <li key={url} className="truncate">
@@ -184,7 +256,20 @@ function FieldControl({ spec, value, onChange, error }: { spec: StoreFieldSpec; 
   );
 }
 
-function DetailsEditor({ project, stop, specs }: { project: Project; stop: Stop; specs: StoreFieldSpec[] }) {
+function DetailsEditor({
+  project,
+  stop,
+  specs,
+  sections,
+  children,
+}: {
+  project: Project;
+  stop: Stop;
+  specs: StoreFieldSpec[];
+  sections: Sections;
+  /** The sections between the screen counts and the pictures (screens, progress, other data). */
+  children: React.ReactNode;
+}) {
   const [form, setForm] = useState<DetailsForm>(() => detailsFormFrom(stop, specs));
   const [touched, setTouched] = useState(false);
   const [serverErrors, setServerErrors] = useState<Record<string, string>>({});
@@ -195,6 +280,13 @@ function DetailsEditor({ project, stop, specs }: { project: Project; stop: Stop;
   const patch = detailsPatch(stop, form, specs);
   const dirty = Object.keys(patch).length > 0;
   const counts = actualCounts(stop.screens);
+  const groupOf = new Map(specs.map((spec) => [spec.name, spec.group]));
+  const failing = new Set(Object.keys(errors).map((name) => groupOf.get(name)));
+  const groupSpecs = (group: Group) => specs.filter((spec) => spec.group === group);
+  const hint = (group: Group) => {
+    const { filled, total } = filledCount(form, groupSpecs(group));
+    return total ? `${filled} of ${total} filled` : undefined;
+  };
 
   const set = (name: string, value: FormValue) => {
     setForm((current) => ({ ...current, [name]: value }));
@@ -241,11 +333,19 @@ function DetailsEditor({ project, stop, specs }: { project: Project; stop: Stop;
     );
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-3 pt-4">
       {DETAIL_GROUPS.map((group) => (
-        <Section key={group} title={group}>
-          <div className={cn("grid gap-3", group === "Site checklist" ? "" : "sm:grid-cols-2")}>
-            {specs.filter((spec) => spec.group === group).map(control)}
+        <Section
+          key={group}
+          title={group}
+          sections={sections}
+          hint={hint(group)}
+          forceOpen={failing.has(group) || (group === "Identity & address" && geoProblem !== null)}
+          icon={group === "WiFi" ? <Wifi size={13} /> : undefined}
+          className={group === "WiFi" ? "border-sky-200 bg-sky-50/40" : undefined}
+        >
+          <div className={cn("grid gap-3", group === "Site checklist" ? "" : "sm:grid-cols-2 lg:grid-cols-3")}>
+            {groupSpecs(group).map(control)}
           </div>
           {group === "Identity & address" && (
             <>
@@ -279,21 +379,23 @@ function DetailsEditor({ project, stop, specs }: { project: Project; stop: Stop;
           )}
         </Section>
       ))}
-      <Section title="Screen counts">
+      <Section title="Screen counts" sections={sections} forceOpen={failing.has("Screens")}>
         <div className="grid gap-3 sm:grid-cols-2">
-          {specs
-            .filter((spec) => spec.group === "Screens")
-            .map((spec) => (
-              <div key={spec.name} className="space-y-1">
-                {control(spec)}
-                <p className="text-xs text-slate-500">
-                  Actual: {spec.name === "committed_dolphin_screens" ? counts.dolphin : counts.tvs} (from the screen rows)
-                </p>
-              </div>
-            ))}
+          {groupSpecs("Screens").map((spec) => (
+            <div key={spec.name} className="space-y-1">
+              {control(spec)}
+              <p className="text-xs text-slate-500">
+                Actual: {spec.name === "committed_dolphin_screens" ? counts.dolphin : counts.tvs} (from the screen rows)
+              </p>
+            </div>
+          ))}
         </div>
       </Section>
-      <div className="sticky bottom-0 flex justify-end gap-2 border-t bg-white py-2">
+      {children}
+      <Section title="Pictures" sections={sections} forceOpen={failing.has("Pictures")}>
+        <div className="grid gap-3">{groupSpecs("Pictures").map(control)}</div>
+      </Section>
+      <div className="sticky bottom-0 -mx-6 flex justify-end gap-2 border-t bg-white px-6 py-3">
         <Button variant="ghost" disabled={!dirty} onClick={() => setForm(detailsFormFrom(stop, specs))}>
           Discard
         </Button>
@@ -302,6 +404,49 @@ function DetailsEditor({ project, stop, specs }: { project: Project; stop: Stop;
         </Button>
       </div>
     </div>
+  );
+}
+
+/** Previews of the picture links, shown a moment after typing stops. A link that is not an image (or not
+ *  reachable) falls back to a plain link. */
+function ImagePreviews({ label, urls }: { label: string; urls: string[] }) {
+  const key = urls.join(" ");
+  const [shown, setShown] = useState(urls);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setShown(urls), 400);
+    return () => window.clearTimeout(timer);
+  }, [key]); // the list is rebuilt on every render; its text is what changes
+  return (
+    <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3" aria-label={`${label} links`}>
+      {shown.map((url) => (
+        <li key={url}>
+          <ImagePreview url={url} />
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function ImagePreview({ url }: { url: string }) {
+  const [failed, setFailed] = useState(false);
+  return (
+    <a href={url} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-md border bg-slate-50 hover:border-brand">
+      {failed ? (
+        <span className="flex h-40 flex-col items-center justify-center gap-1 p-3 text-center text-xs text-slate-500">
+          <ImageOff size={18} /> No preview for this link. Open it
+        </span>
+      ) : (
+        <img
+          src={previewSrc(url)}
+          alt="Store picture"
+          loading="lazy"
+          referrerPolicy="no-referrer"
+          onError={() => setFailed(true)}
+          className="h-48 w-full object-cover"
+        />
+      )}
+      <span className="block truncate border-t px-2 py-1 text-xs text-brand">{url}</span>
+    </a>
   );
 }
 
@@ -346,11 +491,11 @@ function ProgressForm({ project, stop }: { project: Project; stop: Stop }) {
 }
 
 /** Columns the import did not recognise (`fields`), read-only (STORE-MODEL §3.8). */
-function OtherData({ project, stop }: { project: Project; stop: Stop }) {
+function OtherData({ project, stop, sections }: { project: Project; stop: Stop; sections: Sections }) {
   const labels = new Map(project.field_schema.map((field) => [field.key, field.label]));
   const entries = Object.entries(stop.fields).filter(([, value]) => value !== null && value !== undefined && value !== "");
   return (
-    <Section title="Other imported data">
+    <Section title="Other imported data" sections={sections} hint={entries.length ? `${entries.length} values` : undefined}>
       {entries.length === 0 ? (
         <p className="text-sm text-slate-400">Nothing else came with this store.</p>
       ) : (

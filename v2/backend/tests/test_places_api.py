@@ -62,8 +62,8 @@ class PlacesApiTests(unittest.TestCase):
         self.assertEqual(by_name["outlet_status"]["options"], ["New", "Existing"])
         self.assertEqual(by_name["spot_visible"]["kind"], "tristate")
         groups = list(dict.fromkeys(field["group"] for field in fields))
-        self.assertEqual(groups, ["Identity & address", "Contacts", "Installation", "Site notes", "Site checklist",
-                                  "Screens"])
+        self.assertEqual(groups, ["Identity & address", "Contacts", "Installation", "WiFi", "Pictures", "Site notes",
+                                  "Site checklist", "Screens"])
 
     def test_endpoints_are_documented(self):
         paths = self.client.get("/api/openapi.json").json()["paths"]

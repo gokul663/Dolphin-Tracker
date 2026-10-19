@@ -12,11 +12,10 @@ interface Props {
   form: UseFormReturn<WizardDetails>;
   installers: string[];
   onInstallersChange: (installers: string[]) => void;
-  installerError: string | null;
 }
 
-/** Step 1 (new projects): metadata, the per-day cap and at least one installer. */
-export function DetailsStep({ form, installers, onInstallersChange, installerError }: Props) {
+/** Step 1 (new projects): metadata, the per-day cap and, when already known, the installers. */
+export function DetailsStep({ form, installers, onInstallersChange }: Props) {
   const [draft, setDraft] = useState("");
   const add = () => {
     const name = draft.trim();
@@ -38,8 +37,11 @@ export function DetailsStep({ form, installers, onInstallersChange, installerErr
       </div>
       <div className="space-y-2">
         <Label htmlFor="wizard-installer" className="font-mono text-[11px] uppercase tracking-wider text-slate-600">
-          Installers *
+          Installers
         </Label>
+        <p className="text-xs text-slate-500">
+          Optional. Without installers the stores are imported unrouted; add installers later in Settings to build the routes.
+        </p>
         <div className="flex gap-2">
           <Input
             id="wizard-installer"
@@ -67,7 +69,6 @@ export function DetailsStep({ form, installers, onInstallersChange, installerErr
             </Badge>
           ))}
         </div>
-        {installerError && <p className="text-xs text-rose-600">{installerError}</p>}
       </div>
     </div>
   );

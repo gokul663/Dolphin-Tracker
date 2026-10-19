@@ -177,14 +177,20 @@ describe("StoresTab", () => {
     expect(await screen.findByText("Alpha Market")).toBeTruthy();
   });
 
-  it("drawer: §3 sections, read-only IBC# and PA, validation, tri-states, masked password, links", async () => {
+  it("store modal: WiFi first, collapsible sections, read-only IBC# and PA, validation, tri-states, password, pictures", async () => {
     const { calls } = renderTab();
     const drawer = await openDrawer();
-    const sections = within(drawer).getAllByRole("region").map((region) => region.getAttribute("aria-label"));
+    const sections = within(drawer).getAllByRole("region", { hidden: true }).map((region) => region.getAttribute("aria-label"));
     expect(sections).toEqual([
-      "Identity & address", "Contacts", "Installation", "Site notes", "Site checklist", "Screen counts", "Screens",
-      "Screen rows", "Progress", "Other imported data",
+      "WiFi", "Identity & address", "Contacts", "Installation", "Site notes", "Site checklist", "Screen counts", "Screens",
+      "Screen rows", "Progress", "Other imported data", "Pictures",
     ]);
+    const toggle = (name: string) => within(drawer).getByRole("button", { name: new RegExp(`^${name}`) });
+    expect(toggle("WiFi").getAttribute("aria-expanded")).toBe("true");
+    expect(toggle("Contacts").getAttribute("aria-expanded")).toBe("false");
+    expect(within(drawer).queryByRole("textbox", { name: "Store owner email" })).toBeNull(); // collapsed
+    await userEvent.click(toggle("Contacts"));
+    await userEvent.click(toggle("Site checklist"));
     expect(within(drawer).getByLabelText("IBC#").textContent).toBe("IBC-1");
     expect(within(drawer).getByLabelText("PA").textContent).toContain("North"); // project fallback
     expect(within(drawer).queryByRole("textbox", { name: "IBC#" })).toBeNull();
@@ -202,6 +208,7 @@ describe("StoresTab", () => {
     await userEvent.click(within(drawer).getByRole("button", { name: "Show password" }));
     expect(password.type).toBe("text");
     await userEvent.type(within(drawer).getByLabelText("Pictures (image URL)"), "https://img.test/a.jpg https://img.test/b.jpg");
+    await waitFor(() => expect(within(drawer).getAllByRole("img", { name: "Store picture" })).toHaveLength(2)); // previews
     expect(within(within(drawer).getByLabelText("Pictures (image URL) links")).getAllByRole("link")).toHaveLength(2);
     await userEvent.click(within(drawer).getByRole("button", { name: "Save details" }));
     await waitFor(() =>

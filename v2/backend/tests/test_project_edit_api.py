@@ -93,10 +93,7 @@ class AppendTests(ProjectApiTestCase):
         building = {"routing_status": RoutingStatus.BUILDING}
         self.projects._items["p1"] = self.projects.get("p1").model_copy(update=building)
         self.assertEqual(self.append([new_stop("N", "1 Rd")]).status_code, 409)
-        self.projects._items["p1"] = self.projects.get("p1").model_copy(
-            update={"routing_status": RoutingStatus.READY, "installers": []}
-        )
-        self.assertEqual(self.append([new_stop("N", "1 Rd")]).status_code, 422)
+        self.projects._items["p1"] = self.projects.get("p1").model_copy(update={"routing_status": RoutingStatus.READY})
         self.assertEqual(self.client.post("/api/projects/nope/stores/append",
                                           json={"stops": [new_stop("N", "1 Rd")]}).status_code, 404)
 
@@ -126,9 +123,14 @@ class AppendTests(ProjectApiTestCase):
         saved = self.projects.get("p1").import_mappings
         self.assertEqual(saved, {"a": "dma", "notes": "installation_notes", "store": "store_name"})  # merged, cleaned
 
-    def test_append_releases_the_slot_when_it_fails(self):
+    def test_append_without_installers_leaves_the_stores_unrouted(self):
         self.projects._items["p1"] = self.projects.get("p1").model_copy(update={"installers": []})
-        self.assertEqual(self.append([new_stop("N", "1 Rd")]).status_code, 422)
+        self.assertEqual(self.append([new_stop("N1", "1 Rd"), new_stop("N2", "2 Rd")]).status_code, 200)
+        new = sorted((s for s in self.stores.list_all("p1") if s.uid not in "abcd"), key=lambda s: s.display_id)
+        self.assertEqual([(s.display_id, s.installer, s.day, s.seq) for s in new], [("S8", "", 1, 0), ("S9", "", 1, 1)])
+
+    def test_append_releases_the_slot_when_it_fails(self):
+        self.assertEqual(self.append([new_stop("N", "1 Rd", owner_email="nope")]).status_code, 422)
         self.assertEqual(self.projects.get("p1").routing_job_id, "")
 
 class DeleteAndPatchTests(ProjectApiTestCase):
@@ -165,13 +167,18 @@ class DeleteAndPatchTests(ProjectApiTestCase):
             {"installers": ["X"]},  # installer endpoints only
             {"routing_status": "ready"},
             {"stops_per_day": 0},
-            {"pa_percentage": None},
+            {"pa": None},
             {"name": "  "},
             {"field_schema": [{"key": "addr", "label": "Address"}]},
             {},
         ]
         for body in cases:
             self.assertEqual(self.patch(body).status_code, 422, body)
+
+    def test_patch_clears_the_split_percentages(self):
+        response = self.patch({"pa_percentage": None, "dolphin_percentage": None})
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual((response.json()["pa_percentage"], response.json()["dolphin_percentage"]), (None, None))
 
     def test_patch_optimistic_version(self):
         version = self.client.get(f"/api/projects/{self.project_id}").json()["version"]

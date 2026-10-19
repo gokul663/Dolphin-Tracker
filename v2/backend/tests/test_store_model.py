@@ -129,8 +129,10 @@ class ParsingRuleTests(unittest.TestCase):
 class FieldRuleTests(unittest.TestCase):
     def test_registry_follows_the_drawer_order_and_marks_read_only_fields(self):
         groups = list(dict.fromkeys(field.group for field in STORE_FIELDS))
-        self.assertEqual(groups, [Group.IDENTITY, Group.CONTACTS, Group.INSTALLATION, Group.SITE_NOTES,
-                                  Group.SITE_CHECKLIST, Group.SCREENS])
+        self.assertEqual(groups, [Group.IDENTITY, Group.CONTACTS, Group.INSTALLATION, Group.WIFI, Group.PICTURES,
+                                  Group.SITE_NOTES, Group.SITE_CHECKLIST, Group.SCREENS])
+        self.assertEqual([field.name for field in STORE_FIELDS if field.group == Group.WIFI],
+                         ["store_ssid", "store_ssid_password"])
         self.assertNotIn("external_id", EDITABLE_FIELDS)
         self.assertNotIn("pa", EDITABLE_FIELDS)
         self.assertIn("committed_dolphin_screens", EDITABLE_FIELDS)  # STORE-MODEL §7 #1

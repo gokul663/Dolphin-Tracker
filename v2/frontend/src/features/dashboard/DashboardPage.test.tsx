@@ -88,7 +88,7 @@ describe("DashboardPage", () => {
     renderWithProviders(<DashboardPage />);
     await userEvent.click(await screen.findByRole("button", { name: "Edit details for Atlanta refresh" }));
     const dialog = await screen.findByRole("dialog");
-    const pct = within(dialog).getByLabelText("PA % *");
+    const pct = within(dialog).getByLabelText("PA %");
     await userEvent.clear(pct);
     await userEvent.type(pct, "140");
     await userEvent.click(within(dialog).getByRole("button", { name: "Save" }));
@@ -102,6 +102,8 @@ describe("DashboardPage", () => {
     await userEvent.click(within(dialog).getByRole("button", { name: "Save" }));
     await waitFor(() => expect(calls.some((call) => call.method === "PATCH")).toBe(true));
     const body = calls.find((call) => call.method === "PATCH")?.body as Record<string, unknown>;
-    expect(body).toMatchObject({ name: "Renamed", pa_percentage: 45, store_percentage: null, expected_version: 1 });
+    expect(body).toMatchObject({
+      name: "Renamed", pa: "North", pa_percentage: 45, field_agent: "Fay", store_percentage: null, expected_version: 1,
+    });
   });
 });

@@ -258,13 +258,14 @@ class StopInput(StoreDetails):
 
 class ProjectCreate(ApiModel):
     name: str = Field(max_length=200)
-    pa: str = Field(max_length=500)
+    pa: str = Field(default="", max_length=500)  # required unless the stops carry their own PA (several PAs)
     project_type: ProjectType
-    installers: list[str] = Field(min_length=1, max_length=50)
+    # Often unknown when a project starts: without installers the stores stay unrouted until the first is added.
+    installers: list[str] = Field(default_factory=list, max_length=50)
     field_agent: str = Field(default="", max_length=200)
     partner_account: str = Field(default="", max_length=200)
-    pa_percentage: float = Field(ge=0, le=100)
-    dolphin_percentage: float = Field(ge=0, le=100)
+    pa_percentage: float | None = Field(default=None, ge=0, le=100)
+    dolphin_percentage: float | None = Field(default=None, ge=0, le=100)
     store_percentage: float | None = Field(default=None, ge=0, le=100)
     fa_percentage: float | None = Field(default=None, ge=0, le=100)
     stops_per_day: int = Field(default=8, ge=1, le=50)

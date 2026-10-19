@@ -31,12 +31,16 @@ class Kind(StrEnum):
 
 
 class Group(StrEnum):
+    """Drawer sections. The drawer shows WiFi first and Pictures last; the registry keeps sheet order (export)."""
+
+    WIFI = "WiFi"
     IDENTITY = "Identity & address"
     CONTACTS = "Contacts"
     INSTALLATION = "Installation"
     SITE_NOTES = "Site notes"
     SITE_CHECKLIST = "Site checklist"
     SCREENS = "Screens"
+    PICTURES = "Pictures"
 
 
 @dataclass(frozen=True)
@@ -72,10 +76,10 @@ STORE_FIELDS: tuple[StoreField, ...] = (
     StoreField("preferred_language", "Preferred language", Group.CONTACTS),
     # 3. Installation
     StoreField("products_to_avoid", "Products / content to avoid", Group.INSTALLATION, Kind.MULTILINE),
-    StoreField("store_ssid", "Store SSID", Group.INSTALLATION),
-    StoreField("store_ssid_password", "Store SSID password", Group.INSTALLATION),
+    StoreField("store_ssid", "Store SSID", Group.WIFI),
+    StoreField("store_ssid_password", "Store SSID password", Group.WIFI),
     StoreField("installation_notes", "Installation comments", Group.INSTALLATION, Kind.MULTILINE),
-    StoreField("image_url", "Pictures (image URL)", Group.INSTALLATION, Kind.URL),
+    StoreField("image_url", "Pictures (image URL)", Group.PICTURES, Kind.URL),
     StoreField("cms_details_added", "CMS details added", Group.INSTALLATION, Kind.BOOL),
     StoreField("outlet_status", "Outlet status", Group.INSTALLATION, Kind.SELECT, options=OUTLET_STATUSES),
     # 4. Site notes (the sheet's comments group)

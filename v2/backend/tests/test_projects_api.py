@@ -11,6 +11,7 @@ from dolphin_tracker.api.deps import (
     get_store_repository,
     get_worker_invoker,
 )
+from dolphin_tracker.domain.models import RoutingStatus
 from dolphin_tracker.handlers.worker import WorkerDeps, dispatch
 from dolphin_tracker.repositories.files import LocalFileStore
 from dolphin_tracker.repositories.memory import (
@@ -86,6 +87,27 @@ class CreateProjectApiTests(ProjectApiTestCase):
         self.assertEqual(missing.status_code, 422)
         self.assertEqual(missing.json()["detail"]["stops"][0]["errors"], ["IBC# is required"])
 
+    def test_create_needs_only_a_name_a_type_and_a_pa(self):
+        """Installers and the percentages are often unknown when a project starts; its stores wait unrouted."""
+        body = project_body(installers=[], pa_percentage=None, dolphin_percentage=None)
+        response = self.client.post("/api/projects", json=body)
+        self.assertEqual(response.status_code, 201, response.text)
+        body = response.json()
+        self.assertIsNone(body["job_id"])
+        project = self.projects.get(body["project"]["id"])
+        self.assertEqual(
+            (project.installers, project.pa_percentage, project.routing_status), ([], None, RoutingStatus.READY)
+        )
+        self.assertEqual({stop.installer for stop in self.stores.list_all(project.id)}, {""})
+
+    def test_several_pas_come_from_the_stops(self):
+        stops = [stop_input(0, pa="South"), stop_input(1, pa="North"), stop_input(2, pa="South")]
+        project = self.create_project(pa=" ", stops=stops)["project"]
+        self.assertEqual(project["pa"], "North, South")
+        missing = self.client.post("/api/projects", json=project_body(pa=""))
+        self.assertEqual(missing.status_code, 422)
+        self.assertIn("PA is required", missing.json()["detail"]["errors"][0])
+
     def test_create_saves_the_import_mapping_and_store_details(self):
         stop = {**stop_input(0), "external_id": " ibc-7 ", "dma": "ATL", "spot_visible": True,
                 "screens": [{"stick_number": "S1"}, {"stick_number": "S2", "status": "Shipped"}]}
@@ -158,7 +180,7 @@ class CreateProjectApiTests(ProjectApiTestCase):
         self.assertEqual(self.projects.list().items, [])
 
     def test_pydantic_bounds(self):
-        for overrides in ({"stops_per_day": 51}, {"pa_percentage": 101}, {"installers": []}, {"project_type": "x"}):
+        for overrides in ({"stops_per_day": 51}, {"pa_percentage": 101}, {"project_type": "x"}):
             response = self.client.post("/api/projects", json=project_body(**overrides))
             self.assertEqual(response.status_code, 422, overrides)
 

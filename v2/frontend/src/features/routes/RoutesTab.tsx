@@ -219,7 +219,9 @@ export function RoutesTab() {
             <p className="rounded-xl border bg-white p-8 text-center text-sm text-slate-500">
               {bundle.installers.length && Object.values(bundle.routes).some((days) => days.length)
                 ? "No stops match these filters."
-                : "No routes yet. Routes appear once the routing build has assigned stores to installers."}
+                : bundle.installers.length === 0
+                  ? "No installers yet. Add the first installer in Settings and the routes are built for every store."
+                  : "No routes yet. Routes appear once the routing build has assigned stores to installers."}
             </p>
           ) : (
             shown.map((installer) => {

@@ -2027,3 +2027,27 @@ code. Every other gate run showed all tests passing. The backend suite was run 5
 
 **Not verified here:** anything needing AWS (B13), a Google key (real geocoding, the live map, Places), or a
 browser (the Chrome extension was not connected). Those paths are covered by fakes and mocks.
+
+
+---
+
+# Round 2 follow-up: project form and store modal (2026-10-19)
+
+Requested after the user's first look at the new-project screen.
+
+| Change | Where |
+|---|---|
+| A new project needs only a name, a type and, when it has a single PA, that PA's name. PA %, Dolphin % and installers are optional | `features/projects/schema.ts`, `ProjectCreate` |
+| A **Single PA** checkbox (ticked by default) shows the PA name and PA %. Unticked, each store takes its PA from the sheet, and the review blocks creation while any store has none. The backend fills the project's PA list from the stores | `ProjectMetaFields`, `ImportWizard`, `ProjectService.create` |
+| A **Has a field agent (FA)** checkbox shows the field agent and FA %. Unticked, both are cleared | `ProjectMetaFields`, `metaPayload` |
+| Installers are optional. Without them, create starts no routing job and appends leave the new stores unrouted. Adding the first installer runs a full build (`recluster`) over every store | `ProjectService.create`, `StoreService._append`, `RoutingService.add_installer` |
+| The PA % and Dolphin % can now be cleared on edit (they were not-null) | `ProjectService.NOT_NULL` |
+| The store side drawer is now a large modal with collapsible sections, WiFi first and Pictures last. Picture links preview as images | `StoreDrawer.tsx`, the `WiFi` and `Pictures` groups in `domain/validation.py` |
+
+**Choices to check**
+
+- With several PAs there is no PA % field: one percentage for several PAs seemed wrong. If one PA % applies to
+  all of them, the field can move outside the checkbox.
+- The FA checkbox is separate from the PA checkbox, not the same one.
+- Collapsed by default: Contacts, Installation, Site notes, Site checklist, Screen counts, Progress and Other
+  data. Each header shows how many of its fields are filled.

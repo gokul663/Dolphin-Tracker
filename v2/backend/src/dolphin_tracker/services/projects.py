@@ -90,8 +90,10 @@ class ProjectService:
         name, pa = payload.name.strip(), payload.pa.strip()
         if not name:
             errors.append("Project name is required")
+        if not pa:  # several PAs: each stop carries its own, and the project lists them
+            pa = ", ".join(sorted({stop.pa.strip() for stop in payload.stops if stop.pa.strip()}))
         if not pa:
-            errors.append("PA is required")
+            errors.append("PA is required (or a PA column in the sheet when the project has several)")
         installers, installer_problems = clean_installers(payload.installers)
         errors.extend(installer_problems)
         schema = payload.field_schema if payload.field_schema is not None else default_field_schema()
@@ -106,7 +108,8 @@ class ProjectService:
         keep, skipped = split_duplicates([], payload.stops)
         kept = [payload.stops[index] for index in keep]
         project_id = uuid.uuid4().hex
-        job = RoutingService.new_job(project_id, "create") if kept else None
+        # No installers yet: the stores stay unrouted; adding the first installer builds the routes.
+        job = RoutingService.new_job(project_id, "create") if kept and installers else None
         project = Project(
             id=project_id,
             name=name,
@@ -169,8 +172,7 @@ class ProjectService:
         }
     )
     REQUIRED_TEXT = ("name",)
-    NOT_NULL = ("name", "pa", "project_type", "field_agent", "partner_account", "pa_percentage",
-                "dolphin_percentage", "stops_per_day", "field_schema")
+    NOT_NULL = ("name", "pa", "project_type", "field_agent", "partner_account", "stops_per_day", "field_schema")
 
     def update(self, project_id: str, changes: dict[str, Any], *, expected_version: int | None = None) -> Project:
         """Metadata only (bounds are checked by the request model). A new `stops_per_day` applies from the next

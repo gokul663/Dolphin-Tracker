@@ -85,6 +85,12 @@ class AppendTests(ProjectApiTestCase):
         self.assertEqual((added.status.value, added.pa, added.dma, added.fields), ("Completed", "South", "ATL", {}))
         self.assertEqual(self.projects.get("p1").pa, "East, North, South")
 
+    def test_other_sheet_columns_join_the_schema(self):
+        self.assertEqual(self.append([new_stop("N1", "1 New Rd", venue_code="V9", brand="Acme")]).status_code, 200)
+        self.assertEqual([field.key for field in self.projects.get("p1").field_schema], ["venue_code", "brand"])
+        added = next(s for s in self.stores.list_all("p1") if s.store_name == "N1")
+        self.assertEqual(added.fields, {"venue_code": "V9", "brand": "Acme"})
+
     def test_errors(self):
         self.assertEqual(self.append([]).status_code, 422)
         bad = self.append([new_stop("", "1 Rd"), new_stop("ok", "2 Rd", owner_email="nope")])

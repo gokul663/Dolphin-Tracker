@@ -34,7 +34,7 @@ from dolphin_tracker.domain.models import (
 )
 from dolphin_tracker.domain.parsing import clean_cell
 from dolphin_tracker.domain.route_optimizer import state_key
-from dolphin_tracker.domain.schema import coerce_fields, validate_fields, validate_stop_inputs
+from dolphin_tracker.domain.schema import coerce_fields, validate_fields, validate_stop_inputs, with_sheet_fields
 from dolphin_tracker.domain.validation import (
     EDITABLE_FIELDS,
     FIELDS_BY_NAME,
@@ -434,6 +434,10 @@ class StoreService:
         """The append itself, run while holding the routing slot so a build cannot compute over the old stop set."""
         project_id = project.id
         installers = [name for name in project.installers if name]  # none yet: the new stores stay unrouted
+        schema = with_sheet_fields(project.field_schema, stops)  # new "Other imported data" columns join the schema
+        added_fields = len(schema) > len(project.field_schema)
+        if added_fields:
+            project = project.model_copy(update={"field_schema": schema})
         bad = validate_stop_inputs(project.field_schema, stops)
         if bad:
             raise ValidationFailed(f"{len(bad)} stop(s) need fixing", errors=[], stops=bad)
@@ -484,5 +488,7 @@ class StoreService:
             }
             if mapping:  # the next sheet of this shape maps the same way
                 changes["import_mappings"] = {**project.import_mappings, **mapping}
+            if added_fields:
+                changes["field_schema"] = [field.model_dump(mode="json") for field in project.field_schema]
             self._projects.update(project_id, changes)
         return {"appended": len(appended), "skipped": skipped, "total": len(existing) + len(appended)}

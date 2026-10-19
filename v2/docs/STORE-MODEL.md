@@ -26,7 +26,8 @@ Products / Content to Avoid, Installation comments, Installation area`
 1. **Three required fields:** `external_id` (IBC#), `store_name`, `addr`. Everything else is optional; if the
    sheet has it we store it, if not it stays empty.
 2. **Fixed, first-class fields** for everything the user listed (§3). The generic `field_schema` / `fields` map
-   stays only for columns we do not recognise ("Other imported data"), so nothing from a sheet is lost.
+   stays only for columns we do not recognise ("Other imported data"), so nothing from a sheet is lost. Create
+   and append add a text entry to `field_schema` for each such column the project does not list yet.
 3. **PA is project-level.** Editable on the project (create and Settings). A store carries `pa` only when the
    sheet has a PA column; it is never editable in the planner.
 4. **Multiple sheets per project.** The same upload flow runs for the first and every later sheet. Duplicates are

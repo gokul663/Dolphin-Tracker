@@ -22,6 +22,7 @@ from dolphin_tracker.domain.schema import (
     default_field_schema,
     validate_schema,
     validate_stop_inputs,
+    with_sheet_fields,
 )
 from dolphin_tracker.domain.validation import stop_details
 from dolphin_tracker.repositories.projects import ProjectRepository
@@ -98,6 +99,7 @@ class ProjectService:
         errors.extend(installer_problems)
         schema = payload.field_schema if payload.field_schema is not None else default_field_schema()
         errors.extend(validate_schema(schema))
+        schema = with_sheet_fields(schema, payload.stops)  # the sheet's "Other imported data" columns
 
         stop_errors = validate_stop_inputs(schema, payload.stops)
         if errors or stop_errors:

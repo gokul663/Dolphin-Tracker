@@ -84,6 +84,20 @@ def _type_error(field: FieldDef, value: Any) -> str | None:
             return None
 
 
+def with_sheet_fields(schema: Iterable[FieldDef], stops: Iterable[Any]) -> list[FieldDef]:
+    """`schema` plus a text field for each "Other imported data" key the stops carry that it does not list yet, so a
+    sheet's extra columns are kept (and shown, exported) instead of refused. Keys that cannot be a field key (bad
+    format, or a core attribute) are left out and still reported by `validate_fields`."""
+    fields = list(schema)
+    known = {field.key for field in fields}
+    for stop in stops:
+        for key in stop.fields:
+            if key not in known and KEY_RE.fullmatch(key) and key not in CORE_KEYS:
+                known.add(key)
+                fields.append(FieldDef(key=key, label=key.replace("_", " ").capitalize(), source_column=key))
+    return fields
+
+
 def validate_fields(
     schema: Iterable[FieldDef], fields: Mapping[str, Any], *, partial: bool = False
 ) -> list[str]:

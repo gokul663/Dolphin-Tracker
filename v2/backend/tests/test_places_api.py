@@ -71,14 +71,19 @@ class PlacesApiTests(unittest.TestCase):
             self.assertIn("200", paths[path]["get"]["responses"])
 
 
+def bare_settings(**values) -> Settings:
+    """Settings without the developer's backend/.env, whose real keys would win over the test values."""
+    return Settings(_env_file=None, **values)
+
+
 class ServerKeyTests(unittest.TestCase):
     def test_direct_value_wins(self):
-        self.assertEqual(resolve_google_server_key(Settings(google_server_key="direct")), "direct")
-        self.assertEqual(resolve_google_server_key(Settings()), "")
+        self.assertEqual(resolve_google_server_key(bare_settings(google_server_key="direct")), "direct")
+        self.assertEqual(resolve_google_server_key(bare_settings()), "")
 
     @mock_aws
     def test_reads_secure_string_from_ssm(self):
         boto3.client("ssm", region_name="us-east-1").put_parameter(
             Name="/dt/test/key", Value="from-ssm\n", Type="SecureString"
         )
-        self.assertEqual(resolve_google_server_key(Settings(google_server_key_param="/dt/test/key")), "from-ssm")
+        self.assertEqual(resolve_google_server_key(bare_settings(google_server_key_param="/dt/test/key")), "from-ssm")

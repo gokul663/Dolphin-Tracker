@@ -167,7 +167,7 @@ class CreateProjectApiTests(ProjectApiTestCase):
             stop_input(0),
             stop_input(1, store_name=" "),
             stop_input(2, addr="", owner_email="nope"),
-            stop_input(3, fields={"mystery": "x"}),
+            stop_input(3, fields={"status": "x"}),  # a core attribute cannot be an extra field
         ]
         response = self.client.post("/api/projects", json=project_body(stops=stops, installers=["A", "A"]))
         self.assertEqual(response.status_code, 422)
@@ -193,6 +193,16 @@ class CreateProjectApiTests(ProjectApiTestCase):
         self.assertEqual(self.stores.list_all(project["id"])[0].fields, {"screens_wanted": 3})
         reserved = self.client.post("/api/projects", json=project_body(field_schema=[{"key": "dma", "label": "D"}]))
         self.assertIn("Field key 'dma' is reserved", reserved.json()["detail"]["errors"])
+
+    def test_other_sheet_columns_join_the_schema(self):
+        stops = [stop_input(0, fields={"date_of_ibc_signup": "2026-07-20", "notes": "call first"}),
+                 stop_input(1, fields={"notes": "x", "column_65": "y"})]
+        project = self.create_project(stops=stops)["project"]
+        added = [(field["key"], field["label"], field["type"]) for field in project["field_schema"]]
+        self.assertEqual(added[-3:], [("date_of_ibc_signup", "Date of ibc signup", "text"), ("notes", "Notes", "text"),
+                                      ("column_65", "Column 65", "text")])
+        kept = {stop.external_id: stop.fields for stop in self.stores.list_all(project["id"])}
+        self.assertEqual(kept["IBC-0"], {"date_of_ibc_signup": "2026-07-20", "notes": "call first"})
 
     def test_routes_404_for_unknown_project(self):
         self.assertEqual(self.client.get("/api/projects/nope/routes").status_code, 404)

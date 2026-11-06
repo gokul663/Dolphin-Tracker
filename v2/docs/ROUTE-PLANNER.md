@@ -149,14 +149,20 @@ Same single table, same thin router → service → repository layers.
 | Plan stop | `ROUTEPLAN#<id>` | `STOP#<project_id>#<uid>` | snapshot (name, address, lat/lng, state), installer, day, date, seq, state (pool/planned/visited/skipped) |
 | Visit | `PROJECT#<id>` | `VISIT#<uid>#<screen id>#<iso ts>` | the form fields, stick number and DD code at visit time, plan id/day |
 | Lists | `LIST#<installers\|managers\|categories>` | `ITEM#<value>` | the select lists; typing a new installer or manager adds an item |
-| Store (existing) | `PROJECT#<id>` | `STOP#<uid>` | **adds** `route_plan_id`, `route_date` (for *in route*) and `last_visit_at` (for *serviced*); conditional write keeps one active plan per store |
+| Store (existing) | `PROJECT#<id>` | `STOP#<uid>` | **adds** `route_plan_id` + `last_planned_at` (for *in route* and the visit window) and `screen_visits` + `last_visit_at` (per-stick visit times); a conditional write keeps one active plan per store. The overlay tooltip shows the plan's name (not its day, which changes on every replan) |
 
-- **Cross-project pool query:** a new GSI on `state` (`GSI2PK=STATE#<st>`, `GSI2SK=<project>#<uid>`), so
-  picking stores in a state does not scan every project. It is paginated like every other list.
-- **API:** `/route-plans` (list, create), `/route-plans/{id}` (get, close), `/route-plans/{id}/stores`
-  (add/remove), `/route-plans/{id}/next-day` (job), `/route-plans/{id}/stops/{key}` (reassign, skip),
-  `/stores/search` (the cross-project pool), `/projects/{id}/stores/{uid}/visits` (list, create),
-  `/lists/{installers|managers|categories}` (list, add).
+- **Cross-project pool query (as built, RP4):** no new index. The search reads each project's stores (a few
+  projected attributes) and filters in memory, then pages with an offset cursor. That keeps every store write
+  unchanged and is fine for thousands of stores; a GSI on `state` is the next step if it is ever slow.
+- **API (as built):** `GET/POST /route-plans`, `POST /route-plans/preview`, `GET/PATCH /route-plans/{id}`,
+  `POST /route-plans/{id}/stores`, `DELETE /route-plans/{id}/stops/{project}/{uid}`,
+  `POST /route-plans/{id}/stops/{project}/{uid}/reassign`, `POST /route-plans/{id}/next-day`,
+  `POST /route-plans/{id}/close`, `GET /store-search` (+ `/pins`, `/facets`),
+  `GET/POST /projects/{id}/stores/{uid}/visits`, `/lists/{installers|managers}`, `/lists/categories`.
+  Plans are rebuilt inside the request (≤ 2000 stores), not as worker jobs.
+- **Day sizes.** The optimizer splits a batch evenly under the cap (23 stores at 10 a day → 8, 8, 7). That is the
+  same number of days as filling each day to 10, just balanced.
+- **Reassign** moves a stop to another installer on the same day; both days are reordered.
 
 **Optimizer.** The clustering, day batching and 2-opt code stays unchanged. Two small changes at its edges
 (**approved 2026-11-06**):

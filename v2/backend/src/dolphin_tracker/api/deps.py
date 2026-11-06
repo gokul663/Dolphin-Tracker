@@ -15,6 +15,7 @@ from dolphin_tracker.repositories.files import FileStore, make_file_store
 from dolphin_tracker.repositories.jobs import DynamoJobRepository, JobRepository
 from dolphin_tracker.repositories.lists import DynamoListRepository, ListRepository
 from dolphin_tracker.repositories.projects import DynamoProjectRepository, ProjectRepository
+from dolphin_tracker.repositories.route_plans import DynamoRoutePlanRepository, RoutePlanRepository
 from dolphin_tracker.repositories.stores import DynamoStoreRepository, StoreRepository
 from dolphin_tracker.repositories.visits import DynamoVisitRepository, VisitRepository
 from dolphin_tracker.repositories.worker_invoker import WorkerInvoker, make_invoker
@@ -24,7 +25,9 @@ from dolphin_tracker.services.jobs import JobService
 from dolphin_tracker.services.lists import ListService
 from dolphin_tracker.services.places import PlacesService
 from dolphin_tracker.services.projects import ProjectService
+from dolphin_tracker.services.route_plans import RoutePlanService
 from dolphin_tracker.services.routing import RoutingService
+from dolphin_tracker.services.store_search import StoreSearchService
 from dolphin_tracker.services.stores import StoreService
 from dolphin_tracker.services.visits import VisitService
 
@@ -129,6 +132,26 @@ def get_store_service(
     return StoreService(stores, projects, geocoder)
 
 
+def get_route_plan_repository(table: Annotated[object, Depends(get_table)]) -> RoutePlanRepository:
+    return DynamoRoutePlanRepository(table)
+
+
+def get_route_plan_service(
+    plans: Annotated[RoutePlanRepository, Depends(get_route_plan_repository)],
+    stores: Annotated[StoreRepository, Depends(get_store_repository)],
+    projects: Annotated[ProjectRepository, Depends(get_project_repository)],
+    lists: Annotated[ListService, Depends(get_list_service)],
+) -> RoutePlanService:
+    return RoutePlanService(plans, stores, projects, lists)
+
+
+def get_store_search_service(
+    projects: Annotated[ProjectRepository, Depends(get_project_repository)],
+    stores: Annotated[StoreRepository, Depends(get_store_repository)],
+) -> StoreSearchService:
+    return StoreSearchService(projects, stores)
+
+
 def get_visit_repository(table: Annotated[object, Depends(get_table)]) -> VisitRepository:
     return DynamoVisitRepository(table)
 
@@ -138,8 +161,9 @@ def get_visit_service(
     stores: Annotated[StoreRepository, Depends(get_store_repository)],
     projects: Annotated[ProjectRepository, Depends(get_project_repository)],
     lists: Annotated[ListService, Depends(get_list_service)],
+    plans: Annotated[RoutePlanService, Depends(get_route_plan_service)],
 ) -> VisitService:
-    return VisitService(visits, stores, projects, lists)
+    return VisitService(visits, stores, projects, lists, plans)
 
 
 def get_places_service(geocoder: Annotated[GoogleGeocoder, Depends(get_geocoder)]) -> PlacesService:

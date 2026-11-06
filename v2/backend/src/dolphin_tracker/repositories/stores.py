@@ -56,6 +56,13 @@ class StoreRepository(Protocol):
     def delete_all(self, project_id: str) -> int:
         """Every stop of the project, its IBC# markers and its visits. Returns the number of stops."""
         ...
+    def claim_for_plan(self, project_id: str, stop_uids: list[str], plan_id: str, at: str) -> list[str]:
+        """Set `route_plan_id = plan_id` and `last_planned_at = at` on each stop that is in no plan (one active plan
+        per store, ROUTE-PLANNER §3). Returns the uids that were claimed; the rest are in another plan or gone."""
+        ...
+    def release_from_plan(self, project_id: str, stop_uids: list[str], plan_id: str) -> int:
+        """Clear `route_plan_id` where it is still `plan_id`. Returns how many were released."""
+        ...
     def list_projected(self, project_id: str, attributes: tuple[str, ...]) -> list[dict[str, Any]]:
         """Whole project, only `attributes` per stop (cheap reads for KPIs). Plain dicts, no Decimals."""
         ...
@@ -236,6 +243,44 @@ class DynamoStoreRepository:
 
     def update_screens(self, project_id: str, stop_uid: str, screens: list[Screen], *, updated_by: str = "") -> Stop:
         return self.update_fields(project_id, stop_uid, screens_write(screens, updated_by))
+
+    def _plan_write(self, project_id: str, stop_uid: str, expression: str, condition: str,
+                    values: dict[str, Any]) -> bool:
+        try:
+            self._table.meta.client.update_item(
+                TableName=self._table.name,
+                Key=Keys.stop(project_id, stop_uid),
+                UpdateExpression=expression,
+                ConditionExpression=condition,
+                ExpressionAttributeValues=values,
+            )
+        except ClientError as exc:
+            if exc.response["Error"]["Code"] == "ConditionalCheckFailedException":
+                return False
+            raise
+        return True
+
+    def claim_for_plan(self, project_id: str, stop_uids: list[str], plan_id: str, at: str) -> list[str]:
+        def claim(uid: str) -> bool:
+            return self._plan_write(
+                project_id, uid,
+                "SET route_plan_id = :plan, last_planned_at = :at",
+                "attribute_exists(PK) AND (attribute_not_exists(route_plan_id) OR route_plan_id = :none)",
+                {":plan": plan_id, ":at": at, ":none": ""},
+            )
+
+        with ThreadPoolExecutor(max_workers=ROUTING_WRITE_WORKERS) as pool:
+            results = list(pool.map(claim, stop_uids))
+        return [uid for uid, claimed in zip(stop_uids, results, strict=True) if claimed]
+
+    def release_from_plan(self, project_id: str, stop_uids: list[str], plan_id: str) -> int:
+        def release(uid: str) -> bool:
+            return self._plan_write(
+                project_id, uid, "SET route_plan_id = :none", "route_plan_id = :plan", {":plan": plan_id, ":none": ""}
+            )
+
+        with ThreadPoolExecutor(max_workers=ROUTING_WRITE_WORKERS) as pool:
+            return sum(pool.map(release, stop_uids))
 
     def delete_all(self, project_id: str) -> int:
         def keys(prefix: str) -> list[dict[str, str]]:

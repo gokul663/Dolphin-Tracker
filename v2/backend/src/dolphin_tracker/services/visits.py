@@ -10,6 +10,7 @@ from dolphin_tracker.repositories.projects import ProjectRepository
 from dolphin_tracker.repositories.stores import StoreRepository
 from dolphin_tracker.repositories.visits import VisitRepository
 from dolphin_tracker.services.lists import ListService
+from dolphin_tracker.services.route_plans import RoutePlanService
 
 
 class VisitService:
@@ -19,11 +20,13 @@ class VisitService:
         stores: StoreRepository,
         projects: ProjectRepository,
         lists: ListService,
+        plans: RoutePlanService | None = None,
     ) -> None:
         self._visits = visits
         self._stores = stores
         self._projects = projects
         self._lists = lists
+        self._plans = plans
 
     def _load(self, project_id: str, stop_uid: str) -> tuple[Project, Stop]:
         project = self._projects.get(project_id)
@@ -47,11 +50,14 @@ class VisitService:
             raise ValidationFailed(
                 f'"{subcategory}" needs the new number', fields={"replaced_with": "Required for this subcategory"}
             )
+        plan_id = body.route_plan_id or stop.route_plan_id
+        plan_day = self._plans.stop_day(plan_id, project.id, stop.uid) if plan_id and self._plans else None
         return Visit(
             **body.model_dump(exclude={"category", "subcategory", "route_plan_id"}),
             category=category,
             subcategory=subcategory,
-            route_plan_id=body.route_plan_id or stop.route_plan_id,
+            route_plan_id=plan_id if plan_day is not None else "",  # only when the store is in that plan
+            plan_day=plan_day,
             project_id=project.id,
             stop_uid=stop.uid,
             store_name=stop.store_name,
@@ -68,6 +74,8 @@ class VisitService:
     def create(self, project_id: str, stop_uid: str, body: VisitInput) -> Visit:
         project, stop = self._load(project_id, stop_uid)
         visit = self._visits.add(self.build(project, stop, body))
+        if visit.route_plan_id and self._plans:
+            self._plans.record_visit(visit.route_plan_id, project_id, stop_uid, visit.screen_id)
         self._lists.remember(NameListKind.INSTALLERS, visit.installer)
         self._lists.remember(NameListKind.MANAGERS, visit.dolphin_manager)
         return visit

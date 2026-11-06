@@ -39,6 +39,19 @@ class Keys:
         return {"PK": f"JOB#{job_id}", "SK": "META"}
 
     @staticmethod
+    def route_plan(plan_id: str) -> dict[str, str]:
+        return {"PK": f"ROUTEPLAN#{plan_id}", "SK": "META"}
+
+    @staticmethod
+    def plan_stop(plan_id: str, key: str) -> dict[str, str]:
+        """`key` is `<project_id>#<stop_uid>`."""
+        return {"PK": f"ROUTEPLAN#{plan_id}", "SK": f"{Keys.STOP_PREFIX}{key}"}
+
+    @staticmethod
+    def route_plan_list(status: str) -> str:
+        return f"ROUTEPLAN#{status}"
+
+    @staticmethod
     def visit_prefix(stop_uid: str) -> str:
         return f"{Keys.VISIT_PREFIX}{stop_uid}#"
 

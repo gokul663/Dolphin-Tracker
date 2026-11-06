@@ -7,8 +7,10 @@ from dolphin_tracker.domain.cursors import encode_cursor, offset_from_cursor
 from dolphin_tracker.domain.errors import ConflictError, NotFoundError
 from dolphin_tracker.domain.lists import Category, NameEntry, NameListKind, name_key
 from dolphin_tracker.domain.models import Job, JobStatus, Page, Project, RoutingStatus, Screen, Stop, now_iso
+from dolphin_tracker.domain.route_plans import PlanStatus, PlanStop, RoutePlan
 from dolphin_tracker.domain.visits import Visit
 from dolphin_tracker.repositories.projects import IMMUTABLE_FIELDS
+from dolphin_tracker.repositories.route_plans import PlanStopChange, check_assignment
 from dolphin_tracker.repositories.stores import (
     IMMUTABLE_STOP_FIELDS,
     RoutingChange,
@@ -171,6 +173,27 @@ class InMemoryStoreRepository:
             for stop in self._ordered(project_id)
         ]
 
+    def claim_for_plan(self, project_id: str, stop_uids: list[str], plan_id: str, at: str) -> list[str]:
+        bucket = self._items.get(project_id, {})
+        claimed = []
+        for uid in stop_uids:
+            stop = bucket.get(uid)
+            if stop is None or stop.route_plan_id:
+                continue
+            bucket[uid] = stop.model_copy(update={"route_plan_id": plan_id, "last_planned_at": at})
+            claimed.append(uid)
+        return claimed
+
+    def release_from_plan(self, project_id: str, stop_uids: list[str], plan_id: str) -> int:
+        bucket = self._items.get(project_id, {})
+        released = 0
+        for uid in stop_uids:
+            stop = bucket.get(uid)
+            if stop is not None and stop.route_plan_id == plan_id:
+                bucket[uid] = stop.model_copy(update={"route_plan_id": ""})
+                released += 1
+        return released
+
 
 class InMemoryJobRepository:
     def __init__(self) -> None:
@@ -271,3 +294,71 @@ class InMemoryVisitRepository:
         mine.sort(key=lambda v: (v.created_at, v.id), reverse=True)
         window, next_cursor = _offset_page([v.model_copy(deep=True) for v in mine], limit, cursor)
         return Page(items=window, next_cursor=next_cursor)
+
+
+class InMemoryRoutePlanRepository:
+    def __init__(self) -> None:
+        self._plans: dict[str, RoutePlan] = {}
+        self._stops: dict[str, dict[str, PlanStop]] = {}
+
+    def put(self, plan: RoutePlan) -> None:
+        self._plans[plan.id] = plan.model_copy(deep=True)
+
+    def get(self, plan_id: str) -> RoutePlan | None:
+        plan = self._plans.get(plan_id)
+        return plan.model_copy(deep=True) if plan else None
+
+    def list(self, status: PlanStatus, *, limit: int = 50, cursor: str | None = None) -> Page[RoutePlan]:
+        mine = sorted((p for p in self._plans.values() if p.status == status), key=lambda p: p.created_at,
+                      reverse=True)
+        window, next_cursor = _offset_page([p.model_copy(deep=True) for p in mine], limit, cursor)
+        return Page(items=window, next_cursor=next_cursor)
+
+    def update(self, plan_id: str, changes: dict[str, Any], *, expected_version: int | None = None) -> RoutePlan:
+        current = self._plans.get(plan_id)
+        if current is None:
+            raise NotFoundError(f"Route plan {plan_id} not found")
+        if expected_version is not None and current.version != expected_version:
+            raise ConflictError("The plan was changed by someone else; reload it and try again")
+        data = current.model_dump()
+        data.update({k: v for k, v in changes.items() if k not in {"id", "version", "created_at"}})
+        data.update(version=current.version + 1, updated_at=now_iso())
+        updated = RoutePlan.model_validate(data)
+        self._plans[plan_id] = updated
+        return updated.model_copy(deep=True)
+
+    def put_stops(self, plan_id: str, stops: list[PlanStop]) -> None:
+        bucket = self._stops.setdefault(plan_id, {})
+        for stop in stops:
+            bucket[stop.key] = stop.model_copy(deep=True)
+
+    def list_stops(self, plan_id: str) -> list[PlanStop]:
+        bucket = self._stops.get(plan_id, {})
+        return [bucket[key].model_copy(deep=True) for key in sorted(bucket)]
+
+    def get_stop(self, plan_id: str, key: str) -> PlanStop | None:
+        stop = self._stops.get(plan_id, {}).get(key)
+        return stop.model_copy(deep=True) if stop else None
+
+    def update_assignments(self, plan_id: str, changes: list[PlanStopChange]) -> int:
+        for _, change in changes:
+            check_assignment(change)
+        bucket = self._stops.get(plan_id, {})
+        written = 0
+        for key, change in changes:
+            if key in bucket:
+                bucket[key] = bucket[key].model_copy(update=change)
+                written += 1
+        return written
+
+    def delete_stop(self, plan_id: str, key: str) -> None:
+        self._stops.get(plan_id, {}).pop(key, None)
+
+    def record_visit(self, plan_id: str, key: str, screen_id: str) -> PlanStop | None:
+        stop = self._stops.get(plan_id, {}).get(key)
+        if stop is None:
+            return None
+        if screen_id not in stop.visited_screens:
+            stop = stop.model_copy(update={"visited_screens": [*stop.visited_screens, screen_id]})
+            self._stops[plan_id][key] = stop
+        return stop.model_copy(deep=True)

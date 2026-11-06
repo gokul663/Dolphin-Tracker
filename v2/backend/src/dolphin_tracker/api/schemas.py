@@ -306,3 +306,15 @@ class NameCreate(ApiModel):
 
 class CategoriesUpdate(ApiModel):
     categories: list[Category] = Field(max_length=100)
+
+
+class FacetValue(ApiModel):
+    value: str
+    count: int
+    label: str = ""
+
+
+class PoolFacets(ApiModel):
+    states: list[FacetValue]
+    cities: list[FacetValue]
+    projects: list[FacetValue]

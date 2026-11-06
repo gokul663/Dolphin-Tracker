@@ -642,6 +642,201 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/store-search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Search Stores */
+        get: operations["search_stores_api_store_search_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/store-search/pins": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search Pins
+         * @description Every match, for the map and "select all" (capped at 5000).
+         */
+        get: operations["search_pins_api_store_search_pins_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/store-search/facets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Search Facets */
+        get: operations["search_facets_api_store_search_facets_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/route-plans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Plans */
+        get: operations["list_plans_api_route_plans_get"];
+        put?: never;
+        /** Create Plan */
+        post: operations["create_plan_api_route_plans_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/route-plans/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview Plan
+         * @description The days a plan would get. Nothing is saved or claimed.
+         */
+        post: operations["preview_plan_api_route_plans_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/route-plans/{plan_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Plan */
+        get: operations["get_plan_api_route_plans__plan_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Plan */
+        patch: operations["update_plan_api_route_plans__plan_id__patch"];
+        trace?: never;
+    };
+    "/api/route-plans/{plan_id}/stores": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Add Stores */
+        post: operations["add_stores_api_route_plans__plan_id__stores_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/route-plans/{plan_id}/stops/{project_id}/{stop_uid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove Stop */
+        delete: operations["remove_stop_api_route_plans__plan_id__stops__project_id___stop_uid__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/route-plans/{plan_id}/stops/{project_id}/{stop_uid}/reassign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reassign Stop */
+        post: operations["reassign_stop_api_route_plans__plan_id__stops__project_id___stop_uid__reassign_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/route-plans/{plan_id}/next-day": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Next Day */
+        post: operations["next_day_api_route_plans__plan_id__next_day_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/route-plans/{plan_id}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Close Plan */
+        post: operations["close_plan_api_route_plans__plan_id__close_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -705,6 +900,18 @@ export interface components {
             name: string;
             /** Subcategories */
             subcategories: string[];
+        };
+        /** FacetValue */
+        FacetValue: {
+            /** Value */
+            value: string;
+            /** Count */
+            count: number;
+            /**
+             * Label
+             * @default
+             */
+            label: string;
         };
         /**
          * FieldDef
@@ -1205,6 +1412,23 @@ export interface components {
          * @enum {string}
          */
         NetworkType: "WiFi" | "Ethernet" | "LTE";
+        /**
+         * NextDay
+         * @description Close the current day and plan the next one. Starts left out default to each installer's last visited stop
+         *     (else today's start).
+         */
+        NextDay: {
+            /** Date */
+            date: string;
+            /** Starts */
+            starts?: {
+                [key: string]: components["schemas"]["StartLocation"];
+            };
+            /** Stops Per Day */
+            stops_per_day?: number | null;
+            /** Version */
+            version?: number | null;
+        };
         /** Page[NameEntry] */
         Page_NameEntry_: {
             /** Items */
@@ -1212,10 +1436,24 @@ export interface components {
             /** Next Cursor */
             next_cursor: string | null;
         };
+        /** Page[PoolStore] */
+        Page_PoolStore_: {
+            /** Items */
+            items: components["schemas"]["PoolStore"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
         /** Page[ProjectSummary] */
         Page_ProjectSummary_: {
             /** Items */
             items: components["schemas"]["ProjectSummary"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /** Page[RoutePlan] */
+        Page_RoutePlan_: {
+            /** Items */
+            items: components["schemas"]["RoutePlan"][];
             /** Next Cursor */
             next_cursor: string | null;
         };
@@ -1248,6 +1486,199 @@ export interface components {
             installer: string;
             /** Day */
             day: number;
+        };
+        /**
+         * PlanDay
+         * @description A started day: its date and where each installer set off from.
+         */
+        PlanDay: {
+            /** Number */
+            number: number;
+            /** Date */
+            date: string;
+            /** Starts */
+            starts: {
+                [key: string]: components["schemas"]["StartLocation"];
+            };
+        };
+        /** PlanInstaller */
+        PlanInstaller: {
+            /** Name */
+            name: string;
+            start: components["schemas"]["StartLocation"];
+        };
+        /** PlanPreview */
+        PlanPreview: {
+            /** Stops */
+            stops: components["schemas"]["PlanStop"][];
+            /** Skipped */
+            skipped: components["schemas"]["SkippedStore"][];
+        };
+        /** PlanResult */
+        PlanResult: {
+            bundle: components["schemas"]["RoutePlanBundle"];
+            /** Skipped */
+            skipped: components["schemas"]["SkippedStore"][];
+        };
+        /**
+         * PlanStatus
+         * @enum {string}
+         */
+        PlanStatus: "active" | "closed";
+        /**
+         * PlanStop
+         * @description One store in a plan: a snapshot of where it is, plus its assignment. `day` 0 means not placed (no installer
+         *     could take it), which only happens transiently.
+         */
+        PlanStop: {
+            /** Project Id */
+            project_id: string;
+            /** Stop Uid */
+            stop_uid: string;
+            /**
+             * External Id
+             * @default
+             */
+            external_id: string;
+            /**
+             * Store Name
+             * @default
+             */
+            store_name: string;
+            /**
+             * Addr
+             * @default
+             */
+            addr: string;
+            /**
+             * City
+             * @default
+             */
+            city: string;
+            /**
+             * State
+             * @default
+             */
+            state: string;
+            /**
+             * Zip
+             * @default
+             */
+            zip: string;
+            /** Lat */
+            lat: number | null;
+            /** Lng */
+            lng: number | null;
+            /** Screen Ids */
+            screen_ids: string[];
+            /**
+             * Installer
+             * @default
+             */
+            installer: string;
+            /**
+             * Day
+             * @default 0
+             */
+            day: number;
+            /**
+             * Seq
+             * @default 0
+             */
+            seq: number;
+            /** Visited Screens */
+            visited_screens: string[];
+            /** Added At */
+            added_at: string;
+        };
+        /** PlanStoresAdd */
+        PlanStoresAdd: {
+            /** Stores */
+            stores: components["schemas"]["StoreRef"][];
+            /** @default forecast */
+            replan?: components["schemas"]["Replan"];
+            /** Version */
+            version?: number | null;
+        };
+        /** PoolFacets */
+        PoolFacets: {
+            /** States */
+            states: components["schemas"]["FacetValue"][];
+            /** Cities */
+            cities: components["schemas"]["FacetValue"][];
+            /** Projects */
+            projects: components["schemas"]["FacetValue"][];
+        };
+        /**
+         * PoolStore
+         * @description A store as the cross-project picker lists it.
+         */
+        PoolStore: {
+            /** Project Id */
+            project_id: string;
+            /** Project Name */
+            project_name: string;
+            /** Uid */
+            uid: string;
+            /**
+             * External Id
+             * @default
+             */
+            external_id: string;
+            /**
+             * Store Name
+             * @default
+             */
+            store_name: string;
+            /**
+             * Addr
+             * @default
+             */
+            addr: string;
+            /**
+             * City
+             * @default
+             */
+            city: string;
+            /**
+             * State
+             * @default
+             */
+            state: string;
+            /**
+             * Zip
+             * @default
+             */
+            zip: string;
+            /** Lat */
+            lat: number | null;
+            /** Lng */
+            lng: number | null;
+            /**
+             * Status
+             * @default
+             */
+            status: string;
+            /**
+             * Screen Count
+             * @default 0
+             */
+            screen_count: number;
+            /**
+             * Pa
+             * @default
+             */
+            pa: string;
+            /**
+             * Dma
+             * @default
+             */
+            dma: string;
+            /**
+             * Route Plan Id
+             * @default
+             */
+            route_plan_id: string;
         };
         /**
          * ProgressUpdate
@@ -1486,6 +1917,13 @@ export interface components {
              */
             expected_version?: number | null;
         };
+        /** Reassign */
+        Reassign: {
+            /** Installer */
+            installer: string;
+            /** Version */
+            version?: number | null;
+        };
         /** ReassignResult */
         ReassignResult: {
             /** Old Installer */
@@ -1494,6 +1932,99 @@ export interface components {
             installer: string;
             /** Changed */
             changed: string[];
+        };
+        /**
+         * Replan
+         * @description How much of a plan a change rebuilds.
+         * @enum {string}
+         */
+        Replan: "none" | "forecast" | "today";
+        /** RoutePlan */
+        RoutePlan: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** @default active */
+            status: components["schemas"]["PlanStatus"];
+            /**
+             * Stops Per Day
+             * @default 10
+             */
+            stops_per_day: number;
+            /** Installers */
+            installers: components["schemas"]["PlanInstaller"][];
+            /** Days */
+            days: components["schemas"]["PlanDay"][];
+            /**
+             * Store Count
+             * @default 0
+             */
+            store_count: number;
+            /**
+             * Version
+             * @default 1
+             */
+            version: number;
+            /** Created At */
+            created_at: string;
+            /** Updated At */
+            updated_at: string;
+            /**
+             * Closed At
+             * @default
+             */
+            closed_at: string;
+        };
+        /**
+         * RoutePlanBundle
+         * @description The whole plan for the plan page: META, every stop (installer, day, seq order), project names for labels,
+         *     and where each installer would start the next day.
+         */
+        RoutePlanBundle: {
+            plan: components["schemas"]["RoutePlan"];
+            /** Stops */
+            stops: components["schemas"]["PlanStop"][];
+            /** Project Names */
+            project_names: {
+                [key: string]: string;
+            };
+            /** Next Starts */
+            next_starts: {
+                [key: string]: components["schemas"]["StartLocation"];
+            };
+        };
+        /** RoutePlanCreate */
+        RoutePlanCreate: {
+            /** Name */
+            name: string;
+            /** Start Date */
+            start_date: string;
+            /**
+             * Stops Per Day
+             * @default 10
+             */
+            stops_per_day?: number;
+            /** Installers */
+            installers: components["schemas"]["PlanInstaller"][];
+            /** Stores */
+            stores: components["schemas"]["StoreRef"][];
+        };
+        /**
+         * RoutePlanUpdate
+         * @description Plan settings. `installers` replaces the list (names and start locations); `replan` says what to rebuild.
+         */
+        RoutePlanUpdate: {
+            /** Name */
+            name?: string | null;
+            /** Stops Per Day */
+            stops_per_day?: number | null;
+            /** Installers */
+            installers?: components["schemas"]["PlanInstaller"][] | null;
+            /** @default forecast */
+            replan?: components["schemas"]["Replan"];
+            /** Version */
+            version?: number | null;
         };
         /**
          * RoutesBundle
@@ -1638,6 +2169,34 @@ export interface components {
              * @enum {string}
              */
             reason: "external_id" | "address";
+        };
+        /** SkippedStore */
+        SkippedStore: {
+            /** Project Id */
+            project_id: string;
+            /** Stop Uid */
+            stop_uid: string;
+            /**
+             * Store Name
+             * @default
+             */
+            store_name: string;
+            /** Reason */
+            reason: string;
+            /**
+             * Route Plan Id
+             * @default
+             */
+            route_plan_id: string;
+        };
+        /** StartLocation */
+        StartLocation: {
+            /** Address */
+            address: string;
+            /** Lat */
+            lat: number;
+            /** Lng */
+            lng: number;
         };
         /** StateCount */
         StateCount: {
@@ -2230,6 +2789,13 @@ export interface components {
             dd_code: components["schemas"]["FilterOption"][];
             /** Screen Size */
             screen_size: components["schemas"]["FilterOption"][];
+        };
+        /** StoreRef */
+        StoreRef: {
+            /** Project Id */
+            project_id: string;
+            /** Stop Uid */
+            stop_uid: string;
         };
         /** Suggestions */
         Suggestions: {
@@ -3810,6 +4376,464 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Visit"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    search_stores_api_store_search_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string | null;
+                /** @description Repeatable; a store matches any of the values */
+                state?: string[] | null;
+                /** @description Repeatable; a store matches any of the values */
+                city?: string[] | null;
+                /** @description Repeatable; a store matches any of the values */
+                project_id?: string[] | null;
+                status?: components["schemas"]["ScreenStatus"][] | null;
+                pending_only?: boolean;
+                available_only?: boolean;
+                q?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_PoolStore_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    search_pins_api_store_search_pins_get: {
+        parameters: {
+            query?: {
+                /** @description Repeatable; a store matches any of the values */
+                state?: string[] | null;
+                /** @description Repeatable; a store matches any of the values */
+                city?: string[] | null;
+                /** @description Repeatable; a store matches any of the values */
+                project_id?: string[] | null;
+                status?: components["schemas"]["ScreenStatus"][] | null;
+                pending_only?: boolean;
+                available_only?: boolean;
+                q?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PoolStore"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    search_facets_api_store_search_facets_get: {
+        parameters: {
+            query?: {
+                /** @description Repeatable; a store matches any of the values */
+                state?: string[] | null;
+                /** @description Repeatable; a store matches any of the values */
+                city?: string[] | null;
+                /** @description Repeatable; a store matches any of the values */
+                project_id?: string[] | null;
+                status?: components["schemas"]["ScreenStatus"][] | null;
+                pending_only?: boolean;
+                available_only?: boolean;
+                q?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PoolFacets"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_plans_api_route_plans_get: {
+        parameters: {
+            query?: {
+                status?: components["schemas"]["PlanStatus"];
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_RoutePlan_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_plan_api_route_plans_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RoutePlanCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_plan_api_route_plans_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RoutePlanCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanPreview"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_plan_api_route_plans__plan_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoutePlanBundle"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_plan_api_route_plans__plan_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RoutePlanUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoutePlanBundle"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_stores_api_route_plans__plan_id__stores_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlanStoresAdd"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_stop_api_route_plans__plan_id__stops__project_id___stop_uid__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plan_id: string;
+                project_id: string;
+                stop_uid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoutePlanBundle"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reassign_stop_api_route_plans__plan_id__stops__project_id___stop_uid__reassign_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plan_id: string;
+                project_id: string;
+                stop_uid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Reassign"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoutePlanBundle"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    next_day_api_route_plans__plan_id__next_day_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NextDay"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoutePlanBundle"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    close_plan_api_route_plans__plan_id__close_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoutePlanBundle"];
                 };
             };
             /** @description Validation Error */

@@ -13,7 +13,7 @@ from collections import defaultdict
 
 from dolphin_tracker.domain.errors import ConflictError, NotFoundError, ValidationFailed
 from dolphin_tracker.domain.lists import NameListKind, name_key
-from dolphin_tracker.domain.models import Page, Stop, now_iso
+from dolphin_tracker.domain.models import PENDING_STATUSES, Page, Stop, now_iso
 from dolphin_tracker.domain.route_plans import (
     MAX_PLAN_STORES,
     NextDay,
@@ -395,6 +395,77 @@ class RoutePlanService:
         self._release(plan_id, stops)
         plan = self._plans.update(plan_id, {"status": PlanStatus.CLOSED.value, "closed_at": now_iso()})
         return self._bundle(plan, stops)
+
+    # ---- moving project routes into plans (RP8) ----------------------------------------------------------------
+
+    def import_project_routes(self, project_id: str, start_date: str, *, dry_run: bool = False) -> PlanResult | None:
+        """Turn a project's per-project routes into an active plan, keeping each store's installer, day order and
+        visiting order. Only routed stores that still need a visit move; each installer starts from their first
+        stop. Stores already in a plan are reported, not moved. None when the project has nothing routed."""
+        project = self._projects.get(project_id)
+        if project is None:
+            raise NotFoundError(f"Project {project_id} not found")
+        routed = [
+            stop for stop in self._stores.list_all(project_id)
+            if stop.installer and stop.status in PENDING_STATUSES
+        ]
+        if not routed:
+            return None
+        names = sorted({stop.installer for stop in routed}, key=lambda n: (n not in project.installers, n))
+        installers = []
+        for name in names:
+            mine = sorted((s for s in routed if s.installer == name), key=lambda s: (s.day, s.seq))
+            first = next((s for s in mine if s.lat is not None and s.lng is not None), None)
+            if first is None:
+                continue  # nothing to start from; those stores stay out of the plan
+            assert first.lat is not None and first.lng is not None
+            address = ", ".join(part for part in (first.addr, first.city, first.state, first.zip) if part)
+            installers.append(PlanInstaller(name=name, start=StartLocation(
+                address=address or first.store_name, lat=first.lat, lng=first.lng)))
+        if not installers:
+            return None
+        kept = {i.name for i in installers}
+        plan = RoutePlan(
+            name=f"{project.name} (from project routes)",
+            stops_per_day=project.stops_per_day,
+            installers=installers,
+            days=[PlanDay(number=1, date=start_date, starts={i.name: i.start for i in installers})],
+        )
+        at = now_iso()
+        candidates = [stop for stop in routed if stop.installer in kept and not stop.route_plan_id]
+        skipped = [
+            SkippedStore(project_id=project_id, stop_uid=stop.uid, store_name=stop.store_name,
+                         reason="in_another_plan", route_plan_id=stop.route_plan_id)
+            for stop in routed if stop.route_plan_id
+        ]
+        # Day numbers compact to 1, 2, 3, ... per installer, in the project's order.
+        layout: dict[str, tuple[str, int, int]] = {}
+        for name in kept:
+            days = sorted({s.day for s in candidates if s.installer == name})
+            for number, day in enumerate(days, start=1):
+                ordered = sorted((s for s in candidates if s.installer == name and s.day == day), key=lambda s: s.seq)
+                for seq, stop in enumerate(ordered):
+                    layout[stop.uid] = (name, number, seq)
+        if dry_run:
+            stops = [snapshot(project_id, stop, at) for stop in candidates]
+            for stop in stops:
+                stop.installer, stop.day, stop.seq = layout[stop.stop_uid]
+            plan = plan.model_copy(update={"store_count": len(stops)})
+            return PlanResult(bundle=self._bundle(plan, stops), skipped=skipped)
+        stops, lost = self._claim(plan.id, [(project_id, stop) for stop in candidates], at)
+        for stop in stops:
+            stop.installer, stop.day, stop.seq = layout[stop.stop_uid]
+        if not stops:
+            return PlanResult(bundle=self._bundle(plan, []), skipped=[*skipped, *lost])
+        try:
+            plan = plan.model_copy(update={"store_count": len(stops)})
+            self._plans.put(plan)
+            self._plans.put_stops(plan.id, stops)
+        except Exception:
+            self._release(plan.id, stops)
+            raise
+        self._remember_installers(plan.installers)
+        return PlanResult(bundle=self._bundle(plan, stops), skipped=[*skipped, *lost])
 
     # ---- visits -----------------------------------------------------------------------------------------------
 

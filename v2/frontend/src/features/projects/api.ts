@@ -47,10 +47,6 @@ export function useRefreshWhenRoutingFinishes(project: Project | undefined) {
   }, [project?.routing_status, project?.id, client]);
 }
 
-export function useRoutes(projectId: string, enabled = true) {
-  return useQuery({ queryKey: keys.routes(projectId), queryFn: () => projectsApi.routes(projectId), enabled });
-}
-
 function useInvalidateProject(projectId: string) {
   const client = useQueryClient();
   return () => Promise.all([
@@ -116,14 +112,5 @@ export function useRenameInstaller(projectId: string) {
       client.setQueryData(keys.project(projectId), project);
       return client.invalidateQueries({ queryKey: keys.project(projectId) });
     },
-  });
-}
-
-export function useReassignStop(projectId: string) {
-  const client = useQueryClient();
-  return useMutation({
-    mutationFn: ({ uid, installer }: { uid: string; installer: string }) =>
-      projectsApi.reassign(projectId, uid, installer),
-    onSuccess: () => client.invalidateQueries({ queryKey: keys.project(projectId) }),
   });
 }

@@ -426,3 +426,37 @@ class RoutePlansApiTests(ServiceTestCase):
         self.assertEqual(self.client.get("/api/route-plans/nope").status_code, 404)
         self.assertEqual(self.client.post("/api/route-plans", json={**self.body("w0"), "installers": []}).status_code,
                          422)
+
+
+class ImportProjectRoutesTests(ServiceTestCase):
+    def setUp(self):
+        super().setUp()
+        self.projects.put(Project(id="p3", name="Legacy", project_type=ProjectType.OFFLINE, installers=["Ann"],
+                                  stops_per_day=3))
+        rows = [
+            store("a", -84.0).model_copy(update={"installer": "Ann", "day": 4, "seq": 1}),
+            store("b", -84.1).model_copy(update={"installer": "Ann", "day": 4, "seq": 0}),
+            store("c", -84.2).model_copy(update={"installer": "Ann", "day": 7, "seq": 0}),
+            store("d", -84.3, status="Completed").model_copy(update={"installer": "Ann", "day": 7, "seq": 1}),
+            store("e", -84.4),  # not routed
+        ]
+        self.stores.put_many("p3", rows)
+
+    def test_keeps_installer_day_order_and_visiting_order(self):
+        result = self.service.import_project_routes("p3", "2026-11-09")
+        plan = result.bundle.plan
+        self.assertEqual((plan.name, plan.stops_per_day, plan.days[0].date), ("Legacy (from project routes)", 3,
+                                                                               "2026-11-09"))
+        layout = {s.stop_uid: (s.installer, s.day, s.seq) for s in result.bundle.stops}
+        self.assertEqual(layout, {"b": ("Ann", 1, 0), "a": ("Ann", 1, 1), "c": ("Ann", 2, 0)})  # d done, e unrouted
+        self.assertEqual(plan.installers[0].start.address, "b Main St, Atlanta, GA")  # the first stop
+        self.assertEqual(self.stores.get("p3", "a").route_plan_id, plan.id)
+        again = self.service.import_project_routes("p3", "2026-11-09")
+        self.assertEqual(len(again.bundle.stops), 0)
+        self.assertEqual(len(again.skipped), 3)
+
+    def test_dry_run_and_nothing_routed(self):
+        preview = self.service.import_project_routes("p3", "2026-11-09", dry_run=True)
+        self.assertEqual(preview.bundle.plan.store_count, 3)
+        self.assertEqual(self.stores.get("p3", "a").route_plan_id, "")
+        self.assertIsNone(self.service.import_project_routes("p2", "2026-11-09"))

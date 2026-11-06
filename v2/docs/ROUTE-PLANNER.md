@@ -1,6 +1,6 @@
 # Route Planner + servicing visits — high-level plan
 
-Status: **draft for approval** (2026-11-06). Detailed plan and code come after this is agreed.
+Status: **built** (2026-11-06, RP1–RP8 on `tech-stack-migration`). As-built notes are in §7 and in `REVIEW-NOTES.md` → Round 3.
 
 ## 1. What the user asked for
 

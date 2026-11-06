@@ -12,7 +12,6 @@ import { cn } from "@/lib/utils";
 
 const TABS = [
   { to: "stores", label: "Stores" },
-  { to: "routes", label: "Routes" },
   { to: "settings", label: "Settings" },
 ];
 

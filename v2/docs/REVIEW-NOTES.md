@@ -2051,3 +2051,51 @@ Requested after the user's first look at the new-project screen.
 - The FA checkbox is separate from the PA checkbox, not the same one.
 - Collapsed by default: Contacts, Installation, Site notes, Site checklist, Screen counts, Progress and Other
   data. Each header shows how many of its fields are filled.
+
+
+---
+
+# Round 3: Route Planner + servicing visits (2026-11-06)
+
+Plan: `ROUTE-PLANNER.md`. One commit per task on `tech-stack-migration`; each ran backend ruff + pytest and
+frontend tsc + vitest (+ `vite build` for UI commits) green before landing.
+
+| Task | Commit | What |
+|---|---|---|
+| RP1 | `93dd01b` | Status **Serviced - Needs More Work** (pending, after Delivered), aliases, fuchsia |
+| RP2 | `997c8d2` | Pick lists: installers, Dolphin managers (typed names are added), category tree (9 → 48) |
+| RP3 | `f0edc98` | Per-stick visits, store `screen_visits` / `last_visit_at`, history API |
+| RP4 | `94fb2ec` | Route plans across projects, store claims, day builder, next day, store search |
+| RP5+RP6 | `7c26715` | Route Planner UI (list, wizard, plan page, dialogs) and the visit form + side panel + history |
+| RP7 | `ec0aaa2` | Projects view: Route / Visits filters, map badges, table column + row tint, store modal history |
+| RP8 | (the RP8 commit) | Routes tab removed (old links redirect to Stores); `scripts/migrate_project_routes.py` |
+
+**Tests:** backend 312 → **369**, frontend 130 → **142** (8 Routes-tab tests went with the tab; 20 new).
+
+**Defaults I took (say if either is wrong)**
+- Category grouping as proposed (the † rows in ROUTE-PLANNER §5).
+- "Visited" counts visits since the store's latest plan (ever, if never planned).
+
+**Deviations from the plan doc, and why**
+- **Store search without a new index.** It reads each project's stores (projected) and filters in memory. No
+  write path changes; fine for thousands of stores. A GSI on state is the next step if it gets slow.
+- **Plans rebuild inside the request** (≤ 2000 stores), not as worker jobs; plans are per-region and small.
+- **Day sizes are balanced** by the existing optimizer (23 at 10/day → 8, 8, 7): same number of days as 10, 10, 3.
+- **Reassign keeps the day.** A stop moves to another installer's same day; both days are reordered.
+- **Status value spelling:** `Serviced - Needs More Work` with a plain hyphen (safe in CSV and URLs).
+
+**Open questions**
+1. **Project-level installers and routing.** The Routes tab is gone, but Settings → Installers, the project's
+   stops-per-day and the routing jobs (and the "routing" banner) still exist and still write installer/day on
+   stores. Remove them now that plans own routing? The dashboard's "Total installers" KPI counts them.
+2. **Visit edits.** A logged visit cannot be edited or deleted yet. Needed?
+3. **Stick replaced.** "Stick Replaced With" records the new number on the visit only; the store's stick number is
+   unchanged (status and screens stay separate from visits). Should it update the screen row too?
+4. **Migrating live routes.** `scripts/migrate_project_routes.py --dry-run` shows what would move; I have not run
+   it against AWS. Each installer starts from their first stop; edit the starts in the plan afterwards.
+
+**Not verified here:** the live map, Places autocomplete and address lookup (no Google key in this
+environment; start locations also accept typed "lat, lng"), and anything on AWS. Covered by mocks and fakes.
+
+**To do later** (ROUTE-PLANNER §10): store-level and address-level visits; moving servicing to the offline
+portal; importing old portal logs from a CSV export.

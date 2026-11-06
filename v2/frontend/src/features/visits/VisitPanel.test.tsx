@@ -50,8 +50,11 @@ describe("VisitPanel", () => {
     expect((screen.getByLabelText(/^Venue Name/) as HTMLInputElement).value).toBe("D_005_KIOSK");
     expect((screen.getByLabelText("PA") as HTMLInputElement).value).toBe("North");
     const side = screen.getByRole("complementary", { name: "Store details (read only)" });
-    expect(await within(side).findByText("ShopWiFi")).toBeTruthy();
-    expect(within(side).queryByText("secret")).toBeNull(); // masked
+    const wifi = screen.getByRole("group", { name: "Store WiFi" });
+    expect((within(wifi).getByLabelText("WiFi name (SSID)") as HTMLInputElement).value).toBe("ShopWiFi");
+    const password = within(wifi).getByLabelText("WiFi password") as HTMLInputElement;
+    expect([password.type, password.readOnly]).toEqual(["password", true]); // masked and locked
+    expect(within(side).queryByText("ShopWiFi")).toBeNull(); // on the form now, not the side panel
     expect(within(side).getByText("Gold")).toBeTruthy(); // other imported data
     expect(await within(side).findByText(/Power Issues › TV Off/)).toBeTruthy();
   });
@@ -78,16 +81,27 @@ describe("VisitPanel", () => {
     });
   });
 
-  it("contacts are locked until Edit, and saving updates the store", async () => {
+  it("owner, store contact and WiFi each unlock with their own Edit, and saving updates the store", async () => {
     const api = renderPanel();
     const owner = (await screen.findByLabelText("Owner's Name")) as HTMLInputElement;
-    expect(owner.readOnly).toBe(true);
-    await userEvent.click(screen.getByRole("button", { name: /^Edit$/ }));
-    expect(owner.readOnly).toBe(false);
+    const storeContact = screen.getByLabelText("Store Contact Name") as HTMLInputElement;
+    expect([owner.readOnly, storeContact.readOnly]).toEqual([true, true]);
+    await userEvent.click(screen.getByRole("button", { name: "Edit Owner" }));
+    expect([owner.readOnly, storeContact.readOnly]).toEqual([false, true]); // only the owner group unlocks
     await userEvent.clear(owner);
     await userEvent.type(owner, "Sam Lee");
-    await userEvent.click(screen.getByRole("button", { name: /Save contacts/ }));
-    await waitFor(() => expect(api.calls.some((call) => call.method === "PATCH")).toBe(true));
+    await userEvent.click(screen.getByRole("button", { name: "Save Owner" }));
+    await waitFor(() => expect(api.calls.filter((call) => call.method === "PATCH")).toHaveLength(1));
     expect(api.calls.find((call) => call.method === "PATCH")!.body).toEqual({ owner_name: "Sam Lee" });
+
+    await userEvent.click(screen.getByRole("button", { name: "Edit Store WiFi" }));
+    const password = screen.getByLabelText("WiFi password") as HTMLInputElement;
+    await userEvent.click(screen.getByRole("button", { name: "Show WiFi password" }));
+    expect(password.value).toBe("secret");
+    await userEvent.clear(password);
+    await userEvent.type(password, "newpass");
+    await userEvent.click(screen.getByRole("button", { name: "Save Store WiFi" }));
+    await waitFor(() => expect(api.calls.filter((call) => call.method === "PATCH")).toHaveLength(2));
+    expect(api.calls.filter((call) => call.method === "PATCH")[1]!.body).toEqual({ store_ssid_password: "newpass" });
   });
 });

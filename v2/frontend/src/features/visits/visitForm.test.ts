@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { contactsOf, contactsPatch, formErrors, formFor, toInput, venueNameOf, visitState } from "@/features/visits/visitForm";
+import { formErrors, LOCKED_GROUPS, lockedPatch, lockedValues, formFor, toInput, venueNameOf, visitState } from "@/features/visits/visitForm";
 import { makeScreen, makeStop } from "@/test/fixtures";
 import type { Category } from "@/lib/api/types";
 
@@ -31,9 +31,13 @@ describe("visit form", () => {
     expect(toInput({ ...filled, subcategory: "TV Off", category: "Power Issues", replaced_with: "left over" }, "").replaced_with).toBe("");
   });
 
-  it("sends only the contact fields that changed", () => {
-    const store = makeStop({ owner_name: "Sam", onsite_contact_phone: "404" });
-    expect(contactsPatch(store, { ...contactsOf(store), owner_name: " Sam ", onsite_contact_name: "Lee" })).toEqual({ onsite_contact_name: "Lee" });
+  it("sends only the locked fields that changed", () => {
+    const store = makeStop({ owner_name: "Sam", onsite_contact_phone: "404", store_ssid: "Shop" });
+    const owner = lockedValues(store, LOCKED_GROUPS.owner.map((f) => f.key));
+    expect(owner).toEqual({ owner_name: "Sam", owner_phone: "", owner_email: "" });
+    expect(lockedPatch(store, { ...owner, owner_name: " Sam ", owner_phone: "555" })).toEqual({ owner_phone: "555" });
+    const wifi = lockedValues(store, LOCKED_GROUPS.wifi.map((f) => f.key));
+    expect(lockedPatch(store, { ...wifi, store_ssid_password: "pw " })).toEqual({ store_ssid_password: "pw" });
   });
 
   it("visit state counts sticks visited since the latest plan", () => {

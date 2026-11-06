@@ -15,14 +15,16 @@ import { useStoreFields } from "@/features/places/api";
 import { useStore, useUpdateStoreDetails } from "@/features/stores/api";
 import { useCreateVisit, useVisits } from "@/features/visits/api";
 import {
-  contactsOf,
-  contactsPatch,
+  LOCKED_GROUPS,
+  lockedPatch,
+  lockedValues,
   formErrors,
   formFor,
   NETWORK_TYPES,
   REPLACED_WITH,
   toInput,
-  type ContactsForm,
+  type LockedKey,
+  type LockedValues,
   type VisitForm,
 } from "@/features/visits/visitForm";
 import { keys } from "@/lib/api/keys";
@@ -258,6 +260,8 @@ function VisitBody({ stop, project, planId, installer, visitDate }: { stop: Stop
               })}
             </div>
           </Field>
+          <div className="border-t" />
+          <LockedGroup stop={stop} projectId={project.id} title="Store WiFi" fields={LOCKED_GROUPS.wifi} />
         </Section>
 
         <Section title="Software Requirements" accent="#8b5cf6">
@@ -315,7 +319,11 @@ function VisitBody({ stop, project, planId, installer, visitDate }: { stop: Stop
           </Field>
         </Section>
 
-        <ContactsSection stop={stop} projectId={project.id} />
+        <Section title="Contact" accent="#64748b">
+          <LockedGroup stop={stop} projectId={project.id} title="Owner" fields={LOCKED_GROUPS.owner} />
+          <div className="border-t" />
+          <LockedGroup stop={stop} projectId={project.id} title="Store Contact" fields={LOCKED_GROUPS.storeContact} />
+        </Section>
 
         <div className="flex items-center justify-between gap-3">
           <p className="font-mono text-[11px] text-slate-500">
@@ -334,83 +342,93 @@ function VisitBody({ stop, project, planId, installer, visitDate }: { stop: Stop
   );
 }
 
-const CONTACT_FIELDS: [keyof ContactsForm, string][] = [
-  ["owner_name", "Owner's Name"],
-  ["owner_phone", "Contact Number"],
-  ["owner_email", "Email Address"],
-  ["onsite_contact_name", "Store Contact Name"],
-  ["onsite_contact_phone", "Store Contact Phone"],
-];
+interface LockedField {
+  key: LockedKey;
+  label: string;
+  secret?: boolean;
+}
 
-/** Owner and store contacts, locked until "Edit" is pressed, so a change is always deliberate. Saving updates the store. */
-function ContactsSection({ stop, projectId }: { stop: Stop; projectId: string }) {
+/** A few store fields shown locked; its own Edit button unlocks them, so a change is always deliberate. Saving
+ *  updates the store. */
+function LockedGroup({ stop, projectId, title, fields }: { stop: Stop; projectId: string; title: string; fields: readonly LockedField[] }) {
+  const keys = fields.map((field) => field.key);
   const [editing, setEditing] = useState(false);
-  const [form, setForm] = useState<ContactsForm>(() => contactsOf(stop));
+  const [reveal, setReveal] = useState(false);
+  const [form, setForm] = useState<LockedValues>(() => lockedValues(stop, keys));
   const update = useUpdateStoreDetails(projectId);
   useEffect(() => {
-    if (!editing) setForm(contactsOf(stop));
+    if (!editing) setForm(lockedValues(stop, keys)); // `keys` comes from a static field list
   }, [stop, editing]);
 
   const save = async () => {
-    const patch = contactsPatch(stop, form);
+    const patch = lockedPatch(stop, form);
     if (!Object.keys(patch).length) {
       setEditing(false);
       return;
     }
     try {
       await update.mutateAsync({ uid: stop.uid, body: patch });
-      toast.success("Contacts updated on the store");
+      toast.success(`${title} updated on the store`);
       setEditing(false);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not update the contacts");
+      toast.error(error instanceof Error ? error.message : `Could not update ${title.toLowerCase()}`);
     }
   };
 
   return (
-    <Section
-      title="Owner & Store Contact Information"
-      accent="#64748b"
-      action={
-        editing ? (
+    <div role="group" aria-label={title} className="space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <h4 className="flex items-center gap-1.5 text-sm font-semibold text-slate-700">
+          {!editing && <Lock className="size-3.5 text-slate-400" aria-label="locked" />} {title}
+        </h4>
+        {editing ? (
           <div className="flex gap-1.5">
             <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>
               Cancel
             </Button>
-            <Button size="sm" onClick={() => void save()} disabled={update.isPending}>
-              {update.isPending && <Loader2 className="animate-spin" />} Save contacts
+            <Button size="sm" onClick={() => void save()} disabled={update.isPending} aria-label={`Save ${title}`}>
+              {update.isPending && <Loader2 className="animate-spin" />} Save
             </Button>
           </div>
         ) : (
-          <Button size="sm" variant="outline" onClick={() => setEditing(true)}>
+          <Button size="sm" variant="outline" onClick={() => setEditing(true)} aria-label={`Edit ${title}`}>
             <Pencil /> Edit
           </Button>
-        )
-      }
-    >
-      {!editing && (
-        <p className="flex items-center gap-1.5 text-xs text-slate-500">
-          <Lock className="size-3" /> Locked. Press Edit to change the store's contacts.
-        </p>
-      )}
+        )}
+      </div>
       <div className="grid gap-4 sm:grid-cols-3">
-        {CONTACT_FIELDS.map(([key, label]) => (
-          <Field key={key} label={label} htmlFor={`contact-${key}`}>
-            <Input
-              id={`contact-${key}`}
-              value={form[key]}
-              readOnly={!editing}
-              className={cn(!editing && "bg-slate-50 text-slate-600")}
-              onChange={(e) => setForm((current) => ({ ...current, [key]: e.target.value }))}
-            />
+        {fields.map(({ key, label, secret }) => (
+          <Field key={key} label={label} htmlFor={`locked-${key}`}>
+            <div className="relative">
+              <Input
+                id={`locked-${key}`}
+                type={secret && !reveal ? "password" : "text"}
+                autoComplete="off"
+                value={form[key] ?? ""}
+                readOnly={!editing}
+                className={cn(!editing && "bg-slate-50 text-slate-600", secret && "pr-9")}
+                onChange={(e) => setForm((current) => ({ ...current, [key]: e.target.value }))}
+              />
+              {secret && (
+                <button
+                  type="button"
+                  className="absolute top-1/2 right-2.5 -translate-y-1/2 text-slate-500"
+                  aria-label={reveal ? `Hide ${label}` : `Show ${label}`}
+                  onClick={() => setReveal(!reveal)}
+                >
+                  {reveal ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                </button>
+              )}
+            </div>
           </Field>
         ))}
       </div>
-    </Section>
+    </div>
   );
 }
 
-const SIDE_GROUPS: StoreFieldSpec["group"][] = ["WiFi", "Site notes", "Site checklist", "Installation", "Identity & address", "Pictures"];
-const ON_FORM = new Set(["store_name", "addr", "city", "state", "zip", "pa", "owner_name", "owner_phone", "owner_email", "onsite_contact_name", "onsite_contact_phone"]);
+const SIDE_GROUPS: StoreFieldSpec["group"][] = ["Site notes", "Site checklist", "Installation", "Identity & address", "Pictures"];
+const ON_FORM = new Set(["store_name", "addr", "city", "state", "zip", "pa", "owner_name", "owner_phone", "owner_email", "onsite_contact_name", "onsite_contact_phone", "store_ssid", "store_ssid_password"]);
 
 function display(spec: StoreFieldSpec, value: unknown): string {
   if (value === null || value === undefined || value === "") return "";
@@ -421,7 +439,6 @@ function display(spec: StoreFieldSpec, value: unknown): string {
 /** Everything else the sheet gave us, read only: WiFi first, then site notes, checklist, installation, other data. */
 function StoreSideNotes({ stop, project }: { stop: Stop; project: Project }) {
   const specs = useStoreFields();
-  const [reveal, setReveal] = useState(false);
   const labels = useMemo(() => new Map(project.field_schema.map((field) => [field.key, field.label])), [project.field_schema]);
   const groups = useMemo(() => {
     const record = stop as unknown as Record<string, unknown>;
@@ -447,14 +464,7 @@ function StoreSideNotes({ stop, project }: { stop: Stop; project: Project }) {
               <div key={spec.name} className="grid grid-cols-[120px_minmax(0,1fr)] gap-2">
                 <dt className="text-xs text-slate-500">{spec.label}</dt>
                 <dd className="break-words text-xs">
-                  {spec.name === "store_ssid_password" ? (
-                    <span className="inline-flex items-center gap-1">
-                      {reveal ? value : "••••••••"}
-                      <button type="button" aria-label={reveal ? "Hide password" : "Show password"} onClick={() => setReveal(!reveal)}>
-                        {reveal ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
-                      </button>
-                    </span>
-                  ) : spec.kind === "url" ? (
+                  {spec.kind === "url" ? (
                     value.split(/\s+/).filter((token) => token.startsWith("http")).map((url) => (
                       <a key={url} href={url} target="_blank" rel="noopener noreferrer" className="block truncate text-brand underline">
                         {url}

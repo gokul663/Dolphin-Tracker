@@ -98,27 +98,36 @@ export function toInput(form: VisitForm, planId: string): VisitInput {
   };
 }
 
-export interface ContactsForm {
-  owner_name: string;
-  owner_phone: string;
-  owner_email: string;
-  onsite_contact_name: string;
-  onsite_contact_phone: string;
+/** Store fields the visit form shows locked, each group behind its own Edit button; saving updates the store. */
+export const LOCKED_GROUPS = {
+  wifi: [
+    { key: "store_ssid", label: "WiFi name (SSID)" },
+    { key: "store_ssid_password", label: "WiFi password", secret: true },
+  ],
+  owner: [
+    { key: "owner_name", label: "Owner's Name" },
+    { key: "owner_phone", label: "Contact Number" },
+    { key: "owner_email", label: "Email Address" },
+  ],
+  storeContact: [
+    { key: "onsite_contact_name", label: "Store Contact Name" },
+    { key: "onsite_contact_phone", label: "Store Contact Phone" },
+  ],
+} as const satisfies Record<string, readonly { key: keyof Stop; label: string; secret?: boolean }[]>;
+
+export type LockedKey = (typeof LOCKED_GROUPS)[keyof typeof LOCKED_GROUPS][number]["key"];
+export type LockedValues = Partial<Record<LockedKey, string>>;
+
+export function lockedValues(stop: Stop, keys: readonly LockedKey[]): LockedValues {
+  return Object.fromEntries(keys.map((key) => [key, stop[key] ?? ""]));
 }
 
-export const contactsOf = (stop: Stop): ContactsForm => ({
-  owner_name: stop.owner_name,
-  owner_phone: stop.owner_phone,
-  owner_email: stop.owner_email,
-  onsite_contact_name: stop.onsite_contact_name,
-  onsite_contact_phone: stop.onsite_contact_phone,
-});
-
-/** Only the contact fields that changed (the store PATCH merges the rest). */
-export function contactsPatch(stop: Stop, form: ContactsForm): Partial<ContactsForm> {
-  const before = contactsOf(stop);
+/** Only the fields that changed, trimmed (the store PATCH merges the rest). */
+export function lockedPatch(stop: Stop, form: LockedValues): LockedValues {
   return Object.fromEntries(
-    (Object.keys(form) as (keyof ContactsForm)[]).filter((key) => form[key].trim() !== before[key]).map((key) => [key, form[key].trim()]),
+    (Object.entries(form) as [LockedKey, string][])
+      .filter(([key, value]) => value.trim() !== (stop[key] ?? ""))
+      .map(([key, value]) => [key, value.trim()]),
   );
 }
 

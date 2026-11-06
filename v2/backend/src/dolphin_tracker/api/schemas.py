@@ -6,6 +6,7 @@ from typing import Any, Literal
 from pydantic import ConfigDict, Field
 
 from dolphin_tracker.domain.base import ApiModel
+from dolphin_tracker.domain.lists import Category
 from dolphin_tracker.domain.models import FieldDef, Project, ProjectType, ScreenInput, ScreenStatus, StopInput
 
 
@@ -297,3 +298,11 @@ class ImportResult(ApiModel):
     summary: ImportSummary
     pa_names: list[str]
     rows: list[ImportRow]
+
+
+class NameCreate(ApiModel):
+    value: str = Field(min_length=1, max_length=200)
+
+
+class CategoriesUpdate(ApiModel):
+    categories: list[Category] = Field(max_length=100)

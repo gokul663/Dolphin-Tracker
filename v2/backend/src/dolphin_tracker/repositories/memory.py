@@ -5,6 +5,7 @@ from typing import Any
 
 from dolphin_tracker.domain.cursors import encode_cursor, offset_from_cursor
 from dolphin_tracker.domain.errors import ConflictError, NotFoundError
+from dolphin_tracker.domain.lists import Category, NameEntry, NameListKind, name_key
 from dolphin_tracker.domain.models import Job, JobStatus, Page, Project, RoutingStatus, Screen, Stop, now_iso
 from dolphin_tracker.repositories.projects import IMMUTABLE_FIELDS
 from dolphin_tracker.repositories.stores import (
@@ -213,3 +214,31 @@ class InMemoryJobRepository:
         return self._update(
             job_id, {"status": JobStatus.SUCCEEDED, "progress": 100, "result_key": result_key, "message": message}
         )
+
+
+class InMemoryListRepository:
+    def __init__(self) -> None:
+        self._names: dict[NameListKind, dict[str, NameEntry]] = {}
+        self._categories: list[Category] | None = None
+
+    def list_names(self, kind: NameListKind, *, limit: int = 200, cursor: str | None = None) -> Page[NameEntry]:
+        bucket = self._names.get(kind, {})
+        ordered = [bucket[key].model_copy() for key in sorted(bucket)]
+        window, next_cursor = _offset_page(ordered, limit, cursor)
+        return Page(items=window, next_cursor=next_cursor)
+
+    def add_name(self, kind: NameListKind, value: str) -> NameEntry:
+        bucket = self._names.setdefault(kind, {})
+        key = name_key(value)
+        if key not in bucket:
+            bucket[key] = NameEntry(value=value, created_at=now_iso())
+        return bucket[key].model_copy()
+
+    def delete_name(self, kind: NameListKind, value: str) -> None:
+        self._names.get(kind, {}).pop(name_key(value), None)
+
+    def get_categories(self) -> list[Category] | None:
+        return None if self._categories is None else [category.model_copy(deep=True) for category in self._categories]
+
+    def put_categories(self, categories: list[Category]) -> None:
+        self._categories = [category.model_copy(deep=True) for category in categories]

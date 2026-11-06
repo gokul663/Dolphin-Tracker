@@ -13,12 +13,14 @@ from dolphin_tracker.config import Settings, get_settings, resolve_google_server
 from dolphin_tracker.repositories.dynamo import dynamodb_resource
 from dolphin_tracker.repositories.files import FileStore, make_file_store
 from dolphin_tracker.repositories.jobs import DynamoJobRepository, JobRepository
+from dolphin_tracker.repositories.lists import DynamoListRepository, ListRepository
 from dolphin_tracker.repositories.projects import DynamoProjectRepository, ProjectRepository
 from dolphin_tracker.repositories.stores import DynamoStoreRepository, StoreRepository
 from dolphin_tracker.repositories.worker_invoker import WorkerInvoker, make_invoker
 from dolphin_tracker.services.geocoding import GoogleGeocoder
 from dolphin_tracker.services.imports import ImportService
 from dolphin_tracker.services.jobs import JobService
+from dolphin_tracker.services.lists import ListService
 from dolphin_tracker.services.places import PlacesService
 from dolphin_tracker.services.projects import ProjectService
 from dolphin_tracker.services.routing import RoutingService
@@ -47,6 +49,14 @@ def get_store_repository(table: Annotated[object, Depends(get_table)]) -> StoreR
 
 def get_job_repository(table: Annotated[object, Depends(get_table)]) -> JobRepository:
     return DynamoJobRepository(table)
+
+
+def get_list_repository(table: Annotated[object, Depends(get_table)]) -> ListRepository:
+    return DynamoListRepository(table)
+
+
+def get_list_service(lists: Annotated[ListRepository, Depends(get_list_repository)]) -> ListService:
+    return ListService(lists)
 
 
 def get_file_store(settings: SettingsDep) -> FileStore:

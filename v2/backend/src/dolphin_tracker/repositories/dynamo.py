@@ -37,6 +37,18 @@ class Keys:
     def job(job_id: str) -> dict[str, str]:
         return {"PK": f"JOB#{job_id}", "SK": "META"}
 
+    @staticmethod
+    def name_list(kind: str) -> str:
+        return f"LIST#{kind}"
+
+    @staticmethod
+    def name_entry(kind: str, key: str) -> dict[str, str]:
+        return {"PK": Keys.name_list(kind), "SK": f"ITEM#{key}"}
+
+    @staticmethod
+    def categories() -> dict[str, str]:
+        return {"PK": "LIST#categories", "SK": "TREE"}
+
 
 def to_ddb(value: Any) -> Any:
     """Convert floats to Decimal (boto3 rejects float) recursively; leave everything else alone."""

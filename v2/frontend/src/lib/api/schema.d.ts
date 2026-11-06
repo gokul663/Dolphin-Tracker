@@ -559,6 +559,65 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/lists/categories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Categories
+         * @description The whole tree (categories → subcategories); the defaults until someone saves a change.
+         */
+        get: operations["list_categories_api_lists_categories_get"];
+        /** Replace Categories */
+        put: operations["replace_categories_api_lists_categories_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/lists/{kind}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Names */
+        get: operations["list_names_api_lists__kind__get"];
+        put?: never;
+        /**
+         * Add Name
+         * @description Idempotent: a name already in the list (ignoring case and spacing) comes back as stored.
+         */
+        post: operations["add_name_api_lists__kind__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/lists/{kind}/{value}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Name */
+        delete: operations["delete_name_api_lists__kind___value__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -603,6 +662,25 @@ export interface components {
              * @default 0
              */
             pending: number;
+        };
+        /** CategoriesUpdate */
+        CategoriesUpdate: {
+            /** Categories */
+            categories: components["schemas"]["Category-Input"][];
+        };
+        /** Category */
+        "Category-Input": {
+            /** Name */
+            name: string;
+            /** Subcategories */
+            subcategories?: string[];
+        };
+        /** Category */
+        "Category-Output": {
+            /** Name */
+            name: string;
+            /** Subcategories */
+            subcategories: string[];
         };
         /**
          * FieldDef
@@ -1077,6 +1155,33 @@ export interface components {
              * @default
              */
             google_map_id: string;
+        };
+        /** NameCreate */
+        NameCreate: {
+            /** Value */
+            value: string;
+        };
+        /** NameEntry */
+        NameEntry: {
+            /** Value */
+            value: string;
+            /**
+             * Created At
+             * @default
+             */
+            created_at: string;
+        };
+        /**
+         * NameListKind
+         * @enum {string}
+         */
+        NameListKind: "installers" | "managers";
+        /** Page[NameEntry] */
+        Page_NameEntry_: {
+            /** Items */
+            items: components["schemas"]["NameEntry"][];
+            /** Next Cursor */
+            next_cursor: string | null;
         };
         /** Page[ProjectSummary] */
         Page_ProjectSummary_: {
@@ -3287,6 +3392,158 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ImportResult"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_categories_api_lists_categories_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Category-Output"][];
+                };
+            };
+        };
+    };
+    replace_categories_api_lists_categories_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CategoriesUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Category-Output"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_names_api_lists__kind__get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                kind: components["schemas"]["NameListKind"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_NameEntry_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_name_api_lists__kind__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kind: components["schemas"]["NameListKind"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NameCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NameEntry"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_name_api_lists__kind___value__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kind: components["schemas"]["NameListKind"];
+                value: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

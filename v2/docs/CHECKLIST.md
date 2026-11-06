@@ -139,7 +139,7 @@ counts visits since the store's latest plan (ever, if never planned).
 - [x] RP3 Visits backend: per-stick visit items, store `last_visit_at` / visited sticks, contact write-back
 - [x] RP4 Route plans backend: plan + plan-stop items, cross-project store search, optimizer edges, create /
       preview / add / remove / skip / reassign / next day / close, one active plan per store
-- [ ] RP5 Route Planner frontend: nav, plan list, wizard, plan page, Plan next day, exports and links
-- [ ] RP6 Visit form + read-only side panel + servicing history in the store modal
+- [x] RP5 Route Planner frontend: nav, plan list, wizard, plan page, Plan next day, exports and links
+- [x] RP6 Visit form + read-only side panel + servicing history in the store modal
 - [ ] RP7 Projects view overlays (In route / Visited / Partly visited) + filters
 - [ ] RP8 Remove the per-project Routes tab; migrate existing project routes into route plans

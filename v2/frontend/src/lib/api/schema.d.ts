@@ -1993,6 +1993,10 @@ export interface components {
             next_starts: {
                 [key: string]: components["schemas"]["StartLocation"];
             };
+            /** Store Status */
+            store_status: {
+                [key: string]: string;
+            };
         };
         /** RoutePlanCreate */
         RoutePlanCreate: {

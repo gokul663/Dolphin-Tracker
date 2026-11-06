@@ -340,6 +340,8 @@ class RoutePlanBundle(ApiModel):
     stops: list[PlanStop]
     project_names: dict[str, str]
     next_starts: dict[str, StartLocation]
+    # Live from the stores (plan stops are snapshots): the derived status per plan stop key, for chips and pins.
+    store_status: dict[str, str] = Field(default_factory=dict)
 
 
 class PlanResult(ApiModel):

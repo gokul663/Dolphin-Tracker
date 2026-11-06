@@ -235,6 +235,7 @@ class RoutePlanServiceTests(ServiceTestCase):
             self.assertIn(stop.day, (1, 2))
         self.assertEqual(self.stores.get("p1", "w0").route_plan_id, bundle.plan.id)
         self.assertEqual(bundle.project_names, {"p1": "Atlanta"})
+        self.assertEqual(bundle.store_status["p1#w0"], "Upcoming")
         self.assertEqual([e.value for e in self.lists.names(NameListKind.INSTALLERS).items], ["East", "West"])
         day1_west = [s for s in bundle.stops if s.installer == "West" and s.day == 1]
         self.assertEqual(len(day1_west), 2)

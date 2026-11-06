@@ -97,12 +97,23 @@ class RoutePlanService:
             names[project_id] = project.name if project else "(deleted project)"
         return names
 
+    def _statuses(self, stops: list[PlanStop]) -> dict[str, str]:
+        wanted = {stop.key for stop in stops}
+        statuses = {}
+        for project_id in sorted({stop.project_id for stop in stops}):
+            for item in self._stores.list_projected(project_id, ("uid", "status")):
+                key = plan_stop_key(project_id, item["uid"])
+                if key in wanted:
+                    statuses[key] = item.get("status") or "Upcoming"
+        return statuses
+
     def _bundle(self, plan: RoutePlan, stops: list[PlanStop]) -> RoutePlanBundle:
         return RoutePlanBundle(
             plan=plan,
             stops=order(stops),
             project_names=self._project_names({stop.project_id for stop in stops}),
             next_starts=last_stop_starts(plan, stops),
+            store_status=self._statuses(stops),
         )
 
     def bundle(self, plan_id: str) -> RoutePlanBundle:

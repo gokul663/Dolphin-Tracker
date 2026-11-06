@@ -7,6 +7,9 @@ import { ProjectPage } from "@/features/projects/ProjectPage";
 // Tabs are split out so the dashboard does not download the map, table and planner code.
 const StoresTab = lazy(() => import("@/features/stores/StoresTab").then((m) => ({ default: m.StoresTab })));
 const RoutesTab = lazy(() => import("@/features/routes/RoutesTab").then((m) => ({ default: m.RoutesTab })));
+const PlannerHome = lazy(() => import("@/features/planner/PlannerHome").then((m) => ({ default: m.PlannerHome })));
+const PlanWizard = lazy(() => import("@/features/planner/PlanWizard").then((m) => ({ default: m.PlanWizard })));
+const PlanPage = lazy(() => import("@/features/planner/PlanPage").then((m) => ({ default: m.PlanPage })));
 const SettingsTab = lazy(() => import("@/features/settings/SettingsTab").then((m) => ({ default: m.SettingsTab })));
 
 const tab = (element: ReactNode) => (
@@ -29,6 +32,9 @@ export const router = createBrowserRouter([
           { path: "settings", element: tab(<SettingsTab />) },
         ],
       },
+      { path: "planner", element: tab(<PlannerHome />) },
+      { path: "planner/new", element: tab(<PlanWizard />) },
+      { path: "planner/:planId", element: tab(<PlanPage />) },
       { path: "*", element: <Navigate to="/" replace /> },
     ],
   },

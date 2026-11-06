@@ -1,4 +1,4 @@
-import type { StoreFilters } from "@/lib/api/resources";
+import type { PoolFilters, StoreFilters } from "@/lib/api/resources";
 
 /** TanStack Query keys. Prefix-based so `invalidateQueries({ queryKey: keys.project(id) })` clears its children. */
 export const keys = {
@@ -15,6 +15,15 @@ export const keys = {
   storeFacets: (id: string, filters: StoreFilters) => ["projects", id, "stores", "facets", filters] as const,
   byState: (id: string, filters: StoreFilters) => ["projects", id, "stores", "by-state", filters] as const,
   store: (id: string, uid: string) => ["projects", id, "stores", "one", uid] as const,
+  visits: (id: string, uid: string) => ["projects", id, "stores", "visits", uid] as const,
+  routePlans: ["route-plans"] as const,
+  routePlanList: (status: string) => ["route-plans", "list", status] as const,
+  routePlan: (id: string) => ["route-plans", id] as const,
+  storeSearch: ["store-search"] as const,
+  storeSearchPins: (filters: PoolFilters) => ["store-search", "pins", filters] as const,
+  storeSearchFacets: (filters: PoolFilters) => ["store-search", "facets", filters] as const,
+  names: (kind: string) => ["lists", kind] as const,
+  categories: ["lists", "categories"] as const,
   job: (jobId: string) => ["jobs", jobId] as const,
   jobResult: (jobId: string) => ["jobs", jobId, "result"] as const,
 };

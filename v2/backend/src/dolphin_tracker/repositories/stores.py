@@ -54,7 +54,7 @@ class StoreRepository(Protocol):
         """Replace the screen rows; writes `screens`, the derived `status` and `updated_*` only."""
         ...
     def delete_all(self, project_id: str) -> int:
-        """Every stop of the project and its IBC# markers. Returns the number of stops."""
+        """Every stop of the project, its IBC# markers and its visits. Returns the number of stops."""
         ...
     def list_projected(self, project_id: str, attributes: tuple[str, ...]) -> list[dict[str, Any]]:
         """Whole project, only `attributes` per stop (cheap reads for KPIs). Plain dicts, no Decimals."""
@@ -242,8 +242,9 @@ class DynamoStoreRepository:
             items = self._iter_items(project_id, prefix, ProjectionExpression="PK, SK")
             return [{"PK": item["PK"], "SK": item["SK"]} for item in items]
 
-        stops, markers = keys(Keys.STOP_PREFIX), keys(Keys.EXTERNAL_ID_PREFIX)
+        # Visits live in the same partition (repositories/visits.py) and go with the project.
+        stops, markers, visits = keys(Keys.STOP_PREFIX), keys(Keys.EXTERNAL_ID_PREFIX), keys(Keys.VISIT_PREFIX)
         with self._table.batch_writer() as batch:
-            for key in stops + markers:
+            for key in stops + markers + visits:
                 batch.delete_item(Key=key)
         return len(stops)

@@ -7,6 +7,7 @@ from dolphin_tracker.domain.cursors import encode_cursor, offset_from_cursor
 from dolphin_tracker.domain.errors import ConflictError, NotFoundError
 from dolphin_tracker.domain.lists import Category, NameEntry, NameListKind, name_key
 from dolphin_tracker.domain.models import Job, JobStatus, Page, Project, RoutingStatus, Screen, Stop, now_iso
+from dolphin_tracker.domain.visits import Visit
 from dolphin_tracker.repositories.projects import IMMUTABLE_FIELDS
 from dolphin_tracker.repositories.stores import (
     IMMUTABLE_STOP_FIELDS,
@@ -242,3 +243,31 @@ class InMemoryListRepository:
 
     def put_categories(self, categories: list[Category]) -> None:
         self._categories = [category.model_copy(deep=True) for category in categories]
+
+
+class InMemoryVisitRepository:
+    """Shares the store fake, so the per-stick summary lands on the same stops the services read."""
+
+    def __init__(self, stores: InMemoryStoreRepository) -> None:
+        self._stores = stores
+        self._items: list[Visit] = []
+
+    def add(self, visit: Visit) -> Visit:
+        stop = self._stores.get(visit.project_id, visit.stop_uid)
+        if stop is None:
+            raise NotFoundError(f"Stop {visit.stop_uid} not found")
+        self._items.append(visit.model_copy(deep=True))
+        bucket = self._stores._items[visit.project_id]  # bypasses update_fields: a visit is not an edit
+        bucket[visit.stop_uid] = stop.model_copy(update={
+            "screen_visits": {**stop.screen_visits, visit.screen_id: visit.created_at},
+            "last_visit_at": visit.created_at,
+        })
+        return visit
+
+    def list_for_store(
+        self, project_id: str, stop_uid: str, *, limit: int = 50, cursor: str | None = None
+    ) -> Page[Visit]:
+        mine = [v for v in self._items if v.project_id == project_id and v.stop_uid == stop_uid]
+        mine.sort(key=lambda v: (v.created_at, v.id), reverse=True)
+        window, next_cursor = _offset_page([v.model_copy(deep=True) for v in mine], limit, cursor)
+        return Page(items=window, next_cursor=next_cursor)

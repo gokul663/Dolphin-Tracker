@@ -19,6 +19,7 @@ INTERNAL_ATTRIBUTES = {"PK", "SK", "GSI1PK", "GSI1SK", "entity"}
 class Keys:
     STOP_PREFIX = "STOP#"
     EXTERNAL_ID_PREFIX = "EXT#"
+    VISIT_PREFIX = "VISIT#"
 
     @staticmethod
     def project(project_id: str) -> dict[str, str]:
@@ -36,6 +37,15 @@ class Keys:
     @staticmethod
     def job(job_id: str) -> dict[str, str]:
         return {"PK": f"JOB#{job_id}", "SK": "META"}
+
+    @staticmethod
+    def visit_prefix(stop_uid: str) -> str:
+        return f"{Keys.VISIT_PREFIX}{stop_uid}#"
+
+    @staticmethod
+    def visit(project_id: str, stop_uid: str, created_at: str, visit_id: str) -> dict[str, str]:
+        """Under the project, after the store's uid, so one store's visits are one range, oldest first."""
+        return {"PK": f"PROJECT#{project_id}", "SK": f"{Keys.visit_prefix(stop_uid)}{created_at}#{visit_id}"}
 
     @staticmethod
     def name_list(kind: str) -> str:

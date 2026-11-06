@@ -136,7 +136,7 @@ counts visits since the store's latest plan (ever, if never planned).
 
 - [x] RP1 Status "Serviced - Needs More Work" (pending set, precedence after Delivered, aliases, palette)
 - [x] RP2 Managed lists: installers, Dolphin managers, categories → subcategories (seeded), add-on-type
-- [ ] RP3 Visits backend: per-stick visit items, store `last_visit_at` / visited sticks, contact write-back
+- [x] RP3 Visits backend: per-stick visit items, store `last_visit_at` / visited sticks, contact write-back
 - [ ] RP4 Route plans backend: plan + plan-stop items, cross-project store search, optimizer edges, create /
       preview / add / remove / skip / reassign / next day / close, one active plan per store
 - [ ] RP5 Route Planner frontend: nav, plan list, wizard, plan page, Plan next day, exports and links

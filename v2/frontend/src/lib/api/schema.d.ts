@@ -618,6 +618,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{project_id}/stores/{stop_uid}/visits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Visits
+         * @description The store's servicing history, newest first, every stick.
+         */
+        get: operations["list_visits_api_projects__project_id__stores__stop_uid__visits_get"];
+        put?: never;
+        /**
+         * Create Visit
+         * @description Log one visit for one stick. Never changes status.
+         */
+        post: operations["create_visit_api_projects__project_id__stores__stop_uid__visits_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1176,6 +1200,11 @@ export interface components {
          * @enum {string}
          */
         NameListKind: "installers" | "managers";
+        /**
+         * NetworkType
+         * @enum {string}
+         */
+        NetworkType: "WiFi" | "Ethernet" | "LTE";
         /** Page[NameEntry] */
         Page_NameEntry_: {
             /** Items */
@@ -1194,6 +1223,13 @@ export interface components {
         Page_Stop_: {
             /** Items */
             items: components["schemas"]["Stop"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /** Page[Visit] */
+        Page_Visit_: {
+            /** Items */
+            items: components["schemas"]["Visit"][];
             /** Next Cursor */
             next_cursor: string | null;
         };
@@ -1840,6 +1876,25 @@ export interface components {
              * @default false
              */
             route_stale: boolean;
+            /**
+             * Route Plan Id
+             * @default
+             */
+            route_plan_id: string;
+            /**
+             * Last Planned At
+             * @default
+             */
+            last_planned_at: string;
+            /** Screen Visits */
+            screen_visits: {
+                [key: string]: string;
+            };
+            /**
+             * Last Visit At
+             * @default
+             */
+            last_visit_at: string;
             /** Updated At */
             updated_at: string;
             /**
@@ -2193,6 +2248,147 @@ export interface components {
             input?: unknown;
             /** Context */
             ctx?: Record<string, never>;
+        };
+        /** Visit */
+        Visit: {
+            /** Screen Id */
+            screen_id: string;
+            /** Visit Date */
+            visit_date: string;
+            /** Dd Code */
+            dd_code: string;
+            /** Venue Name */
+            venue_name: string;
+            /** Stick Number */
+            stick_number: string;
+            /** Installer */
+            installer: string;
+            /** Dolphin Manager */
+            dolphin_manager: string;
+            network_type: components["schemas"]["NetworkType"];
+            /** Latest Apk */
+            latest_apk: boolean;
+            /** Kiosk Mode */
+            kiosk_mode: boolean;
+            /** Category */
+            category: string;
+            /** Subcategory */
+            subcategory: string;
+            /**
+             * Replaced With
+             * @default
+             */
+            replaced_with: string;
+            /**
+             * Comments
+             * @default
+             */
+            comments: string;
+            /**
+             * Route Plan Id
+             * @default
+             */
+            route_plan_id: string;
+            /** Id */
+            id: string;
+            /** Project Id */
+            project_id: string;
+            /** Stop Uid */
+            stop_uid: string;
+            /**
+             * Store Name
+             * @default
+             */
+            store_name: string;
+            /**
+             * Addr
+             * @default
+             */
+            addr: string;
+            /**
+             * Pa
+             * @default
+             */
+            pa: string;
+            /**
+             * Fa
+             * @default
+             */
+            fa: string;
+            /**
+             * Owner Name
+             * @default
+             */
+            owner_name: string;
+            /**
+             * Owner Phone
+             * @default
+             */
+            owner_phone: string;
+            /**
+             * Owner Email
+             * @default
+             */
+            owner_email: string;
+            /**
+             * Store Contact Name
+             * @default
+             */
+            store_contact_name: string;
+            /**
+             * Store Contact Phone
+             * @default
+             */
+            store_contact_phone: string;
+            /** Plan Day */
+            plan_day: number | null;
+            /** Created At */
+            created_at: string;
+        };
+        /**
+         * VisitInput
+         * @description The New Log Entry form as a Dolphin manager submits it. Store, address, PA/FA and contacts are not sent:
+         *     the server snapshots them from the store and project at submission.
+         */
+        VisitInput: {
+            /** Screen Id */
+            screen_id: string;
+            /** Visit Date */
+            visit_date: string;
+            /** Dd Code */
+            dd_code: string;
+            /** Venue Name */
+            venue_name: string;
+            /** Stick Number */
+            stick_number: string;
+            /** Installer */
+            installer: string;
+            /** Dolphin Manager */
+            dolphin_manager: string;
+            network_type: components["schemas"]["NetworkType"];
+            /** Latest Apk */
+            latest_apk: boolean;
+            /** Kiosk Mode */
+            kiosk_mode: boolean;
+            /** Category */
+            category: string;
+            /** Subcategory */
+            subcategory: string;
+            /**
+             * Replaced With
+             * @default
+             */
+            replaced_with?: string;
+            /**
+             * Comments
+             * @default
+             */
+            comments?: string;
+            /**
+             * Route Plan Id
+             * @default
+             */
+            route_plan_id?: string;
         };
     };
     responses: never;
@@ -3544,6 +3740,77 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_visits_api_projects__project_id__stores__stop_uid__visits_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+                stop_uid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_Visit_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_visit_api_projects__project_id__stores__stop_uid__visits_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                stop_uid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VisitInput"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Visit"];
+                };
             };
             /** @description Validation Error */
             422: {

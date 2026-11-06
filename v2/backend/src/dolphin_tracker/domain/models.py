@@ -193,6 +193,13 @@ class Stop(StoreDetails):
     additional_task: bool = False
     installer_name: str = ""
     route_stale: bool = False  # address/geo changed after the last routing build
+    # Route Planner (ROUTE-PLANNER §3, §7): the active plan holding this store ("" = none), and when the store last
+    # joined a plan (kept after the plan closes; the "Visited" overlay counts visits from then on).
+    route_plan_id: str = ""
+    last_planned_at: str = ""
+    # Servicing visits: stick (screen id) → when its latest visit was logged, and the latest of those.
+    screen_visits: dict[str, str] = Field(default_factory=dict)
+    last_visit_at: str = ""
     updated_at: str = Field(default_factory=now_iso)
     updated_by: str = ""
 
@@ -213,6 +220,9 @@ class Stop(StoreDetails):
 # Screens carry the per-screen status, so they are progress; `status` is their derived summary.
 ROUTING_FIELDS = frozenset({"installer", "day", "seq"})
 PROGRESS_FIELDS = frozenset({"screens", "status", "comment", "additional_task", "installer_name", "updated_by"})
+# Written only by the route-plan and visit paths, never by detail, progress or routing writes.
+PLAN_FIELDS = frozenset({"route_plan_id", "last_planned_at"})
+VISIT_FIELDS = frozenset({"screen_visits", "last_visit_at"})
 
 
 class ScreenInput(ApiModel):

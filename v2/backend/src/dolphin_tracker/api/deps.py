@@ -16,6 +16,7 @@ from dolphin_tracker.repositories.jobs import DynamoJobRepository, JobRepository
 from dolphin_tracker.repositories.lists import DynamoListRepository, ListRepository
 from dolphin_tracker.repositories.projects import DynamoProjectRepository, ProjectRepository
 from dolphin_tracker.repositories.stores import DynamoStoreRepository, StoreRepository
+from dolphin_tracker.repositories.visits import DynamoVisitRepository, VisitRepository
 from dolphin_tracker.repositories.worker_invoker import WorkerInvoker, make_invoker
 from dolphin_tracker.services.geocoding import GoogleGeocoder
 from dolphin_tracker.services.imports import ImportService
@@ -25,6 +26,7 @@ from dolphin_tracker.services.places import PlacesService
 from dolphin_tracker.services.projects import ProjectService
 from dolphin_tracker.services.routing import RoutingService
 from dolphin_tracker.services.stores import StoreService
+from dolphin_tracker.services.visits import VisitService
 
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 
@@ -125,6 +127,19 @@ def get_store_service(
     geocoder: Annotated[GoogleGeocoder, Depends(get_geocoder)],
 ) -> StoreService:
     return StoreService(stores, projects, geocoder)
+
+
+def get_visit_repository(table: Annotated[object, Depends(get_table)]) -> VisitRepository:
+    return DynamoVisitRepository(table)
+
+
+def get_visit_service(
+    visits: Annotated[VisitRepository, Depends(get_visit_repository)],
+    stores: Annotated[StoreRepository, Depends(get_store_repository)],
+    projects: Annotated[ProjectRepository, Depends(get_project_repository)],
+    lists: Annotated[ListService, Depends(get_list_service)],
+) -> VisitService:
+    return VisitService(visits, stores, projects, lists)
 
 
 def get_places_service(geocoder: Annotated[GoogleGeocoder, Depends(get_geocoder)]) -> PlacesService:

@@ -53,7 +53,8 @@ export function makeStop(overrides: Partial<Stop> = {}): Stop {
     blocked_dates_notes: "", preferred_install_datetime: "", spot_visible: null, power_within_6ft: null,
     ethernet_possible: null, low_volume_audio_ok: null, ceiling_suitable: null,
     installer: "Ann", day: 1, seq: 0, fields: {}, screens: [makeScreen({ id: `${overrides.uid ?? "u1"}-s1`, status })],
-    status, comment: "", additional_task: false, installer_name: "", route_stale: false,
+    status, comment: "", additional_task: false, installer_name: "", route_stale: false, route_plan_id: "",
+    last_planned_at: "", screen_visits: {}, last_visit_at: "",
     updated_at: "2026-10-01T00:00:00+00:00", updated_by: "", ...overrides,
   };
 }

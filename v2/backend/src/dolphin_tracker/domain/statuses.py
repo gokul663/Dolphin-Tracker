@@ -15,6 +15,8 @@ class ScreenStatus(StrEnum):
     INVITATION_EMAIL_SENT = "Invitation Email Sent"
     SHIPPED = "Shipped"
     DELIVERED = "Delivered"
+    # Visited, but the stick still needs work. Set by hand: a visit never changes status (ROUTE-PLANNER §6).
+    NEEDS_MORE_WORK = "Serviced - Needs More Work"
     COMPLETED = "Completed"
     OFFLINE = "Offline"
     ARCHIVED = "Archived"
@@ -27,6 +29,7 @@ STATUS_PRECEDENCE: tuple[ScreenStatus, ...] = (
     ScreenStatus.INVITATION_EMAIL_SENT,
     ScreenStatus.SHIPPED,
     ScreenStatus.DELIVERED,
+    ScreenStatus.NEEDS_MORE_WORK,
     ScreenStatus.OFFLINE,
     ScreenStatus.COMPLETED,
     ScreenStatus.ARCHIVED,
@@ -34,7 +37,13 @@ STATUS_PRECEDENCE: tuple[ScreenStatus, ...] = (
 )
 # Still needs a technician visit, so it is routed. Offline is not (STORE-MODEL §7 #2).
 PENDING_STATUSES = frozenset(
-    {ScreenStatus.UPCOMING, ScreenStatus.INVITATION_EMAIL_SENT, ScreenStatus.SHIPPED, ScreenStatus.DELIVERED}
+    {
+        ScreenStatus.UPCOMING,
+        ScreenStatus.INVITATION_EMAIL_SENT,
+        ScreenStatus.SHIPPED,
+        ScreenStatus.DELIVERED,
+        ScreenStatus.NEEDS_MORE_WORK,
+    }
 )
 
 # Sheet values, case-insensitive after trim (§4.3). Blank is Upcoming.
@@ -44,6 +53,11 @@ STATUS_ALIASES: dict[str, ScreenStatus] = {
     **dict.fromkeys(("invitation email sent", "invited", "invitation sent"), ScreenStatus.INVITATION_EMAIL_SENT),
     "shipped": ScreenStatus.SHIPPED,
     "delivered": ScreenStatus.DELIVERED,
+    **dict.fromkeys(
+        ("needs more work", "serviced - needs more work", "serviced. needs more work", "serviced needs more work",
+         "serviced – needs more work"),
+        ScreenStatus.NEEDS_MORE_WORK,
+    ),
     "offline": ScreenStatus.OFFLINE,
     "archived": ScreenStatus.ARCHIVED,
     **dict.fromkeys(("cancelled", "canceled"), ScreenStatus.CANCELLED),

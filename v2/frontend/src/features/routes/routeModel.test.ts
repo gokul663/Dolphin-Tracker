@@ -143,15 +143,15 @@ describe("CSV export", () => {
 });
 
 describe("pending set (STORE-MODEL §4.2)", () => {
-  const statuses = ["Upcoming", "Invitation Email Sent", "Shipped", "Delivered", "Offline", "Completed", "Archived", "Cancelled"] as const;
+  const statuses = ["Upcoming", "Invitation Email Sent", "Shipped", "Delivered", "Serviced - Needs More Work", "Offline", "Completed", "Archived", "Cancelled"] as const;
   const all = statuses.map((status, index) => s(`x${index}`, { status }));
 
   it("routes only the four pending statuses; Offline is not routed", () => {
-    expect(routableStops(all).map((stop) => stop.status)).toEqual(["Upcoming", "Invitation Email Sent", "Shipped", "Delivered"]);
+    expect(routableStops(all).map((stop) => stop.status)).toEqual(["Upcoming", "Invitation Email Sent", "Shipped", "Delivered", "Serviced - Needs More Work"]);
   });
 
   it("tallies pending, completed, offline and the rest", () => {
-    expect(tally(all)).toEqual({ pending: 4, complete: 1, offline: 1, other: 2 });
+    expect(tally(all)).toEqual({ pending: 5, complete: 1, offline: 1, other: 2 });
   });
 
   it("a day is active while it has a pending stop", () => {

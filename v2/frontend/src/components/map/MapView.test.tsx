@@ -29,7 +29,7 @@ describe("MapView", () => {
     await userEvent.click(screen.getByRole("button", { name: /Upcoming 1/ }));
     await userEvent.click(screen.getByRole("button", { name: /Archived 1/ }));
     expect(screen.getByText("0 records · 0 pins")).toBeTruthy(); // only the empty statuses are still on
-    for (const name of [/Invitation Email Sent 0/, /Shipped 0/, /Delivered 0/, /Offline 0/]) {
+    for (const name of [/Invitation Email Sent 0/, /Shipped 0/, /Delivered 0/, /Serviced - Needs More Work 0/, /Offline 0/]) {
       await userEvent.click(screen.getByRole("button", { name }));
     }
     await userEvent.click(screen.getByRole("button", { name: /Cancelled 0/ }));

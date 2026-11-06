@@ -62,6 +62,7 @@ export const STOP_STATUSES: readonly ScreenStatus[] = [
   "Invitation Email Sent",
   "Shipped",
   "Delivered",
+  "Serviced - Needs More Work",
   "Offline",
   "Completed",
   "Archived",
@@ -69,7 +70,13 @@ export const STOP_STATUSES: readonly ScreenStatus[] = [
 ];
 
 /** Still needs a technician visit, so it is routed. Offline is not (STORE-MODEL §7 #2). */
-export const PENDING_STATUSES: ReadonlySet<ScreenStatus> = new Set(["Upcoming", "Invitation Email Sent", "Shipped", "Delivered"]);
+export const PENDING_STATUSES: ReadonlySet<ScreenStatus> = new Set([
+  "Upcoming",
+  "Invitation Email Sent",
+  "Shipped",
+  "Delivered",
+  "Serviced - Needs More Work",
+]);
 
 export const isPending = (status: ScreenStatus) => PENDING_STATUSES.has(status);
 

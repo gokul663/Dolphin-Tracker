@@ -148,14 +148,14 @@ validated, ids preserved when sent back). Adding a row defaults to `Upcoming`, d
 
 ### 4.2 Status enum (replaces v1's four values)
 
-`Upcoming` (default) · `Invitation Email Sent` · `Shipped` · `Delivered` · `Completed` · `Offline` · `Archived` ·
+`Upcoming` (default) · `Invitation Email Sent` · `Shipped` · `Delivered` · `Serviced - Needs More Work` · `Completed` · `Offline` · `Archived` ·
 `Cancelled`.
 
 **Pending set** (store still needs a technician visit, so it is routed): `Upcoming`, `Invitation Email Sent`,
-`Shipped`, `Delivered`. `Offline` is not routed; it shows in a separate KPI.
+`Shipped`, `Delivered`, `Serviced - Needs More Work` (added 2026-11-06; set by hand, never by a visit). `Offline` is not routed; it shows in a separate KPI.
 
 **Derived store status** = the least-progressed screen, using this precedence (first match wins):
-`Upcoming` → `Invitation Email Sent` → `Shipped` → `Delivered` → `Offline` → `Completed` → `Archived` → `Cancelled`.
+`Upcoming` → `Invitation Email Sent` → `Shipped` → `Delivered` → `Serviced - Needs More Work` → `Offline` → `Completed` → `Archived` → `Cancelled`.
 So a store with one Completed and one Upcoming screen is Upcoming; Completed + Cancelled is Completed; all
 Cancelled is Cancelled. The derived value is stored on the stop as `status` (recomputed on every screen write) so
 filters, KPIs, routing and the map keep reading one attribute.
@@ -169,6 +169,7 @@ filters, KPIs, routing and the map keep reading one attribute.
 | invitation email sent, invited, invitation sent | Invitation Email Sent |
 | shipped | Shipped |
 | delivered | Delivered |
+| needs more work, serviced - needs more work, serviced. needs more work | Serviced - Needs More Work |
 | offline | Offline |
 | archived | Archived |
 | cancelled, canceled | Cancelled |

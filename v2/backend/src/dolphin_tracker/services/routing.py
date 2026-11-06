@@ -256,7 +256,7 @@ class RoutingService:
         cls, project: Project, stops: list[Stop], new_installer: str | None = None
     ) -> tuple[list[Stop], dict[str, Assignment]]:
         """Port of v1 `rebalance_project_incomplete`, keyed by uid: only pending stops move (derived status in
-        PENDING_STATUSES: Upcoming, Invitation Email Sent, Shipped, Delivered); Completed, Offline and the rest
+        PENDING_STATUSES: Upcoming through Serviced - Needs More Work); Completed, Offline and the rest
         keep their installer and day. With `new_installer`, the busiest territory is split to give it one
         coherent cluster first."""
         installers = project.installers

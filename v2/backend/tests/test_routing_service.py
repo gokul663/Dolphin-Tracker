@@ -249,7 +249,8 @@ class RoutingBuildTests(unittest.TestCase):
 
     def test_rebalance_replans_exactly_the_pending_set(self):
         statuses = [ScreenStatus.UPCOMING, ScreenStatus.INVITATION_EMAIL_SENT, ScreenStatus.SHIPPED,
-                    ScreenStatus.DELIVERED, ScreenStatus.OFFLINE, ScreenStatus.COMPLETED, ScreenStatus.ARCHIVED,
+                    ScreenStatus.DELIVERED, ScreenStatus.NEEDS_MORE_WORK, ScreenStatus.OFFLINE,
+                    ScreenStatus.COMPLETED, ScreenStatus.ARCHIVED,
                     ScreenStatus.CANCELLED]
         self.service.run_build(self._enqueue())  # everyone routed first
         for index, status in enumerate(statuses):
@@ -257,8 +258,8 @@ class RoutingBuildTests(unittest.TestCase):
         stops = self.stores.list_all("p1")
         routed, _ = RoutingService.rebalance_assignments(self.projects.get("p1"), stops)
         replanned = {stop.uid for stop in routed}
-        self.assertLessEqual({f"u{i:02d}" for i in range(4)}, replanned)  # the four pending statuses move
-        self.assertFalse({f"u{i:02d}" for i in range(4, 8)} & replanned)  # Offline (§7 #2) and the rest stay
+        self.assertLessEqual({f"u{i:02d}" for i in range(5)}, replanned)  # the five pending statuses move
+        self.assertFalse({f"u{i:02d}" for i in range(5, 9)} & replanned)  # Offline (§7 #2) and the rest stay
         bundle = self.service.routes("p1")
         self.assertEqual(sum(stats.pending for stats in bundle.stats.values()), 20 - 4)
 

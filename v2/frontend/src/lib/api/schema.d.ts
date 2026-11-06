@@ -1465,7 +1465,7 @@ export interface components {
          * @description Per-screen status (STORE-MODEL §4.2). A store's status is derived from its screens.
          * @enum {string}
          */
-        ScreenStatus: "Upcoming" | "Invitation Email Sent" | "Shipped" | "Delivered" | "Completed" | "Offline" | "Archived" | "Cancelled";
+        ScreenStatus: "Upcoming" | "Invitation Email Sent" | "Shipped" | "Delivered" | "Serviced - Needs More Work" | "Completed" | "Offline" | "Archived" | "Cancelled";
         /**
          * ScreensUpdate
          * @description The full list of a store's screen rows (PUT replaces it). Send `id` back to keep a row's identity.

@@ -32,8 +32,8 @@ class DerivedStatusTests(unittest.TestCase):
     def test_precedence_matches_the_spec(self):
         self.assertEqual(
             [status.value for status in STATUS_PRECEDENCE],
-            ["Upcoming", "Invitation Email Sent", "Shipped", "Delivered", "Offline", "Completed", "Archived",
-             "Cancelled"],
+            ["Upcoming", "Invitation Email Sent", "Shipped", "Delivered", "Serviced - Needs More Work", "Offline",
+             "Completed", "Archived", "Cancelled"],
         )
         self.assertEqual(set(STATUS_PRECEDENCE), set(ScreenStatus))
 
@@ -45,9 +45,13 @@ class DerivedStatusTests(unittest.TestCase):
         self.assertEqual(derive_store_status([S.DELIVERED, S.SHIPPED, S.COMPLETED]), S.SHIPPED)
         self.assertEqual(derive_store_status([Screen(status=S.ARCHIVED), "Completed"]), S.COMPLETED)
         self.assertEqual(derive_store_status([]), S.UPCOMING)
+        self.assertEqual(derive_store_status([S.NEEDS_MORE_WORK, S.COMPLETED]), S.NEEDS_MORE_WORK)
+        self.assertEqual(derive_store_status([S.NEEDS_MORE_WORK, S.DELIVERED]), S.DELIVERED)
+        self.assertEqual(derive_store_status([S.NEEDS_MORE_WORK, S.OFFLINE]), S.NEEDS_MORE_WORK)
 
     def test_pending_set(self):
-        self.assertEqual(PENDING_STATUSES, {S.UPCOMING, S.INVITATION_EMAIL_SENT, S.SHIPPED, S.DELIVERED})
+        self.assertEqual(PENDING_STATUSES,
+                         {S.UPCOMING, S.INVITATION_EMAIL_SENT, S.SHIPPED, S.DELIVERED, S.NEEDS_MORE_WORK})
         self.assertNotIn(S.OFFLINE, PENDING_STATUSES)  # STORE-MODEL §7 #2
 
     def test_stop_status_is_always_derived_from_its_screens(self):
@@ -80,6 +84,8 @@ class SheetStatusAliasTests(unittest.TestCase):
             "invited": S.INVITATION_EMAIL_SENT, "Invitation  Email Sent": S.INVITATION_EMAIL_SENT,
             "shipped": S.SHIPPED, "Delivered": S.DELIVERED, "offline": S.OFFLINE, "archived": S.ARCHIVED,
             "canceled": S.CANCELLED, "Cancelled": S.CANCELLED,
+            "Needs more work": S.NEEDS_MORE_WORK, "Serviced. Needs More Work": S.NEEDS_MORE_WORK,
+            "serviced - needs more work": S.NEEDS_MORE_WORK,
         }
         for raw, expected in cases.items():
             with self.subTest(raw=raw):

@@ -42,7 +42,7 @@ describe("legend", () => {
   const pins = [pin("a", 1, 1, "Completed"), pin("b", 1, 2), pin("c", 1, 3, "Archived")];
   it("counts and filters by status", () => {
     expect(statusCounts(pins)).toEqual({
-      Upcoming: 1, "Invitation Email Sent": 0, Shipped: 0, Delivered: 0, Offline: 0, Completed: 1, Archived: 1, Cancelled: 0,
+      Upcoming: 1, "Invitation Email Sent": 0, Shipped: 0, Delivered: 0, "Serviced - Needs More Work": 0, Offline: 0, Completed: 1, Archived: 1, Cancelled: 0,
     });
     expect(filterByStatus(pins, new Set(["Completed"])).map((p) => p.uid)).toEqual(["a"]);
     expect(filterByStatus(pins, new Set())).toHaveLength(3);
@@ -50,10 +50,10 @@ describe("legend", () => {
 
   it("toggles like v1, never leaving nothing visible", () => {
     const off = toggleStatus(new Set(), STOP_STATUSES, "Archived");
-    expect(off.size).toBe(7);
+    expect(off.size).toBe(8);
     expect(off.has("Archived")).toBe(false);
-    expect([...toggleStatus(off, STOP_STATUSES, "Archived")].length).toBe(8);
-    expect([...toggleStatus(new Set(["Completed"]), STOP_STATUSES, "Completed")].length).toBe(8);
+    expect([...toggleStatus(off, STOP_STATUSES, "Archived")].length).toBe(9);
+    expect([...toggleStatus(new Set(["Completed"]), STOP_STATUSES, "Completed")].length).toBe(9);
   });
 });
 

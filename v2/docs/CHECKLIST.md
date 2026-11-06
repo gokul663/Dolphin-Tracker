@@ -126,3 +126,20 @@ Tracks delivery against [PLAN.md](./PLAN.md). Tick items as they land; add sub-i
 - [x] S8 Filters with greyed empties, top-states chart, KPIs
 - [x] S9 Import wizard v2: mapping override, duplicates, screens preview
 - [x] S10 Routes tab follow-through
+
+---
+
+## Round 3: Route Planner + servicing visits (see ROUTE-PLANNER.md)
+
+Defaults taken on 2026-11-06 because the user asked to start: the † category grouping as proposed; "Visited"
+counts visits since the store's latest plan (ever, if never planned).
+
+- [x] RP1 Status "Serviced - Needs More Work" (pending set, precedence after Delivered, aliases, palette)
+- [ ] RP2 Managed lists: installers, Dolphin managers, categories → subcategories (seeded), add-on-type
+- [ ] RP3 Visits backend: per-stick visit items, store `last_visit_at` / visited sticks, contact write-back
+- [ ] RP4 Route plans backend: plan + plan-stop items, cross-project store search, optimizer edges, create /
+      preview / add / remove / skip / reassign / next day / close, one active plan per store
+- [ ] RP5 Route Planner frontend: nav, plan list, wizard, plan page, Plan next day, exports and links
+- [ ] RP6 Visit form + read-only side panel + servicing history in the store modal
+- [ ] RP7 Projects view overlays (In route / Visited / Partly visited) + filters
+- [ ] RP8 Remove the per-project Routes tab; migrate existing project routes into route plans

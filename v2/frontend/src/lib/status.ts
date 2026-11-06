@@ -6,6 +6,11 @@ export const STATUS_META: Record<ScreenStatus, { label: string; color: string; c
   "Invitation Email Sent": { label: "Invitation Email Sent", color: "#0284c7", chip: "bg-sky-50 text-sky-700 border-sky-200" },
   Shipped: { label: "Shipped", color: "#4f46e5", chip: "bg-indigo-50 text-indigo-700 border-indigo-200" },
   Delivered: { label: "Delivered", color: "#0d9488", chip: "bg-teal-50 text-teal-700 border-teal-200" },
+  "Serviced - Needs More Work": {
+    label: "Serviced - Needs More Work",
+    color: "#c026d3",
+    chip: "bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200",
+  },
   Completed: { label: "Completed", color: "#16a34a", chip: "bg-emerald-50 text-emerald-700 border-emerald-200" },
   Offline: { label: "Offline", color: "#dc2626", chip: "bg-rose-50 text-rose-700 border-rose-200" },
   Archived: { label: "Archived", color: "#64748b", chip: "bg-slate-100 text-slate-600 border-slate-200" },

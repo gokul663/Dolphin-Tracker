@@ -487,15 +487,16 @@ function StoreSideNotes({ stop, project }: { stop: Stop; project: Project }) {
 }
 
 /** The store's servicing history: every visit, newest first, with its stick. */
-export function VisitHistory({ projectId, stop }: { projectId: string; stop: Stop }) {
+export function VisitHistory({ projectId, stop, bare = false }: { projectId: string; stop: Stop; bare?: boolean }) {
   const visits = useVisits(projectId, stop.uid);
   const stickLabel = (visit: Visit) => {
     const index = stop.screens.findIndex((screen) => screen.id === visit.screen_id);
     return index >= 0 ? `Stick ${index + 1}` : "Removed stick";
   };
+  const Wrapper = bare ? "div" : "section";
   return (
-    <section aria-label="Servicing history" className="space-y-2 border-t pt-4">
-      <h3 className="font-mono text-[11px] uppercase tracking-wider text-slate-500">Servicing history</h3>
+    <Wrapper aria-label={bare ? undefined : "Servicing history"} className={cn("space-y-2", !bare && "border-t pt-4")}>
+      {!bare && <h3 className="font-mono text-[11px] uppercase tracking-wider text-slate-500">Servicing history</h3>}
       {visits.isPending ? (
         <p className="text-xs text-slate-500">Loading…</p>
       ) : visits.isError ? (
@@ -525,6 +526,6 @@ export function VisitHistory({ projectId, stop }: { projectId: string; stop: Sto
           ))}
         </ol>
       )}
-    </section>
+    </Wrapper>
   );
 }

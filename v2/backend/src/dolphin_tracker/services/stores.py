@@ -44,12 +44,19 @@ from dolphin_tracker.domain.validation import (
     stop_details,
     validate_store_values,
 )
+from dolphin_tracker.domain.visits import VisitState, visit_state
 from dolphin_tracker.repositories.projects import ProjectRepository
 from dolphin_tracker.repositories.stores import StoreRepository
 from dolphin_tracker.services.geocoding import Geocoder
 from dolphin_tracker.services.routing import sync_routing_slot
 
-FILTER_FIELDS = ("status", "installer", "pa", "state", "city", "dma", "venue_type", "dd_code", "screen_size")
+FILTER_FIELDS = (
+    "status", "installer", "pa", "state", "city", "dma", "venue_type", "dd_code", "screen_size", "route", "visit",
+)
+# The Projects-view overlays (ROUTE-PLANNER §6) as filter values.
+IN_ROUTE, NOT_IN_ROUTE = "In route", "Not in route"
+VISIT_LABELS = {VisitState.VISITED: "Visited", VisitState.PARTLY: "Partly visited", VisitState.NONE: "Not visited"}
+OVERLAY_ORDER = {value: index for index, value in enumerate([IN_ROUTE, NOT_IN_ROUTE, *VISIT_LABELS.values()])}
 SORT_KEYS = frozenset(
     {"store_name", "addr", "status", "installer", "day", "updated_at", "display_id", "screens"}
     | {spec.name for spec in STORE_FIELDS if spec.kind not in (Kind.TRISTATE, Kind.BOOL)}
@@ -74,6 +81,8 @@ class StoreQuery:
     venue_type: list[str] = field(default_factory=list)
     dd_code: list[str] = field(default_factory=list)  # any screen's venue_id
     screen_size: list[str] = field(default_factory=list)  # any screen's size
+    route: list[str] = field(default_factory=list)  # "In route" / "Not in route"
+    visit: list[str] = field(default_factory=list)  # "Visited" / "Partly visited" / "Not visited"
     q: str = ""
     sort: str = "store_name"
     dir: str = "asc"
@@ -101,9 +110,18 @@ def facet_values(stop: Stop, project: Project, name: str) -> list[str]:
             return [screen.venue_id for screen in stop.screens if screen.venue_id]
         case "screen_size":
             return [screen.screen_size for screen in stop.screens if screen.screen_size]
+        case "route":
+            return [IN_ROUTE if stop.route_plan_id else NOT_IN_ROUTE]
+        case "visit":
+            return [VISIT_LABELS[stop_visit_state(stop)]]
         case _:
             value = getattr(stop, name)
             return [value] if value else []
+
+
+def stop_visit_state(stop: Stop) -> VisitState:
+    """Every stick visited since the store's latest plan (ROUTE-PLANNER §6)."""
+    return visit_state([screen.id for screen in stop.screens], stop.screen_visits, stop.last_planned_at)
 
 
 def _natural(value: str) -> tuple:
@@ -236,6 +254,8 @@ class StoreService:
                 "store_name": stop.store_name,
                 "installer": stop.installer,
                 "day": stop.day,
+                "route_plan_id": stop.route_plan_id,
+                "visit_state": stop_visit_state(stop),
             }
             for stop in self._query(project, query or StoreQuery())
             if stop.lat is not None and stop.lng is not None
@@ -257,6 +277,8 @@ class StoreService:
                 counts.update(set(facet_values(stop, project, name)))
             if name == "status":
                 ordered = [status.value for status in STATUS_PRECEDENCE if counts[status.value]]
+            elif name in ("route", "visit"):
+                ordered = sorted(counts, key=lambda value: OVERLAY_ORDER[value])
             else:
                 ordered = sorted(counts, key=lambda value: (value == "", _natural(value)))
             result[name] = [{"value": value, "count": counts[value]} for value in ordered]

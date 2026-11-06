@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useRef } from "react";
 import { createColumnHelper, flexRender, getCoreRowModel, useReactTable, type ColumnDef } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { AlertTriangle, ArrowDown, ArrowUp, ChevronsUpDown, Loader2 } from "lucide-react";
+import { Link } from "react-router";
+import { AlertTriangle, ArrowDown, ArrowUp, Check, ChevronsUpDown, Loader2, Route } from "lucide-react";
+import { useRoutePlans } from "@/features/planner/api";
+import { visitState } from "@/features/visits/visitForm";
 import { EditableCell } from "@/features/stores/EditableCell";
 import { addressLine } from "@/features/stores/details";
 import { useUpdateStoreDetails } from "@/features/stores/api";
@@ -36,7 +39,6 @@ const SORT_KEYS: Record<string, string> = {
   place: "city",
   status: "status",
   screens: "screens",
-  installer: "installer",
   pa: "pa",
   dma: "dma",
   committed: "committed_dolphin_screens",
@@ -61,11 +63,55 @@ function ScreenDots({ stop }: { stop: Stop }) {
 }
 
 const dash = <span className="text-slate-300">—</span>;
+
+/** ROUTE-PLANNER §6: stores being tended (in a route) and serviced ones stand out in the list. */
+function rowTint(stop: Stop): string {
+  if (stop.route_plan_id) return "bg-blue-50/60 hover:bg-blue-50";
+  const state = visitState(stop);
+  if (state === "visited") return "bg-emerald-50/60 hover:bg-emerald-50";
+  if (state === "partly") return "bg-amber-50/50 hover:bg-amber-50";
+  return "hover:bg-slate-50";
+}
+
+function ServicingCell({ stop, planNames }: { stop: Stop; planNames: Map<string, string> }) {
+  const state = visitState(stop);
+  const visited = stop.screens.filter((screen) => {
+    const at = stop.screen_visits[screen.id];
+    return Boolean(at) && (at as string) >= stop.last_planned_at;
+  }).length;
+  return (
+    <span className="flex items-center gap-1 truncate text-xs">
+      {stop.route_plan_id && (
+        <Link
+          to={`/planner/${stop.route_plan_id}`}
+          onClick={(event) => event.stopPropagation()}
+          className="inline-flex max-w-32 items-center gap-1 truncate rounded bg-blue-100 px-1.5 py-0.5 font-medium text-blue-800 hover:underline"
+          title="In route: open the plan"
+        >
+          <Route size={11} className="shrink-0" /> <span className="truncate">{planNames.get(stop.route_plan_id) ?? "In route"}</span>
+        </Link>
+      )}
+      {state === "visited" && (
+        <span className="inline-flex items-center gap-0.5 rounded bg-emerald-100 px-1.5 py-0.5 text-emerald-800" title={`Last visit ${stop.last_visit_at.slice(0, 10)}`}>
+          <Check size={11} /> Visited
+        </span>
+      )}
+      {state === "partly" && (
+        <span className="rounded bg-amber-100 px-1.5 py-0.5 text-amber-800" title={`Last visit ${stop.last_visit_at.slice(0, 10)}`}>
+          {visited}/{stop.screens.length} sticks
+        </span>
+      )}
+      {!stop.route_plan_id && state === "none" && (stop.last_visit_at ? <span className="text-slate-400">last {stop.last_visit_at.slice(0, 10)}</span> : dash)}
+    </span>
+  );
+}
 const count = (value: number | null) => (value === null ? "—" : String(value));
 
 export function StoresTable(props: Props) {
   const { project, stops, sort, dir, onSort, selectedId, hoveredId, onHover, onOpen } = props;
   const details = useUpdateStoreDetails(project.id);
+  const plans = useRoutePlans("active");
+  const planNames = useMemo(() => new Map((plans.data ?? []).map((plan) => [plan.id, plan.name])), [plans.data]);
 
   const columns = useMemo<ColumnDef<Stop, string>[]>(
     () => [
@@ -119,11 +165,11 @@ export function StoresTable(props: Props) {
         ),
       }),
       helper.accessor((stop) => String(stop.screens.length), { id: "screens", header: "Screens", size: 120, cell: (info) => <ScreenDots stop={info.row.original} /> }),
-      helper.accessor((stop) => (stop.installer ? `${stop.installer} · day ${stop.day}` : ""), {
-        id: "installer",
-        header: "Installer / day",
-        size: 140,
-        cell: (info) => info.getValue() || dash,
+      helper.accessor((stop) => stop.route_plan_id, {
+        id: "servicing",
+        header: "Route / visits",
+        size: 210,
+        cell: (info) => <ServicingCell stop={info.row.original} planNames={planNames} />,
       }),
       helper.accessor((stop) => stop.pa || project.pa, { id: "pa", header: "PA", size: 100, cell: (info) => info.getValue() || dash }),
       helper.accessor("dma", { header: "DMA", size: 90, cell: (info) => info.getValue() || dash }),
@@ -134,7 +180,7 @@ export function StoresTable(props: Props) {
         cell: (info) => <span className="font-mono text-xs">{info.getValue()}</span>,
       }),
     ],
-    [project.pa, onOpen], // the mutation object is stable per project
+    [project.pa, onOpen, planNames], // the mutation object is stable per project
   );
 
   const table = useReactTable({ data: stops, columns, getCoreRowModel: getCoreRowModel(), manualSorting: true, getRowId: (stop) => stop.uid });
@@ -203,7 +249,7 @@ export function StoresTable(props: Props) {
                   style={{ transform: `translateY(${item.start}px)`, height: ROW_HEIGHT }}
                   className={cn(
                     "absolute left-0 top-0 flex w-full cursor-pointer items-center border-b text-sm",
-                    uid === selectedId ? "bg-sky-100" : uid === hoveredId ? "bg-sky-50" : "hover:bg-slate-50",
+                    uid === selectedId ? "bg-sky-100" : uid === hoveredId ? "bg-sky-50" : rowTint(row.original),
                   )}
                 >
                   {row.getVisibleCells().map((cell) => (

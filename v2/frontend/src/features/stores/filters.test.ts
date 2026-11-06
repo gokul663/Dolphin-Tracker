@@ -13,6 +13,8 @@ const OPTIONS: StoreFilterOptions = {
   venue_type: [],
   dd_code: [{ value: "V1", count: 1 }],
   screen_size: [],
+  route: [{ value: "Not in route", count: 3 }],
+  visit: [{ value: "Not visited", count: 3 }],
 };
 
 describe("filter bar helpers", () => {

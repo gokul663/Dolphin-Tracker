@@ -142,9 +142,31 @@ class ListTests(StoresApiTestCase):
     def test_pins_are_located_stops_only_and_filtered(self):
         pins = self.get("/pins").json()
         self.assertEqual({pin["uid"] for pin in pins}, {"a", "b", "d"})
-        self.assertEqual(set(pins[0]), {"uid", "lat", "lng", "status", "store_name", "installer", "day"})
+        self.assertEqual(set(pins[0]), {"uid", "lat", "lng", "status", "store_name", "installer", "day",
+                                        "route_plan_id", "visit_state"})
         self.assertEqual([p["uid"] for p in self.get("/pins", status="Completed").json()], ["a"])
         self.assertEqual([p["uid"] for p in self.get("/pins", state="TN").json()], ["d"])
+
+    def test_route_and_visit_overlays(self):
+        """ROUTE-PLANNER §6: In route from the store's plan; Visited when every stick has a visit since that plan."""
+        b = self.stores.get("p1", "b")
+        self.stores.update_fields("p1", "b", {
+            "route_plan_id": "plan1", "last_planned_at": "2026-11-01",
+            "screen_visits": {b.screens[0].id: "2026-11-02"},  # one of two sticks
+        })
+        a = self.stores.get("p1", "a")
+        self.stores.update_fields("p1", "a", {"screen_visits": {a.screens[0].id: "2026-10-01"}})
+        pins = {pin["uid"]: pin for pin in self.get("/pins").json()}
+        self.assertEqual((pins["b"]["route_plan_id"], pins["b"]["visit_state"]), ("plan1", "partly"))
+        self.assertEqual((pins["a"]["route_plan_id"], pins["a"]["visit_state"]), ("", "visited"))
+        self.assertEqual(pins["d"]["visit_state"], "none")
+        in_route = self.get("/pins", route="In route").json()
+        self.assertEqual([p["uid"] for p in in_route], ["b"])
+        fresh = self.get("/pins", route="Not in route", visit="Not visited").json()
+        self.assertEqual({p["uid"] for p in fresh}, {"d"})
+        options = self.get("/filters").json()
+        self.assertEqual(options["route"], [{"value": "In route", "count": 1}, {"value": "Not in route", "count": 3}])
+        self.assertEqual([o["value"] for o in options["visit"]], ["Visited", "Partly visited", "Not visited"])
 
     def test_get_one(self):
         stop = self.get("/b").json()

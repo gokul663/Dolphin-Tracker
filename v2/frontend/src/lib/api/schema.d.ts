@@ -1486,6 +1486,13 @@ export interface components {
             installer: string;
             /** Day */
             day: number;
+            /**
+             * Route Plan Id
+             * @default
+             */
+            route_plan_id: string;
+            /** @default none */
+            visit_state: components["schemas"]["VisitState"];
         };
         /**
          * PlanDay
@@ -2793,6 +2800,10 @@ export interface components {
             dd_code: components["schemas"]["FilterOption"][];
             /** Screen Size */
             screen_size: components["schemas"]["FilterOption"][];
+            /** Route */
+            route: components["schemas"]["FilterOption"][];
+            /** Visit */
+            visit: components["schemas"]["FilterOption"][];
         };
         /** StoreRef */
         StoreRef: {
@@ -2960,6 +2971,12 @@ export interface components {
              */
             route_plan_id?: string;
         };
+        /**
+         * VisitState
+         * @description The Projects view overlay (ROUTE-PLANNER §6), from the store's per-stick visit times.
+         * @enum {string}
+         */
+        VisitState: "none" | "partly" | "visited";
     };
     responses: never;
     parameters: never;
@@ -3525,6 +3542,10 @@ export interface operations {
                 dd_code?: string[] | null;
                 /** @description Repeatable; any screen's size */
                 screen_size?: string[] | null;
+                /** @description Repeatable; "In route" or "Not in route" */
+                route?: string[] | null;
+                /** @description Repeatable; Visited, Partly visited, Not visited */
+                visit?: string[] | null;
                 q?: string;
                 /** @description a store attribute, status, installer, day, screens, fields.<key> */
                 sort?: string;
@@ -3578,6 +3599,10 @@ export interface operations {
                 dd_code?: string[] | null;
                 /** @description Repeatable; any screen's size */
                 screen_size?: string[] | null;
+                /** @description Repeatable; "In route" or "Not in route" */
+                route?: string[] | null;
+                /** @description Repeatable; Visited, Partly visited, Not visited */
+                visit?: string[] | null;
                 q?: string;
                 /** @description a store attribute, status, installer, day, screens, fields.<key> */
                 sort?: string;
@@ -3631,6 +3656,10 @@ export interface operations {
                 dd_code?: string[] | null;
                 /** @description Repeatable; any screen's size */
                 screen_size?: string[] | null;
+                /** @description Repeatable; "In route" or "Not in route" */
+                route?: string[] | null;
+                /** @description Repeatable; Visited, Partly visited, Not visited */
+                visit?: string[] | null;
                 q?: string;
                 /** @description a store attribute, status, installer, day, screens, fields.<key> */
                 sort?: string;
@@ -3686,6 +3715,10 @@ export interface operations {
                 dd_code?: string[] | null;
                 /** @description Repeatable; any screen's size */
                 screen_size?: string[] | null;
+                /** @description Repeatable; "In route" or "Not in route" */
+                route?: string[] | null;
+                /** @description Repeatable; Visited, Partly visited, Not visited */
+                visit?: string[] | null;
                 q?: string;
                 /** @description a store attribute, status, installer, day, screens, fields.<key> */
                 sort?: string;
@@ -3772,6 +3805,10 @@ export interface operations {
                 dd_code?: string[] | null;
                 /** @description Repeatable; any screen's size */
                 screen_size?: string[] | null;
+                /** @description Repeatable; "In route" or "Not in route" */
+                route?: string[] | null;
+                /** @description Repeatable; Visited, Partly visited, Not visited */
+                visit?: string[] | null;
                 q?: string;
                 /** @description a store attribute, status, installer, day, screens, fields.<key> */
                 sort?: string;

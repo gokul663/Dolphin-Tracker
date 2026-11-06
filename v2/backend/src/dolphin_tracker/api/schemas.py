@@ -8,6 +8,7 @@ from pydantic import ConfigDict, Field
 from dolphin_tracker.domain.base import ApiModel
 from dolphin_tracker.domain.lists import Category
 from dolphin_tracker.domain.models import FieldDef, Project, ProjectType, ScreenInput, ScreenStatus, StopInput
+from dolphin_tracker.domain.visits import VisitState
 
 
 class MapsConfig(ApiModel):
@@ -74,6 +75,8 @@ class Pin(ApiModel):
     store_name: str
     installer: str
     day: int
+    route_plan_id: str = ""  # the active plan holding the store: the "In route" overlay
+    visit_state: VisitState = VisitState.NONE  # sticks visited since the store's latest plan
 
 
 class StoreDetailsUpdate(ApiModel):
@@ -157,6 +160,8 @@ class StoreFilterOptions(ApiModel):
     venue_type: list[FilterOption]
     dd_code: list[FilterOption]
     screen_size: list[FilterOption]
+    route: list[FilterOption]
+    visit: list[FilterOption]
 
 
 class StoreFieldSpec(ApiModel):

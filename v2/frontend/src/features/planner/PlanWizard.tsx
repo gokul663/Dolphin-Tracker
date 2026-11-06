@@ -168,7 +168,7 @@ function PreviewStep({ preview, perDay, installers }: { preview: PlanPreview; pe
   const states = [...new Set(preview.stops.map((stop) => stop.state.toUpperCase()).filter(Boolean))];
   const pins: Pin[] = preview.stops.flatMap((stop) =>
     stop.lat !== null && stop.lng !== null
-      ? [{ uid: planStopKey(stop), lat: stop.lat, lng: stop.lng, status: "Upcoming", store_name: stop.store_name, installer: stop.installer, day: stop.day }]
+      ? [{ uid: planStopKey(stop), lat: stop.lat, lng: stop.lng, status: "Upcoming", store_name: stop.store_name, installer: stop.installer, day: stop.day, route_plan_id: "", visit_state: "none" }]
       : [],
   );
   return (

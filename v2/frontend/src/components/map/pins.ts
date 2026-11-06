@@ -9,6 +9,21 @@ export interface PinGroup {
   pins: Pin[];
   /** The least-progressed status of the records at this point (how a store derives its status, too). */
   status: StopStatus;
+  overlay: Overlay;
+}
+
+/** The Projects-view markers (ROUTE-PLANNER §6), drawn as badges on the status pin. */
+export interface Overlay {
+  inRoute: boolean;
+  visit: "none" | "partly" | "visited";
+}
+export const NO_OVERLAY: Overlay = { inRoute: false, visit: "none" };
+
+/** A location is in route when any record there is; visited when every record is, partly when any is. */
+export function overlayOf(pins: Pick<Pin, "route_plan_id" | "visit_state">[]): Overlay {
+  const states = pins.map((pin) => pin.visit_state ?? "none");
+  const visit = states.length && states.every((state) => state === "visited") ? "visited" : states.some((state) => state !== "none") ? "partly" : "none";
+  return { inRoute: pins.some((pin) => Boolean(pin.route_plan_id)), visit };
 }
 
 /** v1 `locationIdentity`: records at the same point (6 decimals ≈ 10 cm) share one pin with a count. */
@@ -27,7 +42,7 @@ export function groupPins(pins: Pin[]): PinGroup[] {
   }
   return [...groups].map(([key, members]) => {
     const first = members[0] as Pin;
-    return { key, lat: first.lat, lng: first.lng, pins: members, status: deriveStatus(members.map((pin) => pin.status)) };
+    return { key, lat: first.lat, lng: first.lng, pins: members, status: deriveStatus(members.map((pin) => pin.status)), overlay: overlayOf(members) };
   });
 }
 
@@ -73,7 +88,7 @@ export function inBounds(point: { lat: number; lng: number }, bounds: Bounds): b
 }
 
 /** v1 `projectMarkerIcon`: a status-coloured pin with the stack count in its head. */
-export function markerSvg(status: StopStatus, count = 1, emphasis: "normal" | "hover" | "selected" = "normal"): string {
+export function markerSvg(status: StopStatus, count = 1, emphasis: "normal" | "hover" | "selected" = "normal", overlay: Overlay = NO_OVERLAY): string {
   const color = STATUS_META[status].color;
   const label = count > 1 ? (count > 99 ? "99+" : String(count)) : "";
   const ring = emphasis === "selected" ? "#0f172a" : emphasis === "hover" ? "#0891b2" : "#ffffff";
@@ -82,6 +97,15 @@ export function markerSvg(status: StopStatus, count = 1, emphasis: "normal" | "h
     `<path fill="${color}" stroke="${ring}" stroke-width="3" d="M20 3C11.2 3 4 10.2 4 19c0 11.8 16 28 16 28s16-16.2 16-28C36 10.2 28.8 3 20 3z"/>` +
     `<circle cx="20" cy="19" r="${count > 1 ? 10 : 6}" fill="#ffffff"/>` +
     `<text x="20" y="${count > 99 ? 22 : 23}" text-anchor="middle" font-family="Arial, sans-serif" font-size="${count > 99 ? 8 : 12}" font-weight="800" fill="${color}">${label}</text>` +
+    // In route: a blue badge with an arrow, top left. Visited: a green check, top right; partly: an amber dot.
+    (overlay.inRoute
+      ? `<circle cx="7" cy="7" r="6.5" fill="${OVERLAY_COLORS.route}" stroke="#fff" stroke-width="1.5"/><path d="M4 7h6M7.5 4.5 10 7l-2.5 2.5" stroke="#fff" stroke-width="1.6" fill="none" stroke-linecap="round"/>`
+      : "") +
+    (overlay.visit === "visited"
+      ? `<circle cx="33" cy="7" r="6.5" fill="${OVERLAY_COLORS.visited}" stroke="#fff" stroke-width="1.5"/><path d="M30 7.2l2 2 4-4.2" stroke="#fff" stroke-width="1.8" fill="none" stroke-linecap="round"/>`
+      : overlay.visit === "partly"
+        ? `<circle cx="33" cy="7" r="6.5" fill="${OVERLAY_COLORS.partly}" stroke="#fff" stroke-width="1.5"/><circle cx="33" cy="7" r="2.2" fill="#fff"/>`
+        : "") +
     `</svg>`;
   return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
 }
@@ -101,7 +125,10 @@ export interface MarkerStyle {
   status: StopStatus;
   count: number;
   emphasis: Emphasis;
+  overlay: Overlay;
 }
+
+export const OVERLAY_COLORS = { route: "#1d4ed8", visited: "#16a34a", partly: "#f59e0b" } as const;
 
 /** The style every marker should have now, keyed by location key. */
 export function markerStyles(groups: PinGroup[], selectedId?: string | null, hoveredId?: string | null): Map<string, MarkerStyle> {
@@ -109,7 +136,7 @@ export function markerStyles(groups: PinGroup[], selectedId?: string | null, hov
   for (const group of groups) {
     const has = (uid?: string | null) => Boolean(uid) && group.pins.some((pin) => pin.uid === uid);
     const emphasis: Emphasis = has(selectedId) ? "selected" : has(hoveredId) ? "hover" : "normal";
-    styles.set(group.key, { status: group.status, count: group.pins.length, emphasis });
+    styles.set(group.key, { status: group.status, count: group.pins.length, emphasis, overlay: group.overlay });
   }
   return styles;
 }
@@ -119,7 +146,14 @@ export function changedStyles(previous: ReadonlyMap<string, MarkerStyle>, next: 
   const changed: string[] = [];
   for (const [key, style] of next) {
     const before = previous.get(key);
-    if (!before || before.status !== style.status || before.count !== style.count || before.emphasis !== style.emphasis) {
+    if (
+      !before ||
+      before.status !== style.status ||
+      before.count !== style.count ||
+      before.emphasis !== style.emphasis ||
+      before.overlay.inRoute !== style.overlay.inRoute ||
+      before.overlay.visit !== style.overlay.visit
+    ) {
       changed.push(key);
     }
   }

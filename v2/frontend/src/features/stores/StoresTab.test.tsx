@@ -11,6 +11,7 @@ import { useStoresUi } from "@/stores/ui";
 import { keys } from "@/lib/api/keys";
 import { deriveStatus, type ScreenInput, type Stop } from "@/lib/api/types";
 import { STORE_FIELDS_FOR_TESTS } from "@/test/storeFields";
+import { makeRoutePlan } from "@/test/planFixtures";
 
 const STOPS: Stop[] = [
   makeStop({ pa: "", committed_dolphin_screens: 2 }),
@@ -48,6 +49,8 @@ function renderTab(routes: Parameters<typeof mockApi>[0] = {}, onRender?: () => 
     "GET /api/projects/p1/stores/pins": () =>
       [...db.values()].map(({ uid, lat, lng, status, store_name, installer, day }) => ({ uid, lat, lng, status, store_name, installer, day })),
     "GET /api/config/maps": () => ({ google_maps_browser_key: "" }),
+    "GET /api/route-plans": () => ({ items: [makeRoutePlan({ id: "plan9", name: "GA week" })], next_cursor: null }),
+    "GET /api/projects/p1/stores/u1/visits": () => ({ items: [], next_cursor: null }),
     "GET /api/projects/p1/stores/u1": () => db.get("u1"),
     "PATCH /api/projects/p1/stores/u1": (_url, init) => write("u1", init),
     "PATCH /api/projects/p1/stores/u1/progress": (_url, init) => write("u1", init),
@@ -124,18 +127,30 @@ describe("StoresTab", () => {
     const before = listCalls();
 
     // The worker routes the stores and releases the slot; the next project poll sees "ready".
-    db.set("u1", { ...(db.get("u1") as Stop), installer: "Zed", day: 3 });
+    db.set("u1", { ...(db.get("u1") as Stop), store_name: "Alpha Mart (routed)" });
     routing = "ready";
     await act(() => client.refetchQueries({ queryKey: keys.project("p1"), exact: true }));
 
     await waitFor(() => expect(listCalls()).toBeGreaterThan(before));
-    expect(await screen.findByText("Zed · day 3")).toBeTruthy();
+    expect(await screen.findByText("Alpha Mart (routed)")).toBeTruthy();
+  });
+
+  it("marks stores in a route (with the plan) and visited stores, and tints their rows", async () => {
+    const routed = { ...STOPS[0]!, route_plan_id: "plan9", last_planned_at: "2026-11-01" };
+    const visited = { ...STOPS[1]!, screen_visits: { [STOPS[1]!.screens[0]!.id]: "2026-11-02" }, last_visit_at: "2026-11-02T10:00:00Z" };
+    renderTab({ "GET /api/projects/p1/stores": () => ({ items: [routed, visited], next_cursor: null }) });
+    const link = await screen.findByRole("link", { name: /GA week/ });
+    expect(link.getAttribute("href")).toBe("/planner/plan9");
+    expect(screen.getByText("Visited")).toBeTruthy();
+    const rows = screen.getAllByRole("row").filter((row) => row.getAttribute("data-uid"));
+    expect(rows.find((row) => row.getAttribute("data-uid") === "u1")?.className).toContain("bg-blue-50");
+    expect(rows.find((row) => row.getAttribute("data-uid") === "u2")?.className).toContain("bg-emerald-50");
   });
 
   it("shows the v2 columns and maps filters, search and sort onto the API", async () => {
     const { calls } = renderTab();
     expect(await screen.findByText("Alpha Mart")).toBeTruthy();
-    for (const name of [/IBC#/, /City, state/, /Status/, /Screens/, /Installer \/ day/, /PA/, /DMA/, /Committed Dolphin/]) {
+    for (const name of [/IBC#/, /City, state/, /Status/, /Screens/, /Route \/ visits/, /PA/, /DMA/, /Committed Dolphin/]) {
       expect(screen.getByRole("columnheader", { name })).toBeTruthy();
     }
     expect(screen.getByLabelText("Status of IBC-2").textContent).toBe("Completed"); // derived status, read-only
@@ -183,7 +198,7 @@ describe("StoresTab", () => {
     const sections = within(drawer).getAllByRole("region", { hidden: true }).map((region) => region.getAttribute("aria-label"));
     expect(sections).toEqual([
       "WiFi", "Identity & address", "Contacts", "Installation", "Site notes", "Site checklist", "Screen counts", "Screens",
-      "Screen rows", "Progress", "Other imported data", "Pictures",
+      "Screen rows", "Servicing history", "Progress", "Other imported data", "Pictures",
     ]);
     const toggle = (name: string) => within(drawer).getByRole("button", { name: new RegExp(`^${name}`) });
     expect(toggle("WiFi").getAttribute("aria-expanded")).toBe("true");
@@ -302,7 +317,7 @@ describe("StoresTab", () => {
     await screen.findByText("Alpha Mart");
     const bar = screen.getByRole("group", { name: "Filters" });
     expect(within(bar).getAllByRole("button").map((button) => button.textContent?.replace("no values", "").trim())).toEqual([
-      "Status", "Installer", "PA", "State", "City", "DMA", "Venue type", "DD code", "Screen size",
+      "Status", "Route", "Visits", "Installer", "PA", "State", "City", "DMA", "Venue type", "DD code", "Screen size",
     ]);
     for (const name of ["Venue type (no values)", "DD code (no values)", "Screen size (no values)"]) {
       expect(within(bar).getByRole("button", { name }).hasAttribute("disabled")).toBe(true);

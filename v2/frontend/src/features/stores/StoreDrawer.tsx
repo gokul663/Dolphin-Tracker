@@ -1,5 +1,8 @@
 import { useEffect, useState } from "react";
-import { AlertTriangle, ChevronRight, ChevronsDownUp, ChevronsUpDown, Eye, EyeOff, ImageOff, Loader2, MapPin, Wifi } from "lucide-react";
+import { Link } from "react-router";
+import { useRoutePlans } from "@/features/planner/api";
+import { VisitHistory, VisitPanel } from "@/features/visits/VisitPanel";
+import { AlertTriangle, ChevronRight, ClipboardCheck, ChevronsDownUp, ChevronsUpDown, Eye, EyeOff, ImageOff, Loader2, MapPin, Wifi } from "lucide-react";
 import { toast } from "sonner";
 import { TriStateCheckbox } from "@/components/TriStateCheckbox";
 import { Button } from "@/components/ui/button";
@@ -39,9 +42,9 @@ type Group = StoreFieldSpec["group"];
 /** Detail groups in modal order: WiFi first (what the installer needs on site), the screen counts last. Pictures
  *  are a detail too but come at the very end, after the screens and progress. */
 const DETAIL_GROUPS: Group[] = ["WiFi", "Identity & address", "Contacts", "Installation", "Site notes", "Site checklist"];
-const SECTIONS = [...DETAIL_GROUPS, "Screen counts", "Screens", "Progress", "Other imported data", "Pictures"] as const;
+const SECTIONS = [...DETAIL_GROUPS, "Screen counts", "Screens", "Servicing history", "Progress", "Other imported data", "Pictures"] as const;
 type SectionName = (typeof SECTIONS)[number];
-const DEFAULT_OPEN: SectionName[] = ["WiFi", "Identity & address", "Screens", "Pictures"];
+const DEFAULT_OPEN: SectionName[] = ["WiFi", "Identity & address", "Screens", "Servicing history", "Pictures"];
 
 interface Sections {
   isOpen: (name: SectionName) => boolean;
@@ -66,6 +69,9 @@ export function StoreDrawer({ project, stopId, open, onClose }: Props) {
       }),
   };
   const allOpen = expanded.size === SECTIONS.length;
+  const [logging, setLogging] = useState(false);
+  const plans = useRoutePlans("active");
+  const planNames = new Map((plans.data ?? []).map((plan) => [plan.id, plan.name]));
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
       <DialogContent className="flex max-h-[92vh] flex-col gap-0 p-0 sm:max-w-5xl">
@@ -80,7 +86,18 @@ export function StoreDrawer({ project, stopId, open, onClose }: Props) {
                   {STATUS_META[stop.status].label}
                 </span>
               )}
-              <span>{stop?.installer ? `${stop.installer} · day ${stop.day}` : "Not assigned to a route yet"}</span>
+              {stop?.route_plan_id ? (
+                <Link to={`/planner/${stop.route_plan_id}`} className="rounded bg-blue-100 px-1.5 py-0.5 text-xs font-medium text-blue-800 hover:underline">
+                  In route: {planNames.get(stop.route_plan_id) ?? "open the plan"}
+                </Link>
+              ) : (
+                <span>Not in a route</span>
+              )}
+              {stop && (
+                <Button type="button" size="sm" variant="outline" className="h-7 text-xs" onClick={() => setLogging(true)}>
+                  <ClipboardCheck /> Log visit
+                </Button>
+              )}
               <Button
                 type="button"
                 variant="ghost"
@@ -103,6 +120,9 @@ export function StoreDrawer({ project, stopId, open, onClose }: Props) {
                 {/* Reset only when the saved rows change, so saving details keeps unsaved screen edits. */}
                 <ScreensEditor key={`${stop.uid}-${JSON.stringify(stop.screens)}`} project={project} stop={stop} />
               </Section>
+              <Section title="Servicing history" sections={sections}>
+                <VisitHistory projectId={project.id} stop={stop} bare />
+              </Section>
               <Section title="Progress" sections={sections}>
                 <ProgressForm project={project} stop={stop} />
               </Section>
@@ -111,6 +131,12 @@ export function StoreDrawer({ project, stopId, open, onClose }: Props) {
           )}
         </div>
       </DialogContent>
+      <VisitPanel
+        projectId={logging && stop ? project.id : null}
+        stopUid={logging && stop ? stop.uid : null}
+        planId={stop?.route_plan_id ?? ""}
+        onClose={() => setLogging(false)}
+      />
     </Dialog>
   );
 }

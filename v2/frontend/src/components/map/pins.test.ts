@@ -12,12 +12,14 @@ import {
   markerZIndex,
   statusCounts,
   toggleStatus,
+  NO_OVERLAY,
+  overlayOf,
 } from "@/components/map/pins";
 import type { Pin, StopStatus } from "@/lib/api/types";
 import { STOP_STATUSES } from "@/lib/api/types";
 
 const pin = (uid: string, lat: number, lng: number, status: StopStatus = "Upcoming"): Pin => ({
-  uid, lat, lng, status, store_name: uid, installer: "Ann", day: 1,
+  uid, lat, lng, status, store_name: uid, installer: "Ann", day: 1, route_plan_id: "", visit_state: "none",
 });
 
 describe("groupPins", () => {
@@ -81,8 +83,8 @@ describe("markerSvg", () => {
 
 describe("marker signatures and style diffs", () => {
   const base: Pin[] = [
-    { uid: "a", lat: 33.7, lng: -84.4, status: "Upcoming", store_name: "A", installer: "Ann", day: 1 },
-    { uid: "b", lat: 33.9, lng: -84.1, status: "Upcoming", store_name: "B", installer: "Ann", day: 1 },
+    { uid: "a", lat: 33.7, lng: -84.4, status: "Upcoming", store_name: "A", installer: "Ann", day: 1, route_plan_id: "", visit_state: "none" },
+    { uid: "b", lat: 33.9, lng: -84.1, status: "Upcoming", store_name: "B", installer: "Ann", day: 1, route_plan_id: "", visit_state: "none" },
   ];
 
   it("ignores status in the location signature, so a recolour never rebuilds or refits", () => {
@@ -110,9 +112,19 @@ describe("marker signatures and style diffs", () => {
     expect(changedStyles(idle, markerStyles(recoloured))).toEqual([keyB]);
   });
 
+  it("badges: in route when any record is, visited when all are, partly otherwise", () => {
+    const at = (route_plan_id: string, visit_state: "none" | "partly" | "visited") => ({ route_plan_id, visit_state });
+    expect(overlayOf([at("", "none")])).toEqual({ inRoute: false, visit: "none" });
+    expect(overlayOf([at("plan1", "visited"), at("", "visited")])).toEqual({ inRoute: true, visit: "visited" });
+    expect(overlayOf([at("", "visited"), at("", "none")])).toEqual({ inRoute: false, visit: "partly" });
+    const groups = groupPins(base.map((p) => (p.uid === "a" ? { ...p, route_plan_id: "plan1" } : p)));
+    expect(changedStyles(markerStyles(groupPins(base)), markerStyles(groups))).toEqual([groups[0]!.key]);
+    expect(decodeURIComponent(markerSvg("Upcoming", 1, "normal", { inRoute: true, visit: "visited" }))).toContain("#1d4ed8");
+  });
+
   it("raises stacks and emphasised markers above single pins", () => {
-    expect(markerZIndex({ status: "Completed", count: 1, emphasis: "normal" })).toBe(1);
-    expect(markerZIndex({ status: "Completed", count: 3, emphasis: "normal" })).toBe(1003);
-    expect(markerZIndex({ status: "Completed", count: 1, emphasis: "hover" })).toBe(5000);
+    expect(markerZIndex({ status: "Completed", count: 1, emphasis: "normal", overlay: NO_OVERLAY })).toBe(1);
+    expect(markerZIndex({ status: "Completed", count: 3, emphasis: "normal", overlay: NO_OVERLAY })).toBe(1003);
+    expect(markerZIndex({ status: "Completed", count: 1, emphasis: "hover", overlay: NO_OVERLAY })).toBe(5000);
   });
 });

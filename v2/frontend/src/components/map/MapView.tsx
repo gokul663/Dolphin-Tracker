@@ -11,10 +11,10 @@ import {
   markerStyles,
   markerSvg,
   markerZIndex,
+  OVERLAY_COLORS,
   statusCounts,
   toggleStatus,
   type Bounds,
-  type Emphasis,
   type MarkerStyle,
   type PinGroup,
 } from "@/components/map/pins";
@@ -71,6 +71,19 @@ export function MapView({ pins, selectedId, hoveredId, onSelect, onBoundsChange,
             </button>
           );
         })}
+        {pins.some((pin) => pin.route_plan_id || (pin.visit_state && pin.visit_state !== "none")) && (
+          <span className="flex items-center gap-2 font-mono text-[10px] text-slate-500" aria-label="Marker badges">
+            <span className="flex items-center gap-1">
+              <span className="size-2.5 rounded-full" style={{ background: OVERLAY_COLORS.route }} /> In route
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="size-2.5 rounded-full" style={{ background: OVERLAY_COLORS.visited }} /> Visited
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="size-2.5 rounded-full" style={{ background: OVERLAY_COLORS.partly }} /> Partly visited
+            </span>
+          </span>
+        )}
         <span className="ml-auto font-mono text-[10px] text-slate-500" aria-live="polite">
           {visible.length} records · {groups.length} pins
           {stacked.length ? ` · ${stacked.reduce((sum, group) => sum + group.pins.length, 0)} at ${stacked.length} shared addresses` : ""}
@@ -197,7 +210,7 @@ function Markers({ groups, fitSignature, selectedId, hoveredId, onSelect }: Mark
       const style = next.get(key);
       if (!marker || !style) continue;
       const group = latest.current.get(key);
-      marker.setIcon(icon(style.status, style.count, style.emphasis));
+      marker.setIcon(icon(style));
       marker.setZIndex(markerZIndex(style));
       marker.setTitle(style.count > 1 ? `${style.count} locations` : group?.pins[0]?.store_name ?? "");
       applied.current.set(key, style);
@@ -243,10 +256,10 @@ function Markers({ groups, fitSignature, selectedId, hoveredId, onSelect }: Mark
   );
 }
 
-function icon(status: StopStatus, count: number, emphasis: Emphasis): google.maps.Icon {
+function icon({ status, count, emphasis, overlay }: MarkerStyle): google.maps.Icon {
   const scale = emphasis === "normal" ? 1 : 1.2;
   return {
-    url: markerSvg(status, count, emphasis),
+    url: markerSvg(status, count, emphasis, overlay),
     scaledSize: new google.maps.Size(40 * scale, 50 * scale),
     anchor: new google.maps.Point(20 * scale, 47 * scale),
   };

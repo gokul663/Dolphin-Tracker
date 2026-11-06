@@ -25,7 +25,7 @@ describe("patchStopInPages", () => {
 });
 
 describe("patchPin", () => {
-  const pins: Pin[] = [{ uid: "a", lat: 1, lng: 2, status: "Upcoming", store_name: "a", installer: "A", day: 1 }];
+  const pins: Pin[] = [{ uid: "a", lat: 1, lng: 2, status: "Upcoming", store_name: "a", installer: "A", day: 1, route_plan_id: "", visit_state: "none" }];
   it("recolours on a status change and ignores other progress fields", () => {
     expect(patchPin(pins, "a", { status: "Completed" })?.[0]?.status).toBe("Completed");
     expect(patchPin(pins, "a", { comment: "x" })).toBe(pins);

@@ -35,6 +35,8 @@ def store_query(
     venue_type: ListParam = None,
     dd_code: Annotated[list[str] | None, Query(description="Repeatable; any screen's venue id")] = None,
     screen_size: Annotated[list[str] | None, Query(description="Repeatable; any screen's size")] = None,
+    route: Annotated[list[str] | None, Query(description='Repeatable; "In route" or "Not in route"')] = None,
+    visit: Annotated[list[str] | None, Query(description="Repeatable; Visited, Partly visited, Not visited")] = None,
     q: Annotated[str, Query(max_length=200)] = "",
     sort: Annotated[str, Query(description="a store attribute, status, installer, day, screens, fields.<key>")] = (
         "store_name"
@@ -44,7 +46,7 @@ def store_query(
     return StoreQuery(
         status=status or [], installer=installer or [], pa=pa or [], state=state or [], city=city or [],
         dma=dma or [], venue_type=venue_type or [], dd_code=dd_code or [], screen_size=screen_size or [],
-        q=q, sort=sort, dir=dir,
+        route=route or [], visit=visit or [], q=q, sort=sort, dir=dir,
     )
 
 

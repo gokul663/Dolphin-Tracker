@@ -6,9 +6,9 @@ import { mockApi, renderWithProviders } from "@/test/render";
 import type { Pin } from "@/lib/api/types";
 
 const pins: Pin[] = [
-  { uid: "a", lat: 33.7, lng: -84.4, status: "Completed", store_name: "A", installer: "Ann", day: 1 },
-  { uid: "b", lat: 33.7, lng: -84.4, status: "Upcoming", store_name: "B", installer: "Ann", day: 1 },
-  { uid: "c", lat: 33.9, lng: -84.1, status: "Archived", store_name: "C", installer: "Bo", day: 2 },
+  { uid: "a", lat: 33.7, lng: -84.4, status: "Completed", store_name: "A", installer: "Ann", day: 1, route_plan_id: "", visit_state: "none" },
+  { uid: "b", lat: 33.7, lng: -84.4, status: "Upcoming", store_name: "B", installer: "Ann", day: 1, route_plan_id: "", visit_state: "none" },
+  { uid: "c", lat: 33.9, lng: -84.1, status: "Archived", store_name: "C", installer: "Bo", day: 2, route_plan_id: "", visit_state: "none" },
 ];
 
 describe("MapView", () => {

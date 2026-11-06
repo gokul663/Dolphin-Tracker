@@ -141,5 +141,5 @@ counts visits since the store's latest plan (ever, if never planned).
       preview / add / remove / skip / reassign / next day / close, one active plan per store
 - [x] RP5 Route Planner frontend: nav, plan list, wizard, plan page, Plan next day, exports and links
 - [x] RP6 Visit form + read-only side panel + servicing history in the store modal
-- [ ] RP7 Projects view overlays (In route / Visited / Partly visited) + filters
+- [x] RP7 Projects view overlays (In route / Visited / Partly visited) + filters
 - [ ] RP8 Remove the per-project Routes tab; migrate existing project routes into route plans

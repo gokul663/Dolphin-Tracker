@@ -6,6 +6,8 @@ import type { Facet, FacetSelection } from "@/stores/ui";
 
 export const FACET_LABELS: Record<Facet, string> = {
   status: "Status",
+  route: "Route",
+  visit: "Visits",
   installer: "Installer",
   pa: "PA",
   state: "State",

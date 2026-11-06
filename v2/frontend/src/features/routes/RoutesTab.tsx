@@ -55,7 +55,7 @@ export function RoutesTab() {
         filterDays(bundle?.routes[installer] ?? [], filters).flatMap(({ stops }) =>
           stops.flatMap((stop) =>
             stop.lat !== null && stop.lng !== null
-              ? [{ uid: stop.uid, lat: stop.lat, lng: stop.lng, status: stop.status, store_name: stop.store_name, installer, day: stop.day }]
+              ? [{ uid: stop.uid, lat: stop.lat, lng: stop.lng, status: stop.status, store_name: stop.store_name, installer, day: stop.day, route_plan_id: "", visit_state: "none" as const }]
               : [],
           ),
         ),

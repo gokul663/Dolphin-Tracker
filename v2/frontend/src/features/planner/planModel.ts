@@ -85,6 +85,8 @@ export function planPins(bundle: RoutePlanBundle, stops: PlanStop[] = bundle.sto
           store_name: stop.store_name,
           installer: stop.installer,
           day: stop.day,
+          route_plan_id: "", // every pin here is in this plan: no badge
+          visit_state: isVisited(stop) ? ("visited" as const) : stop.visited_screens.length ? ("partly" as const) : ("none" as const),
         }]
       : [],
   );
@@ -93,7 +95,17 @@ export function planPins(bundle: RoutePlanBundle, stops: PlanStop[] = bundle.sto
 export function poolPins(stores: PoolStore[]): Pin[] {
   return stores.flatMap((store) =>
     store.lat !== null && store.lng !== null
-      ? [{ uid: poolKey(store), lat: store.lat, lng: store.lng, status: store.status as StopStatus, store_name: store.store_name, installer: "", day: 0 }]
+      ? [{
+          uid: poolKey(store),
+          lat: store.lat,
+          lng: store.lng,
+          status: store.status as StopStatus,
+          store_name: store.store_name,
+          installer: "",
+          day: 0,
+          route_plan_id: store.route_plan_id,
+          visit_state: "none" as const,
+        }]
       : [],
   );
 }

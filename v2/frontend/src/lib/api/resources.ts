@@ -61,6 +61,10 @@ export interface StoreFilters {
   /** Any screen's venue id. */
   dd_code?: string[];
   screen_size?: string[];
+  /** "In route" / "Not in route" (ROUTE-PLANNER §6). */
+  route?: string[];
+  /** "Visited" / "Partly visited" / "Not visited", counted since the store's latest plan. */
+  visit?: string[];
   q?: string;
   sort?: string;
   dir?: "asc" | "desc";
@@ -79,6 +83,8 @@ function storeQuery(filters: StoreFilters) {
     venue_type: filters.venue_type,
     dd_code: filters.dd_code,
     screen_size: filters.screen_size,
+    route: filters.route,
+    visit: filters.visit,
     q: filters.q || undefined,
     sort: filters.sort,
     dir: filters.dir,

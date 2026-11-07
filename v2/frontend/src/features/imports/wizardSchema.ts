@@ -1,10 +1,6 @@
-import { z } from "zod";
-import { EMPTY_META, projectMetaObject, withMetaRules } from "@/features/projects/schema";
+import { EMPTY_META, projectMetaSchema, type ProjectMetaForm } from "@/features/projects/schema";
 
-export const wizardDetailsSchema = withMetaRules(
-  projectMetaObject.extend({
-    stops_per_day: z.coerce.number().int("Whole number").min(1, "At least 1").max(50, "At most 50"),
-  }),
-);
-export type WizardDetails = z.infer<typeof wizardDetailsSchema>;
-export const EMPTY_DETAILS: WizardDetails = { ...EMPTY_META, stops_per_day: 8 };
+/** Step 1 of a new project: metadata only. Installers and the per-day cap belong to route plans. */
+export const wizardDetailsSchema = projectMetaSchema;
+export type WizardDetails = ProjectMetaForm;
+export const EMPTY_DETAILS: WizardDetails = EMPTY_META;

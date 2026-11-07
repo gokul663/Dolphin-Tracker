@@ -7,9 +7,10 @@ import { MapView } from "@/components/map/MapView";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { usePlanMutations, useRoutePlan } from "@/features/planner/api";
+import { AddToDayDialog } from "@/features/planner/AddToDayDialog";
 import { PlanDayCard } from "@/features/planner/PlanDayCard";
 import { AddStoresDialog, EditPlanDialog, NextDayDialog } from "@/features/planner/PlanDialogs";
-import { groupPlan, planCsv, planPins, planProgress, planStopKey } from "@/features/planner/planModel";
+import { dayLimits, groupPlan, planCsv, planPins, planProgress, planStopKey } from "@/features/planner/planModel";
 import { filenameSlug, installerColor } from "@/features/routes/routeModel";
 import { VisitPanel } from "@/features/visits/VisitPanel";
 import { downloadText } from "@/lib/download";
@@ -27,6 +28,7 @@ export function PlanPage() {
   const [dialog, setDialog] = useState<"next" | "edit" | "add" | "close" | null>(null);
   const [moving, setMoving] = useState<{ stop: PlanStop; to: string } | null>(null);
   const [removing, setRemoving] = useState<PlanStop | null>(null);
+  const [adding, setAdding] = useState<{ installer: string; day: number; forecast: boolean } | null>(null);
   const [opened, setOpened] = useState<PlanStop | null>(null);
   const [selectedPin, setSelectedPin] = useState<string | null>(null);
   const bundle = query.data;
@@ -53,6 +55,7 @@ export function PlanPage() {
   const active = plan.status === "active";
   const progress = planProgress(plan, bundle.stops);
   const current = plan.days.at(-1)!;
+  const todayLimits = dayLimits(plan, current.number);
   const names = plan.installers.map((installer) => installer.name);
 
   const run = async (action: () => Promise<unknown>, success: string, fallback: string) => {
@@ -75,8 +78,8 @@ export function PlanPage() {
             {plan.name} {!active && <span className="align-middle font-mono text-xs tracking-normal text-slate-500">(closed)</span>}
           </h1>
           <p className="font-mono text-xs text-slate-600">
-            Day {current.number} · {current.date} · {progress.visited} of {bundle.stops.length} stores visited · {progress.open} open · {plan.stops_per_day}/day
-            per installer
+            Day {current.number} · {current.date} · {progress.visited} of {bundle.stops.length} stores visited · {progress.open} open · today {todayLimits.perDay}/day
+            per installer{todayLimits.hours ? `, ≤ ${todayLimits.hours} h driving` : ""}
           </p>
         </div>
         <div className="flex flex-wrap gap-1.5">
@@ -154,6 +157,21 @@ export function PlanPage() {
                         onOpen={setOpened}
                         onReassign={(stop, to) => setMoving({ stop, to })}
                         onRemove={setRemoving}
+                        onMoveNext={(stop) =>
+                          void run(
+                            () => mutations.moveToNextDay.mutateAsync({ projectId: stop.project_id, uid: stop.stop_uid, version: plan.version }),
+                            `Moved ${stop.store_name} to the next day`,
+                            "Move failed",
+                          )
+                        }
+                        onToggleLock={(locked) =>
+                          void run(
+                            () => mutations.setDayLock.mutateAsync({ installer: installer.name, day: day.number, locked, version: plan.version }),
+                            locked ? `Locked ${installer.name}, day ${day.number}` : `Unlocked ${installer.name}, day ${day.number}`,
+                            "Could not change the lock",
+                          )
+                        }
+                        onAdd={() => setAdding({ installer: installer.name, day: day.number, forecast: day.kind === "forecast" })}
                       />
                     ))}
                   </div>
@@ -177,6 +195,14 @@ export function PlanPage() {
       <NextDayDialog bundle={bundle} open={dialog === "next"} onClose={() => setDialog(null)} />
       <EditPlanDialog bundle={bundle} open={dialog === "edit"} onClose={() => setDialog(null)} />
       <AddStoresDialog bundle={bundle} open={dialog === "add"} onClose={() => setDialog(null)} />
+      <AddToDayDialog
+        bundle={bundle}
+        installer={adding?.installer ?? ""}
+        day={adding?.day ?? 1}
+        forecast={adding?.forecast ?? false}
+        open={adding !== null}
+        onClose={() => setAdding(null)}
+      />
       <VisitPanel
         projectId={opened?.project_id ?? null}
         stopUid={opened?.stop_uid ?? null}

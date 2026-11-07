@@ -123,6 +123,23 @@ class ListTests(StoresApiTestCase):
         self.assertEqual(self.uids(q="v3"), ["b"])  # a screen's venue id
         self.assertEqual(self.uids(q="gold"), ["a"])  # extra fields
 
+    def test_numbered_pages_carry_the_total_and_their_offset(self):
+        first = self.get(limit=2).json()
+        self.assertEqual((first["total"], first["offset"], len(first["items"])), (4, 0, 2))
+        second = self.get(limit=2, offset=2).json()
+        self.assertEqual((second["offset"], [s["uid"] for s in second["items"]]), (2, ["c", "d"]))
+        self.assertIsNone(second["next_cursor"])
+        self.assertEqual(self.get(limit=2, offset=10).json()["items"], [])
+        self.assertEqual(self.get(offset=-1).status_code, 422)
+        filtered = self.get(limit=1, state="GA").json()
+        self.assertEqual(filtered["total"], 3)  # the total follows the filters
+
+    def test_map_bounds_keep_only_stores_in_view(self):
+        page = self.get(north=34.0, south=33.0, east=-84.0, west=-85.0).json()
+        self.assertEqual(sorted(s["uid"] for s in page["items"]), ["a", "b"])  # c has no location, d is in TN
+        self.assertEqual(page["total"], 2)
+        self.assertEqual(self.get(north=34.0).status_code, 400)  # all four edges or none
+
     def test_cursor_pagination(self):
         first = self.get(limit=3).json()
         self.assertEqual(len(first["items"]), 3)
@@ -143,7 +160,10 @@ class ListTests(StoresApiTestCase):
         pins = self.get("/pins").json()
         self.assertEqual({pin["uid"] for pin in pins}, {"a", "b", "d"})
         self.assertEqual(set(pins[0]), {"uid", "lat", "lng", "status", "store_name", "installer", "day",
-                                        "route_plan_id", "visit_state"})
+                                        "route_plan_id", "visit_state", "screen_statuses"})
+        by_uid = {pin["uid"]: pin for pin in pins}
+        self.assertEqual(by_uid["b"]["screen_statuses"], ["Upcoming", "Shipped"])  # one per screen row
+        self.assertEqual(by_uid["d"]["screen_statuses"], ["Upcoming"])  # a store always has at least one screen
         self.assertEqual([p["uid"] for p in self.get("/pins", status="Completed").json()], ["a"])
         self.assertEqual([p["uid"] for p in self.get("/pins", state="TN").json()], ["d"])
 
@@ -219,6 +239,12 @@ class ByStateTests(StoresApiTestCase):
         self.assertEqual(self.ranks(pending="false"), [("GA", 3), ("TN", 1)])
         self.assertEqual(self.ranks(pending="false", limit=1), [("GA", 3)])
 
+    def test_screens_per_state(self):
+        # b has Upcoming + Shipped (both pending); d has no screen rows, so it counts as one (Upcoming) screen.
+        self.assertEqual(self.ranks(unit="screens"), [("GA", 2), ("TN", 1)])
+        self.assertEqual(self.ranks(unit="screens", pending="false"), [("GA", 4), ("TN", 1)])
+        self.assertEqual(self.get("/by-state", unit="sticks").status_code, 422)
+
     def test_other_filters_apply_but_not_state(self):
         self.assertEqual(self.ranks(state="TN"), [("GA", 1), ("TN", 1)])  # the chart keeps every bar
         self.assertEqual(self.ranks(dma="ATL"), [("GA", 1)])
@@ -290,6 +316,19 @@ class DetailEditTests(StoresApiTestCase):
         self.assertEqual(detail["suggestions"], ["1 Nowhere Ln, Atlanta, GA, USA"])
         self.assertIn("could not be verified", detail["message"])
         self.assertEqual(self.stores.get("p1", "a").addr, "10 Oak St")  # nothing written
+
+    def test_a_picked_google_place_saves_the_store_at_its_pin(self):
+        place = {"lat": 33.45, "lng": -97.77, "formatted": "Sunset Gas And Grill, Sunset, TX 76270"}
+        saved = self.patch("a", {"addr": "101 S Council Rd", "place": place})
+        self.assertEqual(saved.status_code, 200, saved.text)
+        stop = self.stores.get("p1", "a")
+        self.assertEqual((stop.addr, stop.lat, stop.lng), ("101 S Council Rd", 33.45, -97.77))
+        self.assertEqual(stop.geocoded, place["formatted"])
+        self.assertNotIn(("geocode", "101 S Council Rd, Atlanta, GA, 30303"), self.geocoder.calls)  # no address check
+        moved = self.patch("a", {"place": {**place, "lat": 33.46}})  # the same address, a better pin
+        self.assertEqual(moved.status_code, 200, moved.text)
+        self.assertEqual(self.stores.get("p1", "a").lat, 33.46)
+        self.assertEqual(self.patch("a", {"place": {"lat": 200, "lng": 0}}).status_code, 422)
 
     def test_field_rules(self):
         self.assertEqual(self.patch("a", {"store_name": "  "}).status_code, 422)

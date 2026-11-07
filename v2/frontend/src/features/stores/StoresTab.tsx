@@ -1,10 +1,10 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { MapView } from "@/components/map/MapView";
-import { inBounds } from "@/components/map/pins";
+import { OpenFullPage, UnitToggle } from "@/features/stores/StoresViewControls";
 import { useProjectContext } from "@/features/projects/ProjectPage";
-import { useFilterOptions, usePins, useStoreList, useStoresByState } from "@/features/stores/api";
+import { DEFAULT_STORE_PAGE_SIZE, useFilterOptions, usePins, useStoreList, useStoresByState } from "@/features/stores/api";
 import { FilterBar } from "@/features/stores/FilterBar";
 import { toStoreFilters } from "@/features/stores/filters";
 import { StoreDrawer } from "@/features/stores/StoreDrawer";
@@ -45,32 +45,32 @@ export function StoresTab() {
   const bounds = useStoresUi((state) => (state.onlyInView ? state.bounds : null));
   useEffect(() => ui.enterProject(project.id), [project.id]); // the store action is stable
 
-  const selection = useMemo(() => toStoreFilters(ui.facets, ui.search), [ui.facets, ui.search]);
+  const needsAttention = useStoresUi((state) => state.needsAttention);
+  const selection = useMemo(() => toStoreFilters(ui.facets, ui.search, needsAttention), [ui.facets, ui.search, needsAttention]);
   const filters: StoreFilters = useMemo(() => ({ ...selection, sort: ui.sort, dir: ui.dir }), [selection, ui.sort, ui.dir]);
-  const list = useStoreList(project.id, filters);
+  const [pageSize, setPageSize] = useState<number>(DEFAULT_STORE_PAGE_SIZE);
+  const [pageIndex, setPageIndex] = useState(0);
+  // A new filter, sort, page size or map view starts again at page 1.
+  useEffect(() => setPageIndex(0), [filters, bounds, pageSize]);
+  const page = useMemo(() => ({ offset: pageIndex * pageSize, limit: pageSize, bounds }), [pageIndex, pageSize, bounds]);
+  const list = useStoreList(project.id, filters, page);
   const pins = usePins(project.id, selection);
   const options = useFilterOptions(project.id, selection);
-  const byState = useStoresByState(project.id, selection);
+  const unit = useStoresUi((state) => state.unit);
+  const setUnit = useStoresUi((state) => state.setUnit);
+  const byState = useStoresByState(project.id, selection, unit === "screens" ? "screens" : "stores");
 
-  // "Only stores in view" needs the whole filtered set to intersect with the map bounds.
-  const { hasNextPage, isFetchingNextPage, fetchNextPage } = list;
-  useEffect(() => {
-    if (ui.onlyInView && hasNextPage && !isFetchingNextPage) void fetchNextPage();
-  }, [ui.onlyInView, hasNextPage, isFetchingNextPage, fetchNextPage]);
-
-  const loaded = useMemo(() => list.data?.pages.flatMap((page) => page.items) ?? [], [list.data]);
-  const stops = useMemo(() => {
-    if (!bounds) return loaded;
-    return loaded.filter((stop) => stop.lat !== null && stop.lng !== null && inBounds({ lat: stop.lat, lng: stop.lng }, bounds));
-  }, [loaded, bounds]);
+  const stops = list.data?.items ?? [];
+  const total = list.data?.total ?? 0;
 
   const open = useCallback((uid: string) => ui.select(uid, true), []); // stable store action
 
   return (
     <div className="space-y-3">
-      <StoresToolbar project={project} filters={filters} />
-      <FilterBar options={options.data} facets={ui.facets} onToggle={ui.toggleFacet} />
-      <div className="grid gap-3 lg:h-[calc(100vh-15rem)] lg:min-h-[520px] lg:grid-cols-[minmax(0,1fr)_minmax(320px,40%)]">
+      <StoresToolbar project={project} filters={filters}>
+        <FilterBar options={options.data} facets={ui.facets} onToggle={ui.toggleFacet} />
+      </StoresToolbar>
+      <div className="grid gap-3 lg:h-[calc(100vh-15rem)] lg:min-h-[520px] lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <div className="flex h-[60vh] min-h-0 flex-col lg:h-auto">
           {list.isPending ? (
             <Card className="flex-1 items-center justify-center font-mono text-sm text-slate-500">Loading stores…</Card>
@@ -81,18 +81,20 @@ export function StoresTab() {
                 Retry
               </Button>
             </Card>
-          ) : stops.length === 0 ? (
+          ) : total === 0 ? (
             <Card className="flex-1 items-center justify-center font-mono text-sm text-slate-500">
-              {loaded.length ? "No stores in the current map view." : "No stores match these filters."}
+              {bounds ? "No stores in the current map view." : "No stores match these filters."}
             </Card>
           ) : (
             <StoresTable
               project={project}
               stops={stops}
-              total={null}
-              hasNextPage={Boolean(hasNextPage) && !ui.onlyInView}
-              fetchingNext={isFetchingNextPage}
-              fetchNextPage={() => void fetchNextPage()}
+              total={total}
+              offset={page.offset}
+              pageSize={pageSize}
+              fetching={list.isFetching}
+              onPage={(index) => setPageIndex(index)}
+              onPageSize={setPageSize}
               sort={ui.sort}
               dir={ui.dir}
               onSort={ui.setSort}
@@ -103,9 +105,14 @@ export function StoresTab() {
             />
           )}
         </div>
-        <div className="flex min-h-0 flex-col gap-3">
+        <div className="flex min-h-0 flex-col gap-3 lg:overflow-y-auto">
+          <div className="flex shrink-0 items-center justify-between gap-2">
+            <UnitToggle value={unit} onChange={setUnit} />
+            <OpenFullPage projectId={project.id} view="map" label="Open map in a new tab" />
+          </div>
           <MapView
-            className="h-[50vh] lg:h-auto lg:min-h-0 lg:flex-1"
+            unit={unit}
+            className="h-[50vh] shrink-0 lg:h-auto lg:min-h-[440px] lg:flex-1"
             pins={pins.data ?? []}
             selectedId={ui.selectedId}
             hoveredId={ui.hoveredId}
@@ -113,7 +120,13 @@ export function StoresTab() {
             onBoundsChange={ui.setBounds}
           />
           <Suspense fallback={<Card className="h-56 animate-pulse bg-slate-50" aria-label="Top states (loading)" />}>
-            <TopStatesChart data={byState.data ?? []} selected={ui.facets.state} onToggle={ui.toggleState} />
+            <TopStatesChart
+              data={byState.data ?? []}
+              selected={ui.facets.state}
+              onToggle={ui.toggleState}
+              unit={unit}
+              action={<OpenFullPage projectId={project.id} view="states" label="Open chart in a new tab" />}
+            />
           </Suspense>
         </div>
       </div>

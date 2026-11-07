@@ -2,11 +2,21 @@
 import { deriveStatus, STOP_STATUSES, type Pin, type StopStatus } from "@/lib/api/types";
 import { STATUS_META } from "@/lib/status";
 
+/** What the map counts: locations (one per store) or screens (one per screen row). */
+export type MapUnit = "locations" | "screens";
+
+/** A store's screen statuses; a store without screen rows counts as one screen in its own status. */
+export function screensOf(pin: Pick<Pin, "status" | "screen_statuses">): StopStatus[] {
+  return pin.screen_statuses?.length ? pin.screen_statuses : [pin.status];
+}
+
 export interface PinGroup {
   key: string;
   lat: number;
   lng: number;
   pins: Pin[];
+  /** Screens at this location (every store's screens, after the status filter). */
+  screens: number;
   /** The least-progressed status of the records at this point (how a store derives its status, too). */
   status: StopStatus;
   overlay: Overlay;
@@ -42,17 +52,36 @@ export function groupPins(pins: Pin[]): PinGroup[] {
   }
   return [...groups].map(([key, members]) => {
     const first = members[0] as Pin;
-    return { key, lat: first.lat, lng: first.lng, pins: members, status: deriveStatus(members.map((pin) => pin.status)), overlay: overlayOf(members) };
+    return {
+      key,
+      lat: first.lat,
+      lng: first.lng,
+      pins: members,
+      screens: members.reduce((sum, pin) => sum + screensOf(pin).length, 0),
+      status: deriveStatus(members.map((pin) => pin.status)),
+      overlay: overlayOf(members),
+    };
   });
 }
 
-export function filterByStatus(pins: Pin[], active: ReadonlySet<StopStatus>): Pin[] {
-  return active.size === 0 ? pins : pins.filter((pin) => active.has(pin.status));
+/** Locations: keep stores whose status is on. Screens: keep each store's screens whose status is on, and the
+ *  store only while it has one left; its status becomes the least-progressed screen still shown. */
+export function filterByStatus(pins: Pin[], active: ReadonlySet<StopStatus>, unit: MapUnit = "locations"): Pin[] {
+  if (active.size === 0) return pins;
+  if (unit === "locations") return pins.filter((pin) => active.has(pin.status));
+  return pins.flatMap((pin) => {
+    const shown = screensOf(pin).filter((status) => active.has(status));
+    return shown.length ? [{ ...pin, status: deriveStatus(shown), screen_statuses: shown }] : [];
+  });
 }
 
-export function statusCounts(pins: Pin[]): Record<StopStatus, number> {
+/** Legend counts: stores by status, or screens by status. */
+export function statusCounts(pins: Pin[], unit: MapUnit = "locations"): Record<StopStatus, number> {
   const counts = Object.fromEntries(STOP_STATUSES.map((status) => [status, 0])) as Record<StopStatus, number>;
-  for (const pin of pins) counts[pin.status] += 1;
+  for (const pin of pins) {
+    if (unit === "locations") counts[pin.status] += 1;
+    else for (const status of screensOf(pin)) counts[status] += 1;
+  }
   return counts;
 }
 
@@ -131,12 +160,19 @@ export interface MarkerStyle {
 export const OVERLAY_COLORS = { route: "#1d4ed8", visited: "#16a34a", partly: "#f59e0b" } as const;
 
 /** The style every marker should have now, keyed by location key. */
-export function markerStyles(groups: PinGroup[], selectedId?: string | null, hoveredId?: string | null): Map<string, MarkerStyle> {
+export function markerStyles(
+  groups: PinGroup[],
+  selectedId?: string | null,
+  hoveredId?: string | null,
+  unit: MapUnit = "locations",
+): Map<string, MarkerStyle> {
   const styles = new Map<string, MarkerStyle>();
   for (const group of groups) {
     const has = (uid?: string | null) => Boolean(uid) && group.pins.some((pin) => pin.uid === uid);
     const emphasis: Emphasis = has(selectedId) ? "selected" : has(hoveredId) ? "hover" : "normal";
-    styles.set(group.key, { status: group.status, count: group.pins.length, emphasis, overlay: group.overlay });
+    // The number in the pin: stores stacked at this address, or the screens there.
+    const count = unit === "screens" ? group.screens : group.pins.length;
+    styles.set(group.key, { status: group.status, count, emphasis, overlay: group.overlay });
   }
   return styles;
 }

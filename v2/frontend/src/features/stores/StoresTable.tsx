@@ -1,13 +1,25 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createColumnHelper, flexRender, getCoreRowModel, useReactTable, type ColumnDef } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Link } from "react-router";
-import { AlertTriangle, ArrowDown, ArrowUp, Check, ChevronsUpDown, Loader2, Route } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowDown,
+  ArrowUp,
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
+  ChevronsUpDown,
+  Loader2,
+  Route,
+} from "lucide-react";
 import { useRoutePlans } from "@/features/planner/api";
 import { visitState } from "@/features/visits/visitForm";
 import { EditableCell } from "@/features/stores/EditableCell";
 import { addressLine } from "@/features/stores/details";
-import { useUpdateStoreDetails } from "@/features/stores/api";
+import { STORE_PAGE_SIZES, useUpdateStoreDetails } from "@/features/stores/api";
 import type { Project, Stop } from "@/lib/api/types";
 import { STATUS_META } from "@/lib/status";
 import { cn } from "@/lib/utils";
@@ -18,10 +30,13 @@ const ROW_HEIGHT = 44;
 interface Props {
   project: Project;
   stops: Stop[];
-  total: number | null;
-  hasNextPage: boolean;
-  fetchingNext: boolean;
-  fetchNextPage: () => void;
+  /** Stores matching the filters (all pages); `offset` is where this page starts. */
+  total: number;
+  offset: number;
+  pageSize: number;
+  fetching: boolean;
+  onPage: (index: number) => void;
+  onPageSize: (size: number) => void;
   sort: string;
   dir: "asc" | "desc";
   onSort: (sort: string) => void;
@@ -107,22 +122,40 @@ function ServicingCell({ stop, planNames }: { stop: Stop; planNames: Map<string,
 }
 const count = (value: number | null) => (value === null ? "—" : String(value));
 
+/** One PA name (no comma list): every store shares it. */
+export const singlePa = (pa: string) => pa.trim() !== "" && !pa.includes(",");
+
 export function StoresTable(props: Props) {
   const { project, stops, sort, dir, onSort, selectedId, hoveredId, onHover, onOpen } = props;
   const details = useUpdateStoreDetails(project.id);
   const plans = useRoutePlans("active");
   const planNames = useMemo(() => new Map((plans.data ?? []).map((plan) => [plan.id, plan.name])), [plans.data]);
+  const hidePa = singlePa(project.pa) && stops.every((stop) => !stop.pa.trim() || stop.pa.trim() === project.pa.trim());
 
   const columns = useMemo<ColumnDef<Stop, string>[]>(
     () => [
       helper.accessor("external_id", {
         header: "IBC#",
-        size: 110,
-        cell: (info) => <span className="font-mono text-xs text-slate-600">{info.getValue() || info.row.original.display_id}</span>,
+        size: 92,
+        cell: (info) => {
+          const reasons = info.row.original.needs_attention ?? [];
+          return (
+            <span className="flex items-center gap-1 font-mono text-xs text-slate-600">
+              {reasons.length > 0 && (
+                <AlertTriangle
+                  size={12}
+                  className="shrink-0 text-amber-600"
+                  aria-label={`Needs attention: ${reasons.map((r) => (r === "store_name" ? "no store name" : "address not verified")).join(", ")}`}
+                />
+              )}
+              {info.getValue() || info.row.original.display_id}
+            </span>
+          );
+        },
       }),
       helper.accessor("store_name", {
         header: "Store name",
-        size: 220,
+        size: 200,
         cell: (info) => (
           <EditableCell
             label={`store name of ${info.row.original.external_id || info.row.original.display_id}`}
@@ -135,7 +168,7 @@ export function StoresTable(props: Props) {
       helper.accessor((stop) => [stop.city, stop.state].filter(Boolean).join(", "), {
         id: "place",
         header: "City, state",
-        size: 170,
+        size: 145,
         cell: (info) => (
           <button
             type="button"
@@ -154,7 +187,7 @@ export function StoresTable(props: Props) {
       helper.accessor((stop): string => stop.status, {
         id: "status",
         header: "Status",
-        size: 150,
+        size: 112,
         cell: (info) => (
           <span
             aria-label={`Status of ${info.row.original.external_id || info.row.original.display_id}`}
@@ -164,23 +197,27 @@ export function StoresTable(props: Props) {
           </span>
         ),
       }),
-      helper.accessor((stop) => String(stop.screens.length), { id: "screens", header: "Screens", size: 120, cell: (info) => <ScreenDots stop={info.row.original} /> }),
+      helper.accessor((stop) => String(stop.screens.length), { id: "screens", header: "Screens", size: 78, cell: (info) => <ScreenDots stop={info.row.original} /> }),
       helper.accessor((stop) => stop.route_plan_id, {
         id: "servicing",
         header: "Route / visits",
-        size: 210,
+        size: 150,
         cell: (info) => <ServicingCell stop={info.row.original} planNames={planNames} />,
       }),
-      helper.accessor((stop) => stop.pa || project.pa, { id: "pa", header: "PA", size: 100, cell: (info) => info.getValue() || dash }),
-      helper.accessor("dma", { header: "DMA", size: 90, cell: (info) => info.getValue() || dash }),
+      // A single-PA project shows its PA in the header: the column would repeat it on every row (it stays when a
+      // store on this page carries a PA of its own).
+      ...(hidePa
+        ? []
+        : [helper.accessor((stop) => stop.pa || project.pa, { id: "pa", header: "PA", size: 90, cell: (info) => info.getValue() || dash })]),
+      helper.accessor("dma", { header: "DMA", size: 80, cell: (info) => info.getValue() || dash }),
       helper.accessor((stop) => `${count(stop.committed_dolphin_screens)} / ${count(stop.committed_store_tvs)}`, {
         id: "committed",
         header: "Committed Dolphin / TVs",
-        size: 150,
+        size: 130,
         cell: (info) => <span className="font-mono text-xs">{info.getValue()}</span>,
       }),
     ],
-    [project.pa, onOpen, planNames], // the mutation object is stable per project
+    [project.pa, onOpen, planNames, hidePa], // the mutation object is stable per project
   );
 
   const table = useReactTable({ data: stops, columns, getCoreRowModel: getCoreRowModel(), manualSorting: true, getRowId: (stop) => stop.uid });
@@ -196,11 +233,10 @@ export function StoresTable(props: Props) {
   const items = virtualizer.getVirtualItems();
   const width = table.getTotalSize();
 
-  // Load the next page as the end comes into view.
-  const last = items.at(-1)?.index ?? -1;
+  // A new page starts at its top row.
   useEffect(() => {
-    if (props.hasNextPage && !props.fetchingNext && last >= rows.length - 10) props.fetchNextPage();
-  }, [last, rows.length, props.hasNextPage, props.fetchingNext, props.fetchNextPage]);
+    scroller.current?.scrollTo?.({ top: 0 });
+  }, [props.offset]);
 
   // A pin click selects a store: bring its row into view.
   useEffect(() => {
@@ -211,7 +247,7 @@ export function StoresTable(props: Props) {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border bg-white">
-      <div ref={scroller} className="min-h-0 flex-1 overflow-auto" role="grid" aria-rowcount={props.total ?? rows.length} aria-label="Stores">
+      <div ref={scroller} className="min-h-0 flex-1 overflow-auto" role="grid" aria-rowcount={props.total} aria-label="Stores">
         <div style={{ width, minWidth: "100%" }}>
           <div role="row" className="sticky top-0 z-10 flex border-b bg-slate-50 font-mono text-[10px] uppercase tracking-wider text-slate-500">
             {table.getFlatHeaders().map((header) => {
@@ -240,7 +276,7 @@ export function StoresTable(props: Props) {
                 <div
                   key={row.id}
                   role="row"
-                  aria-rowindex={item.index + 2}
+                  aria-rowindex={props.offset + item.index + 2}
                   aria-selected={uid === selectedId}
                   data-uid={uid}
                   onMouseEnter={() => onHover(uid)}
@@ -263,12 +299,81 @@ export function StoresTable(props: Props) {
           </div>
         </div>
       </div>
-      <div className="flex items-center justify-between border-t px-3 py-1.5 font-mono text-[10px] text-slate-500">
-        <span>
-          {rows.length} loaded{props.hasNextPage ? " · scroll for more" : ""}
-        </span>
-        {props.fetchingNext && <Loader2 size={12} className="animate-spin" />}
-      </div>
+      <Pager {...props} shown={rows.length} />
     </div>
+  );
+}
+
+/** "51–100 of 482", first/previous/next/last page, a page number box and the page size. */
+function Pager({ total, offset, pageSize, fetching, onPage, onPageSize, shown }: Props & { shown: number }) {
+  const pages = Math.max(1, Math.ceil(total / pageSize));
+  const index = Math.floor(offset / pageSize);
+  const [draft, setDraft] = useState(String(index + 1));
+  useEffect(() => setDraft(String(index + 1)), [index]);
+  const go = (next: number) => onPage(Math.min(pages - 1, Math.max(0, next)));
+  const jump = () => {
+    const number = Number(draft);
+    if (Number.isInteger(number)) go(number - 1);
+    else setDraft(String(index + 1));
+  };
+  return (
+    <nav aria-label="Pages" className="flex flex-wrap items-center justify-between gap-2 border-t px-3 py-1.5 font-mono text-[11px] text-slate-600">
+      <span aria-live="polite">
+        {total ? `${offset + 1}–${offset + shown} of ${total.toLocaleString()}` : "0 stores"}
+        {fetching && <Loader2 size={12} className="ml-2 inline animate-spin" />}
+      </span>
+      <div className="flex items-center gap-1">
+        <PageButton label="First page" disabled={index === 0} onClick={() => go(0)}>
+          <ChevronsLeft size={14} />
+        </PageButton>
+        <PageButton label="Previous page" disabled={index === 0} onClick={() => go(index - 1)}>
+          <ChevronLeft size={14} />
+        </PageButton>
+        <span className="flex items-center gap-1 px-1">
+          Page
+          <input
+            aria-label="Page number"
+            className="h-6 w-10 rounded border px-1 text-center"
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            onBlur={jump}
+            onKeyDown={(event) => event.key === "Enter" && jump()}
+          />
+          of {pages}
+        </span>
+        <PageButton label="Next page" disabled={index >= pages - 1} onClick={() => go(index + 1)}>
+          <ChevronRight size={14} />
+        </PageButton>
+        <PageButton label="Last page" disabled={index >= pages - 1} onClick={() => go(pages - 1)}>
+          <ChevronsRight size={14} />
+        </PageButton>
+        <select
+          aria-label="Rows per page"
+          className="ml-2 h-6 rounded border bg-white px-1"
+          value={pageSize}
+          onChange={(event) => onPageSize(Number(event.target.value))}
+        >
+          {STORE_PAGE_SIZES.map((size) => (
+            <option key={size} value={size}>
+              {size} / page
+            </option>
+          ))}
+        </select>
+      </div>
+    </nav>
+  );
+}
+
+function PageButton({ label, disabled, onClick, children }: { label: string; disabled: boolean; onClick: () => void; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      disabled={disabled}
+      onClick={onClick}
+      className="flex size-6 items-center justify-center rounded border bg-white hover:bg-slate-50 disabled:opacity-40"
+    >
+      {children}
+    </button>
   );
 }

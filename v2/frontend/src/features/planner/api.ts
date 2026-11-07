@@ -2,6 +2,8 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tansta
 import { keys } from "@/lib/api/keys";
 import { routePlansApi, storeSearchApi, type PoolFilters } from "@/lib/api/resources";
 import type {
+  DayInsert,
+  DayLockSet,
   NextDay,
   Page,
   PlanStatus,
@@ -94,6 +96,13 @@ export function usePlanMutations(planId: string) {
       ...done,
     }),
     nextDay: useMutation({ mutationFn: (body: NextDay) => routePlansApi.nextDay(planId, body), ...done }),
+    setDayLock: useMutation({ mutationFn: (body: DayLockSet) => routePlansApi.setDayLock(planId, body), ...done }),
+    insert: useMutation({ mutationFn: (body: DayInsert) => routePlansApi.insert(planId, body), ...done }),
+    moveToNextDay: useMutation({
+      mutationFn: ({ projectId, uid, version }: { projectId: string; uid: string; version?: number }) =>
+        routePlansApi.moveToNextDay(planId, projectId, uid, version),
+      ...done,
+    }),
     close: useMutation({ mutationFn: () => routePlansApi.close(planId), ...done }),
   };
 }

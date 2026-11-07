@@ -64,7 +64,7 @@ async function fixReviewRows() {
   await waitFor(() => expect(screen.getByText("3 ready · 1 excluded")).toBeTruthy());
 }
 
-/** Only the name, the type (preset) and the single PA's name are required; installers can come later. */
+/** Only the name, the type (preset) and the single PA's name are required. */
 async function fillDetails() {
   await userEvent.type(screen.getByLabelText("Project name *"), "Wave 3");
   await userEvent.type(screen.getByLabelText("PA name *"), "North");
@@ -74,7 +74,7 @@ async function fillDetails() {
 describe("ImportWizard: new project", () => {
   it("details → upload → columns (re-point) → review (duplicates, fixes) → create with the mapping", async () => {
     const { calls } = importRoutes({
-      "POST /api/projects": () => ({ project: makeProject({ id: "new1", name: "Wave 3" }), job_id: "r1", skipped: [] }),
+      "POST /api/projects": () => ({ project: makeProject({ id: "new1", name: "Wave 3" }), skipped: [] }),
     });
     renderWithProviders(<ImportWizard open onClose={() => {}} />);
 
@@ -82,6 +82,8 @@ describe("ImportWizard: new project", () => {
     expect(await screen.findByText("Project name is required")).toBeTruthy();
     expect(screen.getByText("PA name is required")).toBeTruthy();
     expect(screen.queryByLabelText("Field agent")).toBeNull(); // behind "Has a field agent"
+    expect(screen.queryByLabelText(/Stops per day/)).toBeNull(); // installers and the cap belong to route plans
+    expect(screen.queryByLabelText(/Installer/)).toBeNull();
     await fillDetails();
     await userEvent.click(screen.getByRole("button", { name: /Next/ }));
     await uploadSheet();
@@ -93,6 +95,10 @@ describe("ImportWizard: new project", () => {
     expect(screen.getByRole("combobox", { name: "Field for column notes" }).textContent).toContain("Other imported data");
     await userEvent.click(screen.getByRole("combobox", { name: "Field for column notes" }));
     expect((await screen.findByRole("option", { name: /^DMA/ })).getAttribute("aria-disabled")).toBe("true"); // taken
+    const search = screen.getByRole("textbox", { name: "Search fields for column notes" });
+    await userEvent.type(search, "comment");
+    expect(screen.queryByRole("option", { name: /^DMA/ })).toBeNull(); // filtered out
+    expect((search as HTMLInputElement).value).toBe("comment"); // typing stays in the box
     await userEvent.click(screen.getByRole("option", { name: "Installation comments" }));
     await waitFor(() => expect(calls.find((call) => call.url.pathname === "/api/jobs/j1/mapping")?.body).toEqual({
       mapping: { ...RESULT.mapping, notes: "installation_notes" },
@@ -111,10 +117,12 @@ describe("ImportWizard: new project", () => {
 
     await waitFor(() => expect(calls.some((call) => call.method === "POST" && call.url.pathname === "/api/projects")).toBe(true));
     const body = calls.find((call) => call.method === "POST" && call.url.pathname === "/api/projects")?.body as {
-      stops: StopInput[]; import_mapping: Record<string, string>; pa: string; installers: string[];
+      stops: StopInput[]; import_mapping: Record<string, string>; pa: string;
       pa_percentage: number | null; dolphin_percentage: number | null; fa_percentage: number | null;
     };
-    expect(body).toMatchObject({ installers: [], pa_percentage: 40, dolphin_percentage: null, fa_percentage: null });
+    expect(body).toMatchObject({ pa_percentage: 40, dolphin_percentage: null, fa_percentage: null });
+    expect(body).not.toHaveProperty("installers");
+    expect(body).not.toHaveProperty("stops_per_day");
     expect(body.import_mapping).toEqual(REMAPPED.mapping); // saved on the project for its next sheet
     expect(body.pa).toBe("North");
     expect(body.stops.map((stop) => stop.external_id)).toEqual(["IBC-0", "IBC-NEW", "IBC-2"]); // no duplicate

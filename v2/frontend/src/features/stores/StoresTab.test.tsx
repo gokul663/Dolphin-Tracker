@@ -45,9 +45,19 @@ function renderTab(routes: Parameters<typeof mockApi>[0] = {}, onRender?: () => 
   };
   const api = mockApi({
     "GET /api/projects/p1": () => makeSummary(),
-    "GET /api/projects/p1/stores": () => ({ items: [...db.values()], next_cursor: null }),
+    "GET /api/projects/p1/stores": (url) => {
+      // The server keeps only stores inside the map view when all four edges are given.
+      const edge = (name: string) => Number(url.searchParams.get(name));
+      const inView = (stop: Stop) =>
+        !url.searchParams.has("north") ||
+        (stop.lat !== null && stop.lng !== null && stop.lat >= edge("south") && stop.lat <= edge("north") && stop.lng >= edge("west") && stop.lng <= edge("east"));
+      const items = [...db.values()].filter(inView);
+      return { items, next_cursor: null, total: items.length, offset: 0 };
+    },
     "GET /api/projects/p1/stores/pins": () =>
-      [...db.values()].map(({ uid, lat, lng, status, store_name, installer, day }) => ({ uid, lat, lng, status, store_name, installer, day })),
+      [...db.values()].map(({ uid, lat, lng, status, store_name, installer, day, screens }) => ({
+        uid, lat, lng, status, store_name, installer, day, screen_statuses: screens.map((s) => s.status),
+      })),
     "GET /api/config/maps": () => ({ google_maps_browser_key: "" }),
     "GET /api/route-plans": () => ({ items: [makeRoutePlan({ id: "plan9", name: "GA week" })], next_cursor: null }),
     "GET /api/projects/p1/stores/u1/visits": () => ({ items: [], next_cursor: null }),
@@ -104,7 +114,7 @@ describe("StoresTab", () => {
 
   it("does not re-render on map bounds unless 'only stores in view' is on", async () => {
     let renders = 0;
-    renderTab({}, () => (renders += 1));
+    const { calls } = renderTab({}, () => (renders += 1));
     expect(await screen.findByText("Alpha Mart")).toBeTruthy();
     const settled = renders;
     const pan = (north: number) => act(() => useStoresUi.getState().setBounds({ north, south: 33, east: -84, west: -85 }));
@@ -117,6 +127,59 @@ describe("StoresTab", () => {
     pan(33.75); // only Alpha (33.7) is inside now
     expect(renders).toBeGreaterThan(withFilter);
     await waitFor(() => expect(screen.queryByText("Beta Deli")).toBeNull());
+    const last = calls.filter((call) => call.url.pathname === "/api/projects/p1/stores").at(-1)!;
+    expect(last.url.searchParams.get("north")).toBe("33.75"); // the map view goes to the server
+    expect(last.url.searchParams.get("offset")).toBe("0");
+  });
+
+  it("pages through the stores by number, with the total", async () => {
+    const many = Array.from({ length: 60 }, (_, i) => ({ ...STOPS[0]!, uid: `s${i}`, store_name: `Store ${String(i).padStart(3, "0")}` }));
+    const { calls } = renderTab({
+      "GET /api/projects/p1/stores": (url) => {
+        const offset = Number(url.searchParams.get("offset") ?? 0);
+        const limit = Number(url.searchParams.get("limit"));
+        return { items: many.slice(offset, offset + limit), next_cursor: null, total: many.length, offset };
+      },
+    });
+    expect(await screen.findByText("Store 000")).toBeTruthy();
+    const pager = screen.getByRole("navigation", { name: "Pages" });
+    expect(within(pager).getByText("1–20 of 60")).toBeTruthy();
+    expect(within(pager).getByText(/of 3/)).toBeTruthy();
+    expect((within(pager).getByRole("button", { name: "Previous page" }) as HTMLButtonElement).disabled).toBe(true);
+    await userEvent.click(within(pager).getByRole("button", { name: "Next page" }));
+    expect(await screen.findByText("Store 020")).toBeTruthy();
+    expect(within(pager).getByText("21–40 of 60")).toBeTruthy();
+    await userEvent.click(within(pager).getByRole("button", { name: "Last page" }));
+    expect(await within(pager).findByText("41–60 of 60")).toBeTruthy();
+    expect((within(pager).getByRole("button", { name: "Next page" }) as HTMLButtonElement).disabled).toBe(true);
+    await userEvent.selectOptions(within(pager).getByRole("combobox", { name: "Rows per page" }), "50");
+    expect(await within(pager).findByText("1–50 of 60")).toBeTruthy(); // a new page size starts again at page 1
+    const last = calls.filter((call) => call.url.pathname === "/api/projects/p1/stores").at(-1)!;
+    expect([last.url.searchParams.get("offset"), last.url.searchParams.get("limit")]).toEqual(["0", "50"]);
+  });
+
+  it("one Locations / Screens switch drives the map legend and the top-states chart", async () => {
+    const pin = { lng: -84.39, installer: "Ann", day: 1, route_plan_id: "", visit_state: "none" };
+    const { calls } = renderTab({
+      "GET /api/projects/p1/stores/pins": () => [
+        { ...pin, uid: "u1", lat: 33.7, status: "Upcoming", store_name: "Alpha Mart", screen_statuses: ["Upcoming"] },
+        { ...pin, uid: "u2", lat: 33.8, status: "Completed", store_name: "Beta Deli", screen_statuses: ["Completed", "Completed"] },
+      ],
+    });
+    await screen.findByText("Alpha Mart");
+    const byState = () => calls.filter((call) => call.url.pathname.endsWith("/by-state")).at(-1)!.url;
+    await waitFor(() => expect(byState().searchParams.get("unit")).toBe("stores"));
+    expect(byState().searchParams.get("limit")).toBe("60"); // every state, not just the top ten
+    const legend = screen.getByRole("group", { name: "Map legend" });
+    const before = within(legend).getAllByRole("button").map((button) => button.textContent);
+    await userEvent.click(screen.getByRole("radio", { name: "Screens" }));
+    expect(screen.getByRole("radio", { name: "Screens" }).getAttribute("aria-checked")).toBe("true");
+    await waitFor(() => expect(byState().searchParams.get("unit")).toBe("screens"));
+    expect(await screen.findByRole("region", { name: "Top states by upcoming screens" })).toBeTruthy();
+    const totals = screen.getByText((_, element) => element?.getAttribute("aria-live") === "polite" && /^\d+ screens · \d+ records/.test(element.textContent ?? ""));
+    expect(totals).toBeTruthy();
+    expect(before).toEqual(["Upcoming 1", "Completed 1"]); // stores
+    expect(within(legend).getAllByRole("button").map((button) => button.textContent)).toEqual(["Upcoming 1", "Completed 2"]); // screens
   });
 
   it("refetches the list when a routing build finishes while Stores is open", async () => {
@@ -138,13 +201,20 @@ describe("StoresTab", () => {
   it("marks stores in a route (with the plan) and visited stores, and tints their rows", async () => {
     const routed = { ...STOPS[0]!, route_plan_id: "plan9", last_planned_at: "2026-11-01" };
     const visited = { ...STOPS[1]!, screen_visits: { [STOPS[1]!.screens[0]!.id]: "2026-11-02" }, last_visit_at: "2026-11-02T10:00:00Z" };
-    renderTab({ "GET /api/projects/p1/stores": () => ({ items: [routed, visited], next_cursor: null }) });
+    renderTab({ "GET /api/projects/p1/stores": () => ({ items: [routed, visited], next_cursor: null, total: 2, offset: 0 }) });
     const link = await screen.findByRole("link", { name: /GA week/ });
     expect(link.getAttribute("href")).toBe("/planner/plan9");
-    expect(screen.getByText("Visited")).toBeTruthy();
+    expect(screen.getAllByText("Visited").some((node) => node.closest("[data-uid=\"u2\"]"))).toBe(true);
     const rows = screen.getAllByRole("row").filter((row) => row.getAttribute("data-uid"));
     expect(rows.find((row) => row.getAttribute("data-uid") === "u1")?.className).toContain("bg-blue-50");
     expect(rows.find((row) => row.getAttribute("data-uid") === "u2")?.className).toContain("bg-emerald-50");
+  });
+
+  it("a single-PA project leaves out the PA column", async () => {
+    renderTab({ "GET /api/projects/p1/stores": () => ({ items: [STOPS[0]], next_cursor: null, total: 1, offset: 0 }) });
+    expect(await screen.findByText("Alpha Mart")).toBeTruthy();
+    expect(screen.queryByRole("columnheader", { name: /^PA/ })).toBeNull();
+    expect(screen.getByRole("columnheader", { name: /DMA/ })).toBeTruthy();
   });
 
   it("shows the v2 columns and maps filters, search and sort onto the API", async () => {
@@ -298,6 +368,42 @@ describe("StoresTab", () => {
     await userEvent.click(within(drawer).getByRole("button", { name: "1 Main St NW, Atlanta, GA 30303, USA" }));
     await waitFor(() => expect((within(drawer).getByLabelText("Address *") as HTMLInputElement).value).toBe("1 Main St NW"));
     expect(within(drawer).queryByRole("alert")).toBeNull();
+    const check = calls.find((call) => call.url.pathname === "/api/places/validate")!.url;
+    expect(check.searchParams.get("name")).toBe("Alpha Mart"); // Google can place the business itself
+    expect(within(drawer).queryByText(/Google's pin/)).toBeNull();
+    // A suggestion picked by mistake can be undone.
+    await userEvent.click(within(drawer).getByRole("button", { name: "Undo" }));
+    expect((within(drawer).getByLabelText("Address *") as HTMLInputElement).value).toBe("1 Mian");
+  });
+
+  it("when the address cannot be verified, Search Google lists places and saves the store at the one picked", async () => {
+    let tries = 0;
+    const { calls } = renderTab({
+      "PATCH /api/projects/p1/stores/u1": (_url, init) => {
+        tries += 1;
+        const body = JSON.parse(String(init.body)) as { place?: unknown };
+        return body.place ? makeStop() : jsonError(422, { message: "Address could not be verified by Google.", suggestions: [] });
+      },
+      "GET /api/places/search": () => [
+        { place_id: "p1", name: "Sunset Gas And Grill", formatted: "Sunset, TX 76270", lat: 33.45, lng: -97.77, addr: "", city: "Sunset", state: "TX", zip: "76270" },
+      ],
+    });
+    const drawer = await openDrawer();
+    const addr = await within(drawer).findByLabelText("Address *");
+    await userEvent.clear(addr);
+    await userEvent.type(addr, "101 S Council Rd");
+    await userEvent.click(within(drawer).getByRole("button", { name: "Verify address and save" }));
+    await userEvent.click(await within(drawer).findByRole("button", { name: "Search Google" }));
+    const results = await screen.findByRole("list", { name: "Google results" });
+    const search = calls.find((call) => call.url.pathname === "/api/places/search")!.url;
+    expect(search.searchParams.get("name")).toBe("Alpha Mart");
+    expect(search.searchParams.get("address")).toContain("101 S Council Rd");
+    await userEvent.click(within(results).getByRole("button", { name: /Sunset Gas And Grill/ }));
+    await waitFor(() => expect(tries).toBe(2));
+    expect(calls.filter((call) => call.method === "PATCH").at(-1)?.body).toEqual({
+      addr: "101 S Council Rd",
+      place: { lat: 33.45, lng: -97.77, formatted: "Sunset Gas And Grill · Sunset, TX 76270" },
+    });
   });
 
   it("saves progress from the drawer without touching details", async () => {
@@ -322,7 +428,19 @@ describe("StoresTab", () => {
     for (const name of ["Venue type (no values)", "DD code (no values)", "Screen size (no values)"]) {
       expect(within(bar).getByRole("button", { name }).hasAttribute("disabled")).toBe(true);
     }
+    await userEvent.click(within(bar).getByRole("button", { name: "Status" }));
+    expect(await screen.findByRole("menuitemcheckbox", { name: /Upcoming/ })).toBeTruthy();
+    expect(screen.queryByRole("textbox", { name: /Search/ })).toBeNull(); // short fixed list: no search box
+    await userEvent.keyboard("{Escape}");
     await userEvent.click(within(bar).getByRole("button", { name: "City" }));
+    const search = await screen.findByRole("textbox", { name: "Search City" });
+    await userEvent.type(search, "dec");
+    expect(screen.queryByRole("menuitemcheckbox", { name: /Atlanta/ })).toBeNull();
+    expect((search as HTMLInputElement).value).toBe("dec"); // typing stays in the box
+    await userEvent.clear(search);
+    await userEvent.type(search, "zzz");
+    expect(screen.getByText("No match")).toBeTruthy();
+    await userEvent.clear(search);
     expect(await screen.findByRole("menuitemcheckbox", { name: /Decatur\s*1/ })).toBeTruthy();
     await userEvent.click(screen.getByRole("menuitemcheckbox", { name: /Decatur/ }));
     await userEvent.keyboard("{Escape}");

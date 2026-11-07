@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { MaxHoursField } from "@/features/planner/MaxHoursField";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -8,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { usePlanMutations } from "@/features/planner/api";
 import { InstallerRows, installerProblems, type InstallerDraft } from "@/features/planner/InstallerRows";
-import { isVisited, nextWorkingDay } from "@/features/planner/planModel";
+import { isVisited, maxHoursText, nextWorkingDay, parseMaxHours } from "@/features/planner/planModel";
 import { StartLocationField } from "@/features/planner/StartLocationField";
 import { StorePicker } from "@/features/planner/StorePicker";
 import { skippedMessage } from "@/features/planner/PlanWizard";
@@ -29,25 +30,28 @@ export function NextDayDialog({ bundle, open, onClose }: DialogProps) {
   const mutations = usePlanMutations(plan.id);
   const [date, setDate] = useState(nextWorkingDay(current.date));
   const [perDay, setPerDay] = useState(plan.stops_per_day);
+  const [maxHours, setMaxHours] = useState(maxHoursText(plan.max_day_hours));
   const [starts, setStarts] = useState<Record<string, StartLocation | null>>({});
 
   useEffect(() => {
     if (!open) return;
     setDate(nextWorkingDay(current.date));
     setPerDay(plan.stops_per_day);
+    setMaxHours(maxHoursText(plan.max_day_hours));
     setStarts(Object.fromEntries(plan.installers.map((i) => [i.name, bundle.next_starts[i.name] ?? i.start])));
-  }, [open, bundle, current.date, plan.installers, plan.stops_per_day]);
+  }, [open, bundle, current.date, plan.installers, plan.stops_per_day, plan.max_day_hours]);
 
   const today = bundle.stops.filter((stop) => stop.day === current.number);
   const missed = today.filter((stop) => !isVisited(stop)).length;
   const openCount = bundle.stops.filter((stop) => !isVisited(stop)).length;
-  const ready = date > current.date && plan.installers.every((i) => starts[i.name]) && perDay >= 1 && perDay <= 50;
+  const ready = date > current.date && plan.installers.every((i) => starts[i.name]) && perDay >= 1 && perDay <= 50 && parseMaxHours(maxHours) !== null;
 
   const submit = async () => {
     try {
       await mutations.nextDay.mutateAsync({
         date,
         stops_per_day: perDay,
+        max_day_hours: parseMaxHours(maxHours) ?? 0,
         starts: Object.fromEntries(Object.entries(starts).filter((entry): entry is [string, StartLocation] => entry[1] !== null)),
         version: plan.version,
       });
@@ -64,7 +68,8 @@ export function NextDayDialog({ bundle, open, onClose }: DialogProps) {
         <DialogHeader>
           <DialogTitle>Plan day {current.number + 1}</DialogTitle>
           <DialogDescription>
-            Day {current.number} ({current.date}) closes. {missed} of its {today.length} stops were not visited and go back into the pool;
+            Stops per day and max driving below apply to this day only; the plan's defaults (Edit plan) stay as they
+            are. Day {current.number} ({current.date}) closes. {missed} of its {today.length} stops were not visited and go back into the pool;
             all {openCount} open stops are recalculated from the starts below.
           </DialogDescription>
         </DialogHeader>
@@ -75,9 +80,10 @@ export function NextDayDialog({ bundle, open, onClose }: DialogProps) {
             {date <= current.date && <p className="text-xs text-rose-700">Pick a date after {current.date}.</p>}
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="next-per-day">Stops per day</Label>
+            <Label htmlFor="next-per-day">Stops per day (this day)</Label>
             <Input id="next-per-day" type="number" min={1} max={50} value={perDay} onChange={(e) => setPerDay(Number(e.target.value))} />
           </div>
+          <MaxHoursField id="next-max-hours" label="Max driving (this day, hours)" value={maxHours} onChange={setMaxHours} />
         </div>
         <div className="space-y-3">
           <p className="text-xs text-slate-500">Each installer starts where they finished today unless you type a new location.</p>
@@ -136,6 +142,7 @@ export function EditPlanDialog({ bundle, open, onClose }: DialogProps) {
   const mutations = usePlanMutations(plan.id);
   const [name, setName] = useState(plan.name);
   const [perDay, setPerDay] = useState(plan.stops_per_day);
+  const [maxHours, setMaxHours] = useState(maxHoursText(plan.max_day_hours));
   const [rows, setRows] = useState<InstallerDraft[]>([]);
   const [replan, setReplan] = useState<Replan>("forecast");
 
@@ -143,6 +150,7 @@ export function EditPlanDialog({ bundle, open, onClose }: DialogProps) {
     if (!open) return;
     setName(plan.name);
     setPerDay(plan.stops_per_day);
+    setMaxHours(maxHoursText(plan.max_day_hours));
     setRows(plan.installers.map((i) => ({ name: i.name, start: i.start })));
     setReplan("forecast");
   }, [open, plan]);
@@ -153,6 +161,7 @@ export function EditPlanDialog({ bundle, open, onClose }: DialogProps) {
       await mutations.update.mutateAsync({
         name: name.trim(),
         stops_per_day: perDay,
+        max_day_hours: parseMaxHours(maxHours) ?? 0,
         installers: rows.map((row) => ({ name: row.name.trim(), start: row.start! })),
         replan,
         version: plan.version,
@@ -177,9 +186,10 @@ export function EditPlanDialog({ bundle, open, onClose }: DialogProps) {
             <Input id="edit-name" value={name} onChange={(e) => setName(e.target.value)} />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="edit-per-day">Stops per day</Label>
+            <Label htmlFor="edit-per-day">Default stops per day</Label>
             <Input id="edit-per-day" type="number" min={1} max={50} value={perDay} onChange={(e) => setPerDay(Number(e.target.value))} />
           </div>
+          <MaxHoursField id="edit-max-hours" label="Default max driving per day (hours)" value={maxHours} onChange={setMaxHours} />
         </div>
         <div className="max-h-[45vh] overflow-y-auto">
           <InstallerRows rows={rows} onChange={setRows} />

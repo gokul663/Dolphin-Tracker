@@ -5,7 +5,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query
 
 from dolphin_tracker.api.deps import SettingsDep, get_places_service
-from dolphin_tracker.api.schemas import GeocodeResult, MapsConfig, StoreFieldSpec, Suggestions
+from dolphin_tracker.api.schemas import GeocodeResult, MapsConfig, PlaceHit, StoreFieldSpec, Suggestions
 from dolphin_tracker.domain.models import FieldDef
 from dolphin_tracker.domain.schema import default_field_schema
 from dolphin_tracker.domain.validation import STORE_FIELDS
@@ -40,8 +40,22 @@ def store_fields() -> list[StoreFieldSpec]:
 
 
 @router.get("/places/validate", response_model=GeocodeResult)
-def validate_address(service: ServiceDep, address: Annotated[str, Query(min_length=1, max_length=500)]) -> dict:
-    return service.validate(address)
+def validate_address(
+    service: ServiceDep,
+    address: Annotated[str, Query(min_length=1, max_length=500)],
+    name: Annotated[str, Query(max_length=300, description="The store's name: Google can place the business")] = "",
+) -> dict:
+    return service.validate(address, name)
+
+
+@router.get("/places/search", response_model=list[PlaceHit])
+def search_places(
+    service: ServiceDep,
+    address: Annotated[str, Query(min_length=1, max_length=500)],
+    name: Annotated[str, Query(max_length=300)] = "",
+) -> list[dict]:
+    """What Google Search lists for a store (its name with the address, then the address alone)."""
+    return service.search(address, name)
 
 
 @router.get("/places/autocomplete", response_model=Suggestions)

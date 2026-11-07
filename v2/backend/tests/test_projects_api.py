@@ -38,8 +38,8 @@ def stop_input(i: int, **extra) -> dict:
 
 def project_body(**overrides) -> dict:
     body = {
-        "name": " Atlanta refresh ", "pa": "North", "project_type": "new_installation", "installers": ["Ann", "Bo"],
-        "pa_percentage": 40, "dolphin_percentage": 60, "stops_per_day": 4,
+        "name": " Atlanta refresh ", "pa": "North", "project_type": "new_installation",
+        "pa_percentage": 40, "dolphin_percentage": 60,
         "stops": [stop_input(i) for i in range(10)],
     }
     body.update(overrides)
@@ -72,9 +72,21 @@ class ProjectApiTestCase(unittest.TestCase):
 
     def create_project(self, **overrides) -> dict:
         response = self.client.post("/api/projects", json=project_body(**overrides))
-        self.assertIn(response.status_code, (201, 202), response.text)
-        self.invoker.wait()
+        self.assertEqual(response.status_code, 201, response.text)
         return response.json()
+
+    def create_routed_project(self, installers=("Ann", "Bo"), stops_per_day=4, **overrides) -> dict:
+        """A legacy project-routed project (pre route plans): created, then given installers and built in place."""
+        created = self.create_project(**overrides)
+        project_id = created["project"]["id"]
+        self.projects._items[project_id] = self.projects.get(project_id).model_copy(
+            update={"installers": list(installers), "stops_per_day": stops_per_day}
+        )
+        if installers:
+            response = self.client.post(f"/api/projects/{project_id}/routing/recluster")
+            self.assertEqual(response.status_code, 202, response.text)
+            self.invoker.wait()
+        return {**created, "project": self.client.get(f"/api/projects/{project_id}").json()}
 
 
 class CreateProjectApiTests(ProjectApiTestCase):
@@ -88,12 +100,11 @@ class CreateProjectApiTests(ProjectApiTestCase):
         self.assertEqual(missing.json()["detail"]["stops"][0]["errors"], ["IBC# is required"])
 
     def test_create_needs_only_a_name_a_type_and_a_pa(self):
-        """Installers and the percentages are often unknown when a project starts; its stores wait unrouted."""
-        body = project_body(installers=[], pa_percentage=None, dolphin_percentage=None)
+        """The percentages are often unknown when a project starts; its stores wait unrouted for a route plan."""
+        body = project_body(pa_percentage=None, dolphin_percentage=None)
         response = self.client.post("/api/projects", json=body)
         self.assertEqual(response.status_code, 201, response.text)
         body = response.json()
-        self.assertIsNone(body["job_id"])
         project = self.projects.get(body["project"]["id"])
         self.assertEqual(
             (project.installers, project.pa_percentage, project.routing_status), ([], None, RoutingStatus.READY)
@@ -119,30 +130,25 @@ class CreateProjectApiTests(ProjectApiTestCase):
         self.assertEqual([(s.stick_number, s.status) for s in saved.screens], [("S1", "Upcoming"), ("S2", "Shipped")])
         self.assertEqual(saved.status, "Upcoming")  # derived: the least-progressed screen
 
-    def test_create_with_stops_returns_202_and_routes_on_the_worker(self):
+    def test_create_with_stops_starts_no_routing(self):
+        """Projects are stores only; routes are built in route plans."""
         response = self.client.post("/api/projects", json=project_body())
-        self.assertEqual(response.status_code, 202, response.text)
+        self.assertEqual(response.status_code, 201, response.text)
         body = response.json()
-        project, job_id = body["project"], body["job_id"]
-        self.assertEqual(project["name"], "Atlanta refresh")
-        self.assertEqual((project["routing_status"], project["routing_job_id"]), ("building", job_id))
+        self.assertNotIn("job_id", body)
+        project = body["project"]
+        routing = (project["routing_status"], project["routing_job_id"], project["installers"])
+        self.assertEqual(routing, ("ready", "", []))
         self.assertEqual(project["stop_count"], 10)
         self.assertEqual(project["field_schema"], [])  # store attributes are first-class; no default extras
-        self.invoker.wait()
+        self.assertEqual(self.invoker._threads, [])
+        self.assertEqual({stop.installer for stop in self.stores.list_all(project["id"])}, {""})
 
-        job = self.client.get(f"/api/jobs/{job_id}").json()
-        self.assertEqual((job["type"], job["status"], job["payload"]["mode"]), ("routing_build", "succeeded", "create"))
-        project = self.client.get(f"/api/projects/{project['id']}").json()
-        self.assertEqual((project["routing_status"], project["routing_job_id"]), ("ready", ""))
-
-        bundle = self.client.get(f"/api/projects/{project['id']}/routes").json()
-        self.assertEqual(bundle["installers"], ["Ann", "Bo"])
-        self.assertEqual(bundle["stops_per_day"], 4)
-        stops = [stop for days in bundle["routes"].values() for day in days for stop in day]
-        self.assertEqual(len(stops), 10)
-        self.assertTrue(all(len(day) <= 4 for days in bundle["routes"].values() for day in days))
-        self.assertEqual(sorted(stop["display_id"] for stop in stops), sorted(f"S{i}" for i in range(1, 11)))
-        self.assertEqual(sum(stat["total"] for stat in bundle["stats"].values()), 10)
+    def test_create_rejects_installers_and_a_per_day_cap(self):
+        for overrides in ({"installers": ["Ann"]}, {"stops_per_day": 4}):
+            response = self.client.post("/api/projects", json=project_body(**overrides))
+            self.assertEqual(response.status_code, 422, overrides)
+        self.assertEqual(self.projects.list().items, [])
 
     def test_minted_stop_fields(self):
         self.app.dependency_overrides[get_worker_invoker] = lambda: NoopInvoker()  # inspect stops before routing
@@ -154,11 +160,10 @@ class CreateProjectApiTests(ProjectApiTestCase):
         self.assertEqual([s.status.value for s in stops], ["Completed", "Upcoming"])
         self.assertEqual(len({s.uid for s in stops}), 2)
 
-    def test_create_without_stops_returns_201_and_no_job(self):
+    def test_create_without_stops_returns_201(self):
         response = self.client.post("/api/projects", json=project_body(stops=[]))
         self.assertEqual(response.status_code, 201)
         body = response.json()
-        self.assertIsNone(body["job_id"])
         self.assertEqual(body["project"]["routing_status"], "ready")
         self.assertEqual(self.invoker._threads, [])
 
@@ -169,10 +174,10 @@ class CreateProjectApiTests(ProjectApiTestCase):
             stop_input(2, addr="", owner_email="nope"),
             stop_input(3, fields={"status": "x"}),  # a core attribute cannot be an extra field
         ]
-        response = self.client.post("/api/projects", json=project_body(stops=stops, installers=["A", "A"]))
+        response = self.client.post("/api/projects", json=project_body(stops=stops))
         self.assertEqual(response.status_code, 422)
         detail = response.json()["detail"]
-        self.assertEqual(detail["errors"], ["Duplicate installer names: A"])
+        self.assertEqual(detail["errors"], [])
         self.assertEqual([row["index"] for row in detail["stops"]], [1, 2, 3])
         expected = ["Address is required", "Store owner email: enter a valid email"]
         self.assertEqual(detail["stops"][1]["errors"], expected)
@@ -180,7 +185,7 @@ class CreateProjectApiTests(ProjectApiTestCase):
         self.assertEqual(self.projects.list().items, [])
 
     def test_pydantic_bounds(self):
-        for overrides in ({"stops_per_day": 51}, {"pa_percentage": 101}, {"project_type": "x"}):
+        for overrides in ({"store_percentage": -1}, {"pa_percentage": 101}, {"project_type": "x"}):
             response = self.client.post("/api/projects", json=project_body(**overrides))
             self.assertEqual(response.status_code, 422, overrides)
 
@@ -206,3 +211,34 @@ class CreateProjectApiTests(ProjectApiTestCase):
 
     def test_routes_404_for_unknown_project(self):
         self.assertEqual(self.client.get("/api/projects/nope/routes").status_code, 404)
+
+
+class NeedsAttentionTests(ProjectApiTestCase):
+    """Stores added by hand without a name or a verified address: flagged, counted, filterable, fixed in place."""
+
+    def test_added_anyway_flagged_counted_filtered_and_cleared_when_fixed(self):
+        stops = [
+            stop_input(0),
+            stop_input(1, store_name="", needs_attention=["store_name"]),
+            stop_input(2, lat=None, lng=None, needs_attention=["address"]),
+        ]
+        refused = self.client.post("/api/projects", json=project_body(stops=[stop_input(3, store_name="")]))
+        self.assertEqual(refused.status_code, 422)  # no name and not added anyway: still an error
+        project_id = self.create_project(stops=stops)["project"]["id"]
+        flags = {s.external_id: [str(r) for r in s.needs_attention] for s in self.stores.list_all(project_id)}
+        self.assertEqual(flags, {"IBC-0": [], "IBC-1": ["store_name"], "IBC-2": ["address"]})
+
+        summary = self.client.get(f"/api/projects/{project_id}").json()
+        self.assertEqual(summary["kpi"]["needs_attention"], 2)
+        page = self.client.get(f"/api/projects/{project_id}/stores", params={"needs_attention": "true"}).json()
+        self.assertEqual(sorted(s["external_id"] for s in page["items"]), ["IBC-1", "IBC-2"])
+
+        named = next(s for s in self.stores.list_all(project_id) if s.external_id == "IBC-1")
+        fixed = self.client.patch(f"/api/projects/{project_id}/stores/{named.uid}", json={"store_name": "Shop 1"})
+        self.assertEqual(fixed.status_code, 200, fixed.text)
+        self.assertEqual(fixed.json()["needs_attention"], [])
+        placed = next(s for s in self.stores.list_all(project_id) if s.external_id == "IBC-2")
+        pin = {"place": {"lat": 33.7, "lng": -84.4, "formatted": "Shop 2, Atlanta"}}
+        fixed = self.client.patch(f"/api/projects/{project_id}/stores/{placed.uid}", json=pin)
+        self.assertEqual(fixed.json()["needs_attention"], [])
+        self.assertEqual(self.client.get(f"/api/projects/{project_id}").json()["kpi"]["needs_attention"], 0)

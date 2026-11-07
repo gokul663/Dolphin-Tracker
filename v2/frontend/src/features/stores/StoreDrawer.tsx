@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router";
 import { useRoutePlans } from "@/features/planner/api";
 import { VisitHistory, VisitPanel } from "@/features/visits/VisitPanel";
-import { AlertTriangle, ChevronRight, ClipboardCheck, ChevronsDownUp, ChevronsUpDown, Eye, EyeOff, ImageOff, Loader2, MapPin, Wifi } from "lucide-react";
+import { AlertTriangle, ChevronRight, ClipboardCheck, ChevronsDownUp, ChevronsUpDown, Eye, EyeOff, ImageOff, Loader2, MapPin, Undo2, Wifi } from "lucide-react";
 import { toast } from "sonner";
 import { TriStateCheckbox } from "@/components/TriStateCheckbox";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,8 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useStoreFields, useValidateAddress } from "@/features/places/api";
+import { GoogleSearchPicker } from "@/features/places/GoogleSearchPicker";
+import type { PlaceHit } from "@/lib/api/types";
 import { ScreensEditor } from "@/features/stores/ScreensEditor";
 import { useStore, useUpdateProgress, useUpdateStoreDetails } from "@/features/stores/api";
 import {
@@ -319,12 +321,18 @@ function DetailsEditor({
     setServerErrors(({ [name]: _gone, ...rest }) => rest);
   };
 
-  const save = async () => {
+  // The address as it was before a suggestion was picked: "Undo" puts it back.
+  const [beforePick, setBeforePick] = useState<Pick<DetailsForm, "addr" | "city" | "state" | "zip"> | null>(null);
+  const addressLine = ["addr", "city", "state", "zip"].map((key) => String(form[key] ?? "")).filter(Boolean).join(", ");
+
+  const save = async (place?: PlaceHit) => {
     setTouched(true);
     if (Object.keys(detailsErrors(form, specs)).length) return;
     setGeoProblem(null);
     try {
-      await update.mutateAsync({ uid: stop.uid, body: patch });
+      const body = place ? { ...patch, place: { lat: place.lat, lng: place.lng, formatted: [place.name, place.formatted].filter(Boolean).join(" · ") } } : patch;
+      await update.mutateAsync({ uid: stop.uid, body });
+      setBeforePick(null);
       toast.success(addressChanged(patch) ? "Address verified and saved; the route is marked for re-optimising" : "Store saved");
     } catch (error) {
       const detail = error instanceof ApiError ? error.validation : null;
@@ -337,9 +345,12 @@ function DetailsEditor({
   /** A Google suggestion is a full formatted address; resolve it into parts before saving. */
   const applySuggestion = async (suggestion: string) => {
     try {
-      const geo = await validate.mutateAsync(suggestion);
+      const geo = await validate.mutateAsync({ address: suggestion, name: String(form.store_name ?? stop.store_name) });
       if (!geo.ok) return toast.error("That suggestion could not be verified either");
-      setForm((current) => ({ ...current, addr: geo.addr, city: geo.city, state: geo.state, zip: geo.zip }));
+      // Google may know only the road: keep the suggestion's own street line (with its house number) then.
+      const addr = geo.partial || !geo.addr ? suggestion.split(",")[0]!.trim() : geo.addr;
+      setBeforePick((kept) => kept ?? { addr: form.addr ?? null, city: form.city ?? null, state: form.state ?? null, zip: form.zip ?? null });
+      setForm((current) => ({ ...current, addr, city: geo.city || current.city, state: geo.state || current.state, zip: geo.zip || current.zip }));
       setGeoProblem(null);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not check the suggestion");
@@ -385,6 +396,21 @@ function DetailsEditor({
                   <AlertTriangle size={12} /> The address changed after routing; rebuild routes to re-optimise.
                 </p>
               )}
+              {beforePick && (
+                <p className="flex items-center gap-2 text-xs text-slate-600">
+                  Address taken from Google's suggestion.
+                  <Button
+                    size="xs"
+                    variant="ghost"
+                    onClick={() => {
+                      setForm((current) => ({ ...current, ...beforePick }));
+                      setBeforePick(null);
+                    }}
+                  >
+                    <Undo2 /> Undo
+                  </Button>
+                </p>
+              )}
               {geoProblem && (
                 <div role="alert" className="space-y-2 rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">
                   <p>{geoProblem.message}</p>
@@ -399,6 +425,10 @@ function DetailsEditor({
                       ))}
                     </ul>
                   )}
+                  <div className="flex flex-wrap items-center gap-2 border-t border-rose-200 pt-2 text-xs">
+                    <span>Not right?</span>
+                    <GoogleSearchPicker address={addressLine} name={String(form.store_name ?? stop.store_name)} onPick={(hit) => void save(hit)} />
+                  </div>
                 </div>
               )}
             </>
@@ -425,7 +455,7 @@ function DetailsEditor({
         <Button variant="ghost" disabled={!dirty} onClick={() => setForm(detailsFormFrom(stop, specs))}>
           Discard
         </Button>
-        <Button onClick={save} disabled={!dirty || update.isPending}>
+        <Button onClick={() => void save()} disabled={!dirty || update.isPending}>
           {update.isPending && <Loader2 className="animate-spin" />} {addressChanged(patch) ? "Verify address and save" : "Save details"}
         </Button>
       </div>

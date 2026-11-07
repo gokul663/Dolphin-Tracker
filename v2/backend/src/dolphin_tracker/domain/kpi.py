@@ -13,18 +13,23 @@ from pydantic import Field
 
 from dolphin_tracker.domain.base import ApiModel
 from dolphin_tracker.domain.parsing import clean_cell
-from dolphin_tracker.domain.statuses import LEGACY_STATUSES, PENDING_STATUSES, ScreenStatus
+from dolphin_tracker.domain.statuses import LEGACY_STATUSES, PENDING_STATUSES, ScreenStatus, VisitState, visit_state
 
 STATUSES = tuple(status.value for status in ScreenStatus)
 FINISHED = frozenset({ScreenStatus.ARCHIVED, ScreenStatus.CANCELLED})
 KPI_ATTRIBUTES = (
     "uid", "status", "screens", "installer", "installer_name", "fields", "dma", "venue_type",
     "committed_dolphin_screens", "committed_store_tvs", "addr", "city", "state", "zip",
+    "screen_visits", "last_planned_at", "needs_attention",
 )
 
 
 def _zeroes() -> dict[str, int]:
     return dict.fromkeys(STATUSES, 0)
+
+
+def _visit_zeroes() -> dict[str, int]:
+    return dict.fromkeys((state.value for state in VisitState), 0)
 
 
 class Breakdown(ApiModel):
@@ -40,6 +45,8 @@ class Kpi(ApiModel):
     offline: int = 0  # Offline: shown on its own, not routed (STORE-MODEL §7 #2)
     other: int = 0  # Archived + Cancelled
     by_status: dict[str, int] = Field(default_factory=_zeroes)  # stores by derived status, all eight
+    by_visit: dict[str, int] = Field(default_factory=_visit_zeroes)  # stores by visit state since their latest plan
+    needs_attention: int = 0  # stores added without a name or a verified address, not fixed yet
     screens_total: int = 0
     screens_by_status: dict[str, int] = Field(default_factory=_zeroes)
     committed_dolphin_screens: int = 0  # sum of the sheet's committed values
@@ -87,8 +94,13 @@ def kpi_summary(rows: Iterable[Mapping[str, Any]]) -> Kpi:
         status = _status(row.get("status"))
         fields = row.get("fields") or {}
         kpi.total += 1
+        if row.get("needs_attention"):
+            kpi.needs_attention += 1
         kpi.by_status[status.value] += 1
         screens = row.get("screens") or [{"status": status.value, "is_dolphin_screen": True}]
+        screen_ids = [screen["id"] for screen in row.get("screens") or [] if screen.get("id")]
+        visit = visit_state(screen_ids, row.get("screen_visits") or {}, row.get("last_planned_at") or "")
+        kpi.by_visit[visit.value] += 1
         for screen in screens:
             kpi.screens_total += 1
             kpi.screens_by_status[_status(screen.get("status")).value] += 1

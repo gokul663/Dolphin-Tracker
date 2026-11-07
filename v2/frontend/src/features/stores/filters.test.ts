@@ -25,12 +25,21 @@ describe("filter bar helpers", () => {
     expect(facetDisabled(undefined, "dma", [])).toBe(false); // not loaded yet: don't flash grey
   });
 
+  it("leaves out stores without an installer: no installers at all greys the filter out", () => {
+    const none = { ...OPTIONS, installer: [{ value: "", count: 614 }] };
+    expect(facetOptions(none, "installer", [])).toEqual([]);
+    expect(facetDisabled(none, "installer", [])).toBe(true);
+    const some = { ...OPTIONS, installer: [{ value: "", count: 3 }, { value: "Ann", count: 2 }] };
+    expect(facetOptions(some, "installer", [])).toEqual([{ value: "Ann", count: 2 }]);
+    expect(facetDisabled(some, "installer", [])).toBe(false);
+  });
+
   it("keeps a selected value the server no longer lists, at count 0", () => {
     expect(facetOptions(OPTIONS, "city", ["Macon"])).toEqual([{ value: "Atlanta", count: 2 }, { value: "Macon", count: 0 }]);
   });
 
   it("labels values and summarises the selection", () => {
-    expect(optionLabel("installer", "")).toBe("Unassigned");
+    expect(optionLabel("installer", "Ann")).toBe("Ann");
     expect(optionLabel("status", "Invitation Email Sent")).toBe("Invitation Email Sent");
     expect(facetSummary("dd_code", [])).toBe("DD code");
     expect(facetSummary("state", ["GA"])).toBe("State: GA");

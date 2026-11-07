@@ -27,7 +27,7 @@ from dolphin_tracker.domain.parsing import read_table
 from dolphin_tracker.repositories.files import FileStore, result_key
 from dolphin_tracker.repositories.jobs import JobRepository
 from dolphin_tracker.repositories.projects import ProjectRepository
-from dolphin_tracker.services.geocoding import Geocoder
+from dolphin_tracker.services.geocoding import Geocoder, house_number, resolve_address
 
 logger = Logger(child=True)
 
@@ -111,15 +111,22 @@ def verify_row(row: MappedRow, geocoder: Geocoder) -> dict[str, Any]:
         result["error"] = "Missing address"
         return result
 
-    geo = geocoder.geocode(query)
-    # Places only confirms a geocoded address (§9 #3: it costs a request per row); a failed geocode has nothing
-    # to confirm. Partial matches still get the call.
-    place = (
-        geocoder.find_place(f"{row.store_name}, {query}" if row.store_name else query)
-        if geo.get("ok")
-        else {"ok": False}
-    )
-    result["verified_by"] = [name for name, hit in (("geocoding", geo), ("places", place)) if hit.get("ok")]
+    geo = resolve_address(geocoder, query, row.store_name)
+    if geo.get("matched_by") == "places":
+        place = {"ok": True, "name": geo.get("place_name") or ""}  # the business itself placed the store
+    else:
+        # Places only confirms a geocoded address (§9 #3: it costs a request per row); a failed geocode has
+        # nothing to confirm. Partial matches still get the call. A place at another house number confirms nothing.
+        place = (
+            geocoder.find_place(f"{row.store_name}, {query}" if row.store_name else query)
+            if geo.get("ok")
+            else {"ok": False}
+        )
+        if place.get("ok") and house_number(place.get("formatted") or "") != house_number(query):
+            place = {"ok": False}
+    first = {"autocomplete": "autocomplete", "places": "places"}.get(geo.get("matched_by") or "", "geocoding")
+    result["verified_by"] = [name for name, hit in ((first, geo), ("places", place)) if hit.get("ok")]
+    result["verified_by"] = list(dict.fromkeys(result["verified_by"]))
 
     if geo.get("ok"):
         result.update(
@@ -135,7 +142,11 @@ def verify_row(row: MappedRow, geocoder: Geocoder) -> dict[str, Any]:
             place_name=(place.get("name") or "") if place.get("ok") else "",
         )
         if geo.get("partial"):
-            result.update(status="needs_review", confidence=40, error="Partial match — please review")
+            result.update(
+                status="needs_review",
+                confidence=40,
+                error="Google could not find this house number — pick a suggestion or correct the address",
+            )
         else:
             result.update(status="valid", confidence=100 if place.get("ok") else 70)
         return result
@@ -147,7 +158,7 @@ def verify_row(row: MappedRow, geocoder: Geocoder) -> dict[str, Any]:
     result.update(
         status="needs_review",
         confidence=0,
-        suggestions=geo.get("suggestions") or geocoder.autocomplete(query),
+        suggestions=geo.get("suggestions") or [],
         error=error,
     )
     return result

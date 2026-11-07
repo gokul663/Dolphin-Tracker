@@ -288,7 +288,8 @@ class RoutePlanServiceTests(ServiceTestCase):
         after = self.service.next_day(bundle.plan.id, NextDay(date="2026-11-09", starts={"West": hotel},
                                                               stops_per_day=4))
         self.assertEqual(after.plan.days[-1].starts["West"], hotel)
-        self.assertEqual(after.plan.stops_per_day, 4)
+        self.assertEqual(after.plan.days[-1].stops_per_day, 4)  # this day only
+        self.assertEqual(after.plan.stops_per_day, 2)  # the plan's default is unchanged
         with self.assertRaises(ValidationFailed):
             self.service.next_day(bundle.plan.id, NextDay(date="2026-11-10", starts={"Nobody": hotel}))
 

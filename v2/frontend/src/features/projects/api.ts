@@ -47,14 +47,6 @@ export function useRefreshWhenRoutingFinishes(project: Project | undefined) {
   }, [project?.routing_status, project?.id, client]);
 }
 
-function useInvalidateProject(projectId: string) {
-  const client = useQueryClient();
-  return () => Promise.all([
-    client.invalidateQueries({ queryKey: keys.project(projectId) }),
-    client.invalidateQueries({ queryKey: keys.projects, exact: false, refetchType: "active" }),
-  ]);
-}
-
 export function useCreateProject() {
   const client = useQueryClient();
   return useMutation({
@@ -90,27 +82,3 @@ export function useDeleteProject() {
   });
 }
 
-/** Routing jobs: add installer, rebalance, recluster. The project query then polls until `ready`. */
-export function useRoutingJob(projectId: string) {
-  const invalidate = useInvalidateProject(projectId);
-  return useMutation({
-    mutationFn: (action: { kind: "add_installer"; name: string } | { kind: "rebalance" } | { kind: "recluster" }) => {
-      if (action.kind === "add_installer") return projectsApi.addInstaller(projectId, action.name);
-      if (action.kind === "rebalance") return projectsApi.rebalance(projectId);
-      return projectsApi.recluster(projectId);
-    },
-    onSuccess: invalidate,
-  });
-}
-
-export function useRenameInstaller(projectId: string) {
-  const client = useQueryClient();
-  return useMutation({
-    mutationFn: ({ oldName, newName }: { oldName: string; newName: string }) =>
-      projectsApi.renameInstaller(projectId, oldName, newName),
-    onSuccess: (project) => {
-      client.setQueryData(keys.project(projectId), project);
-      return client.invalidateQueries({ queryKey: keys.project(projectId) });
-    },
-  });
-}

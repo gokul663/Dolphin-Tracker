@@ -9,6 +9,7 @@ const StoresTab = lazy(() => import("@/features/stores/StoresTab").then((m) => (
 const PlannerHome = lazy(() => import("@/features/planner/PlannerHome").then((m) => ({ default: m.PlannerHome })));
 const PlanWizard = lazy(() => import("@/features/planner/PlanWizard").then((m) => ({ default: m.PlanWizard })));
 const PlanPage = lazy(() => import("@/features/planner/PlanPage").then((m) => ({ default: m.PlanPage })));
+const StoresFullPage = lazy(() => import("@/features/stores/StoresFullPage").then((m) => ({ default: m.StoresFullPage })));
 const SettingsTab = lazy(() => import("@/features/settings/SettingsTab").then((m) => ({ default: m.SettingsTab })));
 
 const tab = (element: ReactNode) => (
@@ -32,6 +33,9 @@ export const router = createBrowserRouter([
           { path: "settings", element: tab(<SettingsTab />) },
         ],
       },
+      // The Stores tab's map and chart on pages of their own (opened in a new tab, filters in the link).
+      { path: "projects/:projectId/map", element: tab(<StoresFullPage view="map" />) },
+      { path: "projects/:projectId/states", element: tab(<StoresFullPage view="states" />) },
       { path: "planner", element: tab(<PlannerHome />) },
       { path: "planner/new", element: tab(<PlanWizard />) },
       { path: "planner/:planId", element: tab(<PlanPage />) },

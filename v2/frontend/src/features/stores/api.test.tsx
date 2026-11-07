@@ -33,7 +33,7 @@ describe("useUpdateStoreDetails", () => {
     mockApi({ "PATCH /api/projects/p1/stores/u1": () => makeStop() });
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     for (const key of [listKey("store_name"), listKey("fields.dma"), listKey("display_id", "atl"), keys.pins("p1", {})]) {
-      client.setQueryData(key, key[3] === "pins" ? [] : { pages: [], pageParams: [] });
+      client.setQueryData(key, key[3] === "pins" ? [] : { items: [], next_cursor: null, total: 0, offset: 0 });
     }
     const { result } = renderHook(() => useUpdateStoreDetails("p1"), { wrapper: wrapperWith(client) });
     return { client, done: act(() => result.current.mutateAsync({ uid: "u1", body })) };

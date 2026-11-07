@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { MaxHoursField } from "@/features/planner/MaxHoursField";
 import { useNavigate } from "react-router";
 import { ArrowLeft, ArrowRight, Loader2, Route } from "lucide-react";
 import { toast } from "sonner";
@@ -9,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useCreatePlan, usePreviewPlan } from "@/features/planner/api";
 import { emptyInstaller, InstallerRows, installerProblems, type InstallerDraft } from "@/features/planner/InstallerRows";
-import { dayMiles, planStopKey, todayIso } from "@/features/planner/planModel";
+import { dayMiles, parseMaxHours, planStopKey, todayIso } from "@/features/planner/planModel";
 import { StorePicker } from "@/features/planner/StorePicker";
 import { US_STATE_NAMES } from "@/features/routes/routeModel";
 import type { Pin, PlanPreview, PoolStore, RoutePlanCreate, SkippedStore } from "@/lib/api/types";
@@ -42,6 +43,7 @@ export function PlanWizard() {
   const [selected, setSelected] = useState<Map<string, PoolStore>>(new Map());
   const [installers, setInstallers] = useState<InstallerDraft[]>([emptyInstaller()]);
   const [perDay, setPerDay] = useState(10);
+  const [maxHours, setMaxHours] = useState("");
   const [startDate, setStartDate] = useState(todayIso());
   const [name, setName] = useState("");
   const [preview, setPreview] = useState<PlanPreview | null>(null);
@@ -54,10 +56,11 @@ export function PlanWizard() {
     name: name.trim() || defaultName(stores, startDate),
     start_date: startDate,
     stops_per_day: perDay,
+    max_day_hours: parseMaxHours(maxHours) ?? 0,
     installers: installers.map((row) => ({ name: row.name.trim(), start: row.start! })),
     stores: stores.map((store) => ({ project_id: store.project_id, stop_uid: store.uid })),
   });
-  const canNext = [stores.length > 0, problems.length === 0, perDay >= 1 && perDay <= 50 && Boolean(startDate), true][step];
+  const canNext = [stores.length > 0, problems.length === 0, perDay >= 1 && perDay <= 50 && Boolean(startDate) && parseMaxHours(maxHours) !== null, true][step];
 
   const goto = async (next: number) => {
     if (next === 3) {
@@ -112,12 +115,15 @@ export function PlanWizard() {
       )}
 
       {step === 2 && (
-        <Card className="grid gap-4 p-5 sm:grid-cols-3">
+        <Card className="grid gap-4 p-5 sm:grid-cols-2 lg:grid-cols-4">
           <div className="space-y-1.5">
             <Label htmlFor="per-day">Stops per day (each installer)</Label>
             <Input id="per-day" type="number" min={1} max={50} value={perDay} onChange={(e) => setPerDay(Number(e.target.value))} />
-            <p className="text-xs text-slate-500">Stores beyond one day roll into the next days.</p>
+            <p className="text-xs text-slate-500">
+              The plan's default, like the max driving: change either for a single day when you plan the next day.
+            </p>
           </div>
+          <MaxHoursField id="max-hours" value={maxHours} onChange={setMaxHours} />
           <div className="space-y-1.5">
             <Label htmlFor="start-date">Start date</Label>
             <Input id="start-date" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
@@ -168,7 +174,7 @@ function PreviewStep({ preview, perDay, installers }: { preview: PlanPreview; pe
   const states = [...new Set(preview.stops.map((stop) => stop.state.toUpperCase()).filter(Boolean))];
   const pins: Pin[] = preview.stops.flatMap((stop) =>
     stop.lat !== null && stop.lng !== null
-      ? [{ uid: planStopKey(stop), lat: stop.lat, lng: stop.lng, status: "Upcoming", store_name: stop.store_name, installer: stop.installer, day: stop.day, route_plan_id: "", visit_state: "none" }]
+      ? [{ uid: planStopKey(stop), lat: stop.lat, lng: stop.lng, status: "Upcoming", store_name: stop.store_name, installer: stop.installer, day: stop.day, route_plan_id: "", visit_state: "none", screen_statuses: [] }]
       : [],
   );
   return (

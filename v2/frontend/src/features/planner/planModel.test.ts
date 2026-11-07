@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
+  dayDriveMinutes,
   dayMapsLinks,
   dayMiles,
+  formatDuration,
   groupPlan,
   isVisited,
   nextWorkingDay,
   parseCoordinates,
+  parseMaxHours,
   planCsv,
   planPins,
 } from "@/features/planner/planModel";
@@ -22,8 +25,8 @@ describe("planModel", () => {
     const bundle = makeBundle({
       plan: makeRoutePlan({
         days: [
-          { number: 1, date: "2026-11-06", starts: { West: WEST } },
-          { number: 2, date: "2026-11-09", starts: { West: { address: "Hotel", lat: 34, lng: -84 } } },
+          { number: 1, date: "2026-11-06", starts: { West: WEST }, stops_per_day: null, max_day_hours: null },
+          { number: 2, date: "2026-11-09", starts: { West: { address: "Hotel", lat: 34, lng: -84 } }, stops_per_day: null, max_day_hours: null },
         ],
       }),
       stops: [makePlanStop("a"), makePlanStop("b", { day: 2, seq: 1 }), makePlanStop("c", { day: 2, seq: 0 }), makePlanStop("d", { day: 3 })],
@@ -72,5 +75,21 @@ describe("planModel", () => {
     expect(parseCoordinates("33.75 -84.39")).toEqual({ lat: 33.75, lng: -84.39 });
     expect(parseCoordinates("123 Main St")).toBeNull();
     expect(parseCoordinates("95, 10")).toBeNull();
+  });
+});
+
+describe("driving time", () => {
+  it("sums known drive minutes and formats them", () => {
+    expect(dayDriveMinutes([makePlanStop("a", { drive_minutes: 50 }), makePlanStop("b", { drive_minutes: 75 })])).toBe(125);
+    expect(dayDriveMinutes([makePlanStop("a")])).toBeNull(); // laid out before drive times were kept
+    expect(formatDuration(125)).toBe("2h 05m");
+    expect(formatDuration(45)).toBe("45m");
+  });
+
+  it("parses the max-hours field: blank is no limit", () => {
+    expect(parseMaxHours("")).toBe(0);
+    expect(parseMaxHours("6.5")).toBe(6.5);
+    expect(parseMaxHours("25")).toBeNull();
+    expect(parseMaxHours("-1")).toBeNull();
   });
 });

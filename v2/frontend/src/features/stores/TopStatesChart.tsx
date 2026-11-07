@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Bar, BarChart, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { StateCount } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
@@ -7,6 +8,12 @@ interface Props {
   /** The State filter; a bar is highlighted when it is the only state selected. */
   selected: string[];
   onToggle: (state: string) => void;
+  /** What the bars count: stores with upcoming installs, or upcoming screens. */
+  unit?: "locations" | "screens";
+  /** Shown at the right of the title (the Stores tab's "open in a new tab"). */
+  action?: ReactNode;
+  /** The full-page chart: wider labels, taller rows. */
+  large?: boolean;
 }
 
 const ACTIVE = "#0F5B7C";
@@ -14,21 +21,27 @@ const IDLE = "#94a3b8";
 
 /** "Top states by upcoming installs" (STORE-MODEL §5): click a bar (or its button) to filter to that state,
  *  click it again to clear State. Every other filter stays. Default export so the Stores tab loads it lazily. */
-export default function TopStatesChart({ data, selected, onToggle }: Props) {
+export default function TopStatesChart({ data, selected, onToggle, unit = "locations", action, large = false }: Props) {
   const only = selected.length === 1 ? selected[0] : null;
+  const title = unit === "screens" ? "Top states by upcoming screens" : "Top states by upcoming installs";
+  const what = unit === "screens" ? "Upcoming screens" : "Upcoming stores";
   return (
-    <section className="flex flex-col gap-2 rounded-xl border bg-white p-3" aria-label="Top states by upcoming installs">
-      <h3 className="font-mono text-[11px] uppercase tracking-wider text-slate-500">Top states by upcoming installs</h3>
+    <section className="flex shrink-0 flex-col gap-2 rounded-xl border bg-white p-3" aria-label={title}>
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="font-mono text-[11px] uppercase tracking-wider text-slate-500">{title}</h3>
+        {action}
+      </div>
       {data.length === 0 ? (
         <p className="py-4 text-center text-sm text-slate-400">No upcoming installs under these filters.</p>
       ) : (
         <>
-          <div className="h-44">
+          {/* One row per state, so every state gets a bar and a label however many there are. */}
+          <div style={{ height: Math.max(120, data.length * (large ? 30 : 22) + 8) }}>
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={data} layout="vertical" margin={{ left: 4, right: 12, top: 4, bottom: 4 }}>
                 <XAxis type="number" allowDecimals={false} hide />
-                <YAxis type="category" dataKey="state" width={34} tick={{ fontSize: 11 }} />
-                <Tooltip cursor={{ fill: "#f1f5f9" }} formatter={(value) => [value, "Upcoming stores"]} />
+                <YAxis type="category" dataKey="state" width={large ? 44 : 34} interval={0} tick={{ fontSize: large ? 13 : 11 }} />
+                <Tooltip cursor={{ fill: "#f1f5f9" }} formatter={(value) => [value, what]} />
                 <Bar dataKey="count" radius={[0, 4, 4, 0]} onClick={(entry: { payload?: StateCount }) => entry.payload && onToggle(entry.payload.state)} cursor="pointer">
                   {data.map((row) => (
                     <Cell key={row.state} fill={only === null || only === row.state ? ACTIVE : IDLE} />

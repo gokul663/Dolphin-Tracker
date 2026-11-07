@@ -19,6 +19,7 @@ from dolphin_tracker.repositories.route_plans import DynamoRoutePlanRepository, 
 from dolphin_tracker.repositories.stores import DynamoStoreRepository, StoreRepository
 from dolphin_tracker.repositories.visits import DynamoVisitRepository, VisitRepository
 from dolphin_tracker.repositories.worker_invoker import WorkerInvoker, make_invoker
+from dolphin_tracker.services.drive_times import GoogleDriveTimes
 from dolphin_tracker.services.geocoding import GoogleGeocoder
 from dolphin_tracker.services.imports import ImportService
 from dolphin_tracker.services.jobs import JobService
@@ -95,6 +96,11 @@ def _geocoder(api_key: str) -> GoogleGeocoder:
     return GoogleGeocoder(api_key)  # one httpx.Client per warm process
 
 
+@lru_cache
+def _drive_times(api_key: str) -> GoogleDriveTimes:
+    return GoogleDriveTimes(api_key)  # without a key it answers with the straight-line estimate
+
+
 def get_geocoder(settings: SettingsDep) -> GoogleGeocoder:
     return _geocoder(resolve_google_server_key(settings))
 
@@ -141,8 +147,9 @@ def get_route_plan_service(
     stores: Annotated[StoreRepository, Depends(get_store_repository)],
     projects: Annotated[ProjectRepository, Depends(get_project_repository)],
     lists: Annotated[ListService, Depends(get_list_service)],
+    settings: SettingsDep,
 ) -> RoutePlanService:
-    return RoutePlanService(plans, stores, projects, lists)
+    return RoutePlanService(plans, stores, projects, lists, _drive_times(resolve_google_server_key(settings)))
 
 
 def get_store_search_service(

@@ -1,4 +1,12 @@
 import type { PoolFilters, StoreFilters } from "@/lib/api/resources";
+import type { Bounds } from "@/components/map/pins";
+
+/** Which page of the store list: rows from `offset`, `limit` of them, only inside `bounds` when set. */
+export interface StorePageParams {
+  offset: number;
+  limit: number;
+  bounds: Bounds | null;
+}
 
 /** TanStack Query keys. Prefix-based so `invalidateQueries({ queryKey: keys.project(id) })` clears its children. */
 export const keys = {
@@ -10,7 +18,8 @@ export const keys = {
   project: (id: string) => ["projects", id] as const,
   routes: (id: string) => ["projects", id, "routes"] as const,
   stores: (id: string) => ["projects", id, "stores"] as const,
-  storeList: (id: string, filters: StoreFilters) => ["projects", id, "stores", "list", filters] as const,
+  storeList: (id: string, filters: StoreFilters, page: StorePageParams = { offset: 0, limit: 20, bounds: null }) =>
+    ["projects", id, "stores", "list", filters, page] as const,
   pins: (id: string, filters: StoreFilters) => ["projects", id, "stores", "pins", filters] as const,
   storeFacets: (id: string, filters: StoreFilters) => ["projects", id, "stores", "facets", filters] as const,
   byState: (id: string, filters: StoreFilters) => ["projects", id, "stores", "by-state", filters] as const,

@@ -154,7 +154,12 @@ def validate_stop_inputs(schema: Iterable[FieldDef], stops: Iterable[Any]) -> li
     for index, stop in enumerate(stops):
         values = {name: getattr(stop, name) for name in FIELDS_BY_NAME}
         values["external_id"] = normalize_external_id(stop.external_id)
-        problems = list(validate_store_values(values).values())  # IBC#, name, address required; field rules
+        problems = validate_store_values(values)  # IBC#, name, address required; field rules
+        for reason in getattr(stop, "needs_attention", []):  # added anyway: that check is skipped
+            name = "store_name" if reason == "store_name" else "addr"
+            if not str(values.get(name) or "").strip():
+                problems.pop(name, None)
+        problems = list(problems.values())
         problems.extend(validate_fields(schema, stop.fields))
         if problems:
             bad.append({"index": index, "errors": problems})

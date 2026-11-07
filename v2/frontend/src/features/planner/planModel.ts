@@ -87,6 +87,7 @@ export function planPins(bundle: RoutePlanBundle, stops: PlanStop[] = bundle.sto
           day: stop.day,
           route_plan_id: "", // every pin here is in this plan: no badge
           visit_state: isVisited(stop) ? ("visited" as const) : stop.visited_screens.length ? ("partly" as const) : ("none" as const),
+          screen_statuses: [], // the plan keeps sticks, not their statuses: one screen per store on this map
         }]
       : [],
   );
@@ -105,6 +106,7 @@ export function poolPins(stores: PoolStore[]): Pin[] {
           day: 0,
           route_plan_id: store.route_plan_id,
           visit_state: "none" as const,
+          screen_statuses: [],
         }]
       : [],
   );
@@ -187,4 +189,33 @@ export function dayMapsLinks(start: StartLocation | null, stops: PlanStop[]): { 
 
 export function copyAddresses(stops: PlanStop[]): string {
   return stops.map((stop, index) => `${index + 1}. ${fullAddress(stop)}${stop.store_name ? ` — ${stop.store_name}` : ""}`).join("\n");
+}
+
+/** Driving minutes for a day (the server's Google drive times: start → each stop, no return); null when none are
+ *  known yet. */
+export function dayDriveMinutes(stops: Pick<PlanStop, "drive_minutes">[]): number | null {
+  const known = stops.filter((stop) => stop.drive_minutes !== null && stop.drive_minutes !== undefined);
+  return known.length ? known.reduce((sum, stop) => sum + (stop.drive_minutes ?? 0), 0) : null;
+}
+
+export function formatDuration(minutes: number): string {
+  const hours = Math.floor(minutes / 60);
+  const rest = Math.round(minutes % 60);
+  return hours ? `${hours}h ${String(rest).padStart(2, "0")}m` : `${rest}m`;
+}
+
+/** "Max driving hours" input text → API value: blank or 0 = no limit. */
+export function parseMaxHours(text: string): number | null {
+  if (text.trim() === "") return 0;
+  const value = Number(text);
+  return Number.isFinite(value) && value >= 0 && value <= 24 ? value : null;
+}
+
+export const maxHoursText = (hours: number) => (hours ? String(hours) : "");
+
+/** (stops per day, max driving hours) for a day: its own values when it was planned with them, else the plan's
+ *  defaults (forecast days always use the defaults). */
+export function dayLimits(plan: Pick<RoutePlan, "stops_per_day" | "max_day_hours" | "days">, dayNumber?: number): { perDay: number; hours: number } {
+  const day = dayNumber === undefined ? undefined : plan.days.find((d) => d.number === dayNumber);
+  return { perDay: day?.stops_per_day ?? plan.stops_per_day, hours: day?.max_day_hours ?? plan.max_day_hours };
 }

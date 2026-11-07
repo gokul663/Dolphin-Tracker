@@ -29,6 +29,31 @@ class GeocodeResult(ApiModel):
     partial: bool = False
     suggestions: list[str] = Field(default_factory=list)
     error: str = ""
+    # How it was verified: "" (Geocoding as typed), "places" (the business by name), "state_highway" (the road
+    # written as Google stores it, e.g. FL-40) or "autocomplete" (one of Google Maps' suggestions).
+    matched_by: str = ""
+
+
+class PlaceHit(ApiModel):
+    """A place Google Search lists for a store: its name, address and exact pin."""
+
+    place_id: str = ""
+    name: str = ""
+    formatted: str = ""
+    lat: float
+    lng: float
+    addr: str = ""
+    city: str = ""
+    state: str = ""
+    zip: str = ""
+
+
+class PickedPlace(ApiModel):
+    """A place the person picked from a Google search: the store is saved at its pin, without geocoding again."""
+
+    lat: float = Field(ge=-90, le=90)
+    lng: float = Field(ge=-180, le=180)
+    formatted: str = Field(default="", max_length=500)
 
 
 class Suggestions(ApiModel):
@@ -59,7 +84,6 @@ class SkippedStop(ApiModel):
 
 class ProjectCreated(ApiModel):
     project: Project
-    job_id: str | None = None  # the routing job; absent when the project has no stops (201)
     skipped: list[SkippedStop] = Field(default_factory=list)  # duplicates by IBC#, then address
 
 
@@ -77,6 +101,7 @@ class Pin(ApiModel):
     day: int
     route_plan_id: str = ""  # the active plan holding the store: the "In route" overlay
     visit_state: VisitState = VisitState.NONE  # sticks visited since the store's latest plan
+    screen_statuses: list[ScreenStatus] = Field(default_factory=list)  # one per screen row (the map's Screens view)
 
 
 class StoreDetailsUpdate(ApiModel):
@@ -85,6 +110,8 @@ class StoreDetailsUpdate(ApiModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    # The person picked this Google place for the (changed) address: no address check, the store goes at its pin.
+    place: PickedPlace | None = None
     store_name: str | None = Field(default=None, max_length=300)
     addr: str | None = Field(default=None, max_length=500)
     city: str | None = Field(default=None, max_length=200)
@@ -197,7 +224,6 @@ class ProjectUpdate(ApiModel):
     dolphin_percentage: float | None = Field(default=None, ge=0, le=100)
     store_percentage: float | None = Field(default=None, ge=0, le=100)
     fa_percentage: float | None = Field(default=None, ge=0, le=100)
-    stops_per_day: int | None = Field(default=None, ge=1, le=50)
     field_schema: list[FieldDef] | None = None
     expected_version: int | None = Field(default=None, description="409 if the project has moved past this version")
 

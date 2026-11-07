@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any, Generic, Self, TypeVar
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import ConfigDict, Field, field_validator, model_validator
 
 from dolphin_tracker.domain.base import ApiModel
 from dolphin_tracker.domain.kpi import Kpi
@@ -167,6 +167,11 @@ class StoreDetails(ApiModel):
     ceiling_suitable: bool | None = None
 
 
+class NeedsAttention(StrEnum):
+    STORE_NAME = "store_name"
+    ADDRESS = "address"
+
+
 class Stop(StoreDetails):
     """Planning data, store details, screens and field progress for one store, stored as one item.
 
@@ -193,6 +198,9 @@ class Stop(StoreDetails):
     additional_task: bool = False
     installer_name: str = ""
     route_stale: bool = False  # address/geo changed after the last routing build
+    # Added by hand without a store name and/or a verified address ("store_name", "address"). Each reason clears
+    # itself once fixed: a name is entered, or the address is verified (or a Google place picked).
+    needs_attention: list[NeedsAttention] = Field(default_factory=list)
     # Route Planner (ROUTE-PLANNER §3, §7): the active plan holding this store ("" = none), and when the store last
     # joined a plan (kept after the plan closes; the "Visited" overlay counts visits from then on).
     route_plan_id: str = ""
@@ -259,6 +267,9 @@ class StopInput(StoreDetails):
     screens: list[ScreenInput] = Field(default_factory=list, max_length=200)
     initial_status: ScreenStatus | None = None
     installer_name: str = Field(default="", max_length=200)  # the sheet's Technician ("Completed by")
+    # Add the store anyway, without a name and/or a verified address: those checks are skipped and the store is
+    # flagged until fixed.
+    needs_attention: list[NeedsAttention] = Field(default_factory=list)
 
     def build_screens(self) -> list[Screen]:
         if self.screens:
@@ -267,18 +278,19 @@ class StopInput(StoreDetails):
 
 
 class ProjectCreate(ApiModel):
+    """A project is stores only: installers and the per-day cap belong to route plans, so they are a 422 here."""
+
+    model_config = ConfigDict(extra="forbid")
+
     name: str = Field(max_length=200)
     pa: str = Field(default="", max_length=500)  # required unless the stops carry their own PA (several PAs)
     project_type: ProjectType
-    # Often unknown when a project starts: without installers the stores stay unrouted until the first is added.
-    installers: list[str] = Field(default_factory=list, max_length=50)
     field_agent: str = Field(default="", max_length=200)
     partner_account: str = Field(default="", max_length=200)
     pa_percentage: float | None = Field(default=None, ge=0, le=100)
     dolphin_percentage: float | None = Field(default=None, ge=0, le=100)
     store_percentage: float | None = Field(default=None, ge=0, le=100)
     fa_percentage: float | None = Field(default=None, ge=0, le=100)
-    stops_per_day: int = Field(default=8, ge=1, le=50)
     field_schema: list[FieldDef] | None = None  # None → DEFAULT_FIELD_SCHEMA
     stops: list[StopInput] = Field(default_factory=list, max_length=5000)
     import_mapping: dict[str, str] = Field(default_factory=dict)  # the import's mapping, saved on the project
@@ -332,3 +344,13 @@ class ProjectSummary(Project):
     """A project as the dashboard lists it: META plus KPIs computed on read."""
 
     kpi: Kpi
+
+
+def attention_of(stop: StopInput) -> list[NeedsAttention]:
+    """Why a new store needs attention: no name, or an address added without being verified (no map pin)."""
+    reasons = []
+    if not stop.store_name.strip():
+        reasons.append(NeedsAttention.STORE_NAME)
+    if NeedsAttention.ADDRESS in stop.needs_attention or stop.lat is None or stop.lng is None:
+        reasons.append(NeedsAttention.ADDRESS)
+    return reasons

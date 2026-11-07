@@ -25,22 +25,14 @@ function body(calls: { method: string; url: URL; body: unknown }[], method: stri
 }
 
 describe("Project shell", () => {
-  it("shows the building banner while routing runs", async () => {
-    mockApi({ "GET /api/projects/p1": () => makeSummary({ routing_status: "building" }) });
+  it("shows no installers, per-day cap or routing banner: those belong to route plans", async () => {
+    mockApi({ "GET /api/projects/p1": () => makeSummary({ routing_status: "failed" }) });
     renderProject("stores");
-    expect(await screen.findByText(/Routing in progress/)).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "Atlanta refresh" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Atlanta refresh" })).toBeTruthy();
     expect(screen.getByText("stores tab")).toBeTruthy();
-  });
-
-  it("offers a rebuild after a failed build", async () => {
-    const { calls } = mockApi({
-      "GET /api/projects/p1": () => makeSummary({ routing_status: "failed" }),
-      "POST /api/projects/p1/routing/recluster": () => ({ job_id: "j1" }),
-    });
-    renderProject("stores");
-    await userEvent.click(await screen.findByRole("button", { name: /Rebuild routes/ }));
-    await waitFor(() => expect(calls.some((call) => call.url.pathname.endsWith("/routing/recluster"))).toBe(true));
+    expect(screen.queryByText(/stops\/day/)).toBeNull();
+    expect(screen.queryByText(/\d+ installers/)).toBeNull();
+    expect(screen.queryByRole("button", { name: /Rebuild routes/ })).toBeNull();
   });
 
   it("explains a missing project", async () => {
@@ -51,53 +43,20 @@ describe("Project shell", () => {
 });
 
 describe("Settings tab", () => {
-  it("validates and saves the stops-per-day cap with the version", async () => {
+  it("saves project details with the version, without installers or a per-day cap", async () => {
     const { calls } = mockApi({
       "GET /api/projects/p1": () => makeSummary(),
-      "PATCH /api/projects/p1": () => makeProject({ stops_per_day: 30, version: 2 }),
+      "PATCH /api/projects/p1": () => makeProject({ name: "Renamed", version: 2 }),
     });
     renderProject();
-    const cap = await screen.findByLabelText(/Stops per day/);
-    await userEvent.clear(cap);
-    await userEvent.type(cap, "60");
+    const name = await screen.findByLabelText("Project name *");
+    expect(screen.queryByLabelText(/Stops per day/)).toBeNull();
+    expect(screen.queryByLabelText("New installer name")).toBeNull();
+    await userEvent.clear(name);
+    await userEvent.type(name, "Renamed");
     await userEvent.click(screen.getByRole("button", { name: "Save details" }));
-    expect(await screen.findByText("At most 50")).toBeTruthy();
-    await userEvent.clear(cap);
-    await userEvent.type(cap, "30");
-    await userEvent.click(screen.getByRole("button", { name: "Save details" }));
-    await waitFor(() => expect(body(calls, "PATCH", "/api/projects/p1")).toMatchObject({ stops_per_day: 30, expected_version: 1 }));
-  });
-
-  it("adds an installer as a job and renames one", async () => {
-    const { calls } = mockApi({
-      "GET /api/projects/p1": () => makeSummary(),
-      "POST /api/projects/p1/installers": () => ({ job_id: "j1" }),
-      "POST /api/projects/p1/installers/rename": () => makeProject({ installers: ["Anna", "Bo"] }),
-    });
-    renderProject();
-    const input = await screen.findByLabelText("New installer name");
-    await userEvent.type(input, "Bo");
-    expect(screen.getByText("An installer with that name already exists.")).toBeTruthy();
-    expect((screen.getByRole("button", { name: /Add installer/ }) as HTMLButtonElement).disabled).toBe(true);
-    await userEvent.clear(input);
-    await userEvent.type(input, " Cy ");
-    await userEvent.click(screen.getByRole("button", { name: /Add installer/ }));
-    await waitFor(() => expect(body(calls, "POST", "/api/projects/p1/installers")).toEqual({ name: "Cy" }));
-
-    await userEvent.click(screen.getByRole("button", { name: "Rename Ann" }));
-    const rename = screen.getByLabelText("New name for Ann");
-    await userEvent.clear(rename);
-    await userEvent.type(rename, "Anna{Enter}");
-    await waitFor(() =>
-      expect(body(calls, "POST", "/api/projects/p1/installers/rename")).toEqual({ old_name: "Ann", new_name: "Anna" }),
-    );
-  });
-
-  it("pauses installer changes while routing runs", async () => {
-    mockApi({ "GET /api/projects/p1": () => makeSummary({ routing_status: "building" }) });
-    renderProject();
-    expect(await screen.findByText("Installer changes are paused while routing runs.")).toBeTruthy();
-    expect((screen.getByRole("button", { name: "Rename Ann" }) as HTMLButtonElement).disabled).toBe(true);
+    await waitFor(() => expect(body(calls, "PATCH", "/api/projects/p1")).toMatchObject({ name: "Renamed", expected_version: 1 }));
+    expect(body(calls, "PATCH", "/api/projects/p1")).not.toHaveProperty("stops_per_day");
   });
 
   it("edits the field schema with the backend's rules", async () => {

@@ -112,6 +112,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/places/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search Places
+         * @description What Google Search lists for a store (its name with the address, then the address alone).
+         */
+        get: operations["search_places_api_places_search_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/places/autocomplete": {
         parameters: {
             query?: never;
@@ -139,7 +159,10 @@ export interface paths {
         /** List Projects */
         get: operations["list_projects_api_projects_get"];
         put?: never;
-        /** Create Project */
+        /**
+         * Create Project
+         * @description Stores only: routing happens in route plans, so creating a project never starts a job.
+         */
         post: operations["create_project_api_projects_post"];
         delete?: never;
         options?: never;
@@ -275,7 +298,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Stores */
+        /**
+         * List Stores
+         * @description A page of stores. Give all four of north/south/east/west to keep only stores inside the map view.
+         */
         get: operations["list_stores_api_projects__project_id__stores_get"];
         put?: never;
         post?: never;
@@ -331,7 +357,7 @@ export interface paths {
         };
         /**
          * Stores By State
-         * @description Top states by store count (pending stores only by default), under the active filters except State.
+         * @description Top states by store or screen count (pending only by default), under the active filters except State.
          */
         get: operations["stores_by_state_api_projects__project_id__stores_by_state_get"];
         put?: never;
@@ -837,6 +863,80 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/route-plans/{plan_id}/days/lock": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Set Day Lock
+         * @description Lock or unlock one installer's day: recalculations leave a locked day's stores and order alone.
+         */
+        post: operations["set_day_lock_api_route_plans__plan_id__days_lock_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/route-plans/{plan_id}/days/insert-options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Day Insert Options
+         * @description Every place a store can go on a day (between which stores), with the extra driving each costs.
+         */
+        post: operations["day_insert_options_api_route_plans__plan_id__days_insert_options_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/route-plans/{plan_id}/days/insert": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Day Insert */
+        post: operations["day_insert_api_route_plans__plan_id__days_insert_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/route-plans/{plan_id}/stops/{project_id}/{stop_uid}/next-day": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Move Stop To Next Day */
+        post: operations["move_stop_to_next_day_api_route_plans__plan_id__stops__project_id___stop_uid__next_day_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -900,6 +1000,43 @@ export interface components {
             name: string;
             /** Subcategories */
             subcategories: string[];
+        };
+        /**
+         * DayInsert
+         * @description Put a store (from this plan, or free in its project) on an installer's day at `position`. The day keeps this
+         *     order until it is recalculated (never, while it is locked).
+         */
+        DayInsert: {
+            /** Installer */
+            installer: string;
+            /** Day */
+            day: number;
+            store: components["schemas"]["StoreRef"];
+            /** Position */
+            position: number;
+            /** Version */
+            version?: number | null;
+        };
+        /**
+         * DayLock
+         * @description One installer's day kept as it is: recalculations leave its stores and their order alone.
+         */
+        DayLock: {
+            /** Installer */
+            installer: string;
+            /** Day */
+            day: number;
+        };
+        /** DayLockSet */
+        DayLockSet: {
+            /** Installer */
+            installer: string;
+            /** Day */
+            day: number;
+            /** Locked */
+            locked: boolean;
+            /** Version */
+            version?: number | null;
         };
         /** FacetValue */
         FacetValue: {
@@ -1014,6 +1151,11 @@ export interface components {
              * @default
              */
             error: string;
+            /**
+             * Matched By
+             * @default
+             */
+            matched_by: string;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -1195,6 +1337,41 @@ export interface components {
              */
             duplicates: number;
         };
+        /**
+         * InsertOption
+         * @description Putting a store at `position` in a day's order (0 = first): between `after` and `before` (store names; ""
+         *     for the day's start or end), costing `extra_minutes` more driving.
+         */
+        InsertOption: {
+            /** Position */
+            position: number;
+            /** After */
+            after: string;
+            /** Before */
+            before: string;
+            /** Extra Minutes */
+            extra_minutes: number;
+            /**
+             * Best
+             * @default false
+             */
+            best: boolean;
+        };
+        /** InsertOptions */
+        InsertOptions: {
+            /** Store Name */
+            store_name: string;
+            /** Options */
+            options: components["schemas"]["InsertOption"][];
+        };
+        /** InsertQuery */
+        InsertQuery: {
+            /** Installer */
+            installer: string;
+            /** Day */
+            day: number;
+            store: components["schemas"]["StoreRef"];
+        };
         /** InstallerAdd */
         InstallerAdd: {
             /** Name */
@@ -1334,6 +1511,15 @@ export interface components {
             by_status: {
                 [key: string]: number;
             };
+            /** By Visit */
+            by_visit: {
+                [key: string]: number;
+            };
+            /**
+             * Needs Attention
+             * @default 0
+             */
+            needs_attention: number;
             /**
              * Screens Total
              * @default 0
@@ -1387,6 +1573,11 @@ export interface components {
              */
             google_map_id: string;
         };
+        /** MoveToNextDay */
+        MoveToNextDay: {
+            /** Version */
+            version?: number | null;
+        };
         /** NameCreate */
         NameCreate: {
             /** Value */
@@ -1408,6 +1599,11 @@ export interface components {
          */
         NameListKind: "installers" | "managers";
         /**
+         * NeedsAttention
+         * @enum {string}
+         */
+        NeedsAttention: "store_name" | "address";
+        /**
          * NetworkType
          * @enum {string}
          */
@@ -1415,7 +1611,8 @@ export interface components {
         /**
          * NextDay
          * @description Close the current day and plan the next one. Starts left out default to each installer's last visited stop
-         *     (else today's start).
+         *     (else today's start); limits left out default to the plan's. The limits apply to this day only: the plan's
+         *     defaults stay as they are.
          */
         NextDay: {
             /** Date */
@@ -1426,6 +1623,8 @@ export interface components {
             };
             /** Stops Per Day */
             stops_per_day?: number | null;
+            /** Max Day Hours */
+            max_day_hours?: number | null;
             /** Version */
             version?: number | null;
         };
@@ -1457,19 +1656,27 @@ export interface components {
             /** Next Cursor */
             next_cursor: string | null;
         };
-        /** Page[Stop] */
-        Page_Stop_: {
-            /** Items */
-            items: components["schemas"]["Stop"][];
-            /** Next Cursor */
-            next_cursor: string | null;
-        };
         /** Page[Visit] */
         Page_Visit_: {
             /** Items */
             items: components["schemas"]["Visit"][];
             /** Next Cursor */
             next_cursor: string | null;
+        };
+        /**
+         * PickedPlace
+         * @description A place the person picked from a Google search: the store is saved at its pin, without geocoding again.
+         */
+        PickedPlace: {
+            /** Lat */
+            lat: number;
+            /** Lng */
+            lng: number;
+            /**
+             * Formatted
+             * @default
+             */
+            formatted?: string;
         };
         /** Pin */
         Pin: {
@@ -1493,10 +1700,58 @@ export interface components {
             route_plan_id: string;
             /** @default none */
             visit_state: components["schemas"]["VisitState"];
+            /** Screen Statuses */
+            screen_statuses: components["schemas"]["ScreenStatus"][];
+        };
+        /**
+         * PlaceHit
+         * @description A place Google Search lists for a store: its name, address and exact pin.
+         */
+        PlaceHit: {
+            /**
+             * Place Id
+             * @default
+             */
+            place_id: string;
+            /**
+             * Name
+             * @default
+             */
+            name: string;
+            /**
+             * Formatted
+             * @default
+             */
+            formatted: string;
+            /** Lat */
+            lat: number;
+            /** Lng */
+            lng: number;
+            /**
+             * Addr
+             * @default
+             */
+            addr: string;
+            /**
+             * City
+             * @default
+             */
+            city: string;
+            /**
+             * State
+             * @default
+             */
+            state: string;
+            /**
+             * Zip
+             * @default
+             */
+            zip: string;
         };
         /**
          * PlanDay
-         * @description A started day: its date and where each installer set off from.
+         * @description A started day: its date, where each installer set off from, and the limits it was planned with. None means
+         *     the plan's defaults (the values chosen when the plan was created, editable in the plan settings).
          */
         PlanDay: {
             /** Number */
@@ -1507,6 +1762,10 @@ export interface components {
             starts: {
                 [key: string]: components["schemas"]["StartLocation"];
             };
+            /** Stops Per Day */
+            stops_per_day: number | null;
+            /** Max Day Hours */
+            max_day_hours: number | null;
         };
         /** PlanInstaller */
         PlanInstaller: {
@@ -1593,6 +1852,8 @@ export interface components {
              * @default 0
              */
             seq: number;
+            /** Drive Minutes */
+            drive_minutes: number | null;
             /** Visited Screens */
             visited_screens: string[];
             /** Added At */
@@ -1766,7 +2027,10 @@ export interface components {
             /** Updated At */
             updated_at: string;
         };
-        /** ProjectCreate */
+        /**
+         * ProjectCreate
+         * @description A project is stores only: installers and the per-day cap belong to route plans, so they are a 422 here.
+         */
         ProjectCreate: {
             /** Name */
             name: string;
@@ -1776,8 +2040,6 @@ export interface components {
              */
             pa?: string;
             project_type: components["schemas"]["ProjectType"];
-            /** Installers */
-            installers?: string[];
             /**
              * Field Agent
              * @default
@@ -1796,11 +2058,6 @@ export interface components {
             store_percentage?: number | null;
             /** Fa Percentage */
             fa_percentage?: number | null;
-            /**
-             * Stops Per Day
-             * @default 8
-             */
-            stops_per_day?: number;
             /** Field Schema */
             field_schema?: components["schemas"]["FieldDef-Input"][] | null;
             /** Stops */
@@ -1813,8 +2070,6 @@ export interface components {
         /** ProjectCreated */
         ProjectCreated: {
             project: components["schemas"]["Project"];
-            /** Job Id */
-            job_id: string | null;
             /** Skipped */
             skipped: components["schemas"]["SkippedStop"][];
         };
@@ -1914,8 +2169,6 @@ export interface components {
             store_percentage?: number | null;
             /** Fa Percentage */
             fa_percentage?: number | null;
-            /** Stops Per Day */
-            stops_per_day?: number | null;
             /** Field Schema */
             field_schema?: components["schemas"]["FieldDef-Input"][] | null;
             /**
@@ -1959,10 +2212,17 @@ export interface components {
              * @default 10
              */
             stops_per_day: number;
+            /**
+             * Max Day Hours
+             * @default 0
+             */
+            max_day_hours: number;
             /** Installers */
             installers: components["schemas"]["PlanInstaller"][];
             /** Days */
             days: components["schemas"]["PlanDay"][];
+            /** Locked Days */
+            locked_days: components["schemas"]["DayLock"][];
             /**
              * Store Count
              * @default 0
@@ -2016,6 +2276,11 @@ export interface components {
              * @default 10
              */
             stops_per_day?: number;
+            /**
+             * Max Day Hours
+             * @default 0
+             */
+            max_day_hours?: number;
             /** Installers */
             installers: components["schemas"]["PlanInstaller"][];
             /** Stores */
@@ -2030,6 +2295,8 @@ export interface components {
             name?: string | null;
             /** Stops Per Day */
             stops_per_day?: number | null;
+            /** Max Day Hours */
+            max_day_hours?: number | null;
             /** Installers */
             installers?: components["schemas"]["PlanInstaller"][] | null;
             /** @default forecast */
@@ -2446,6 +2713,8 @@ export interface components {
              * @default false
              */
             route_stale: boolean;
+            /** Needs Attention */
+            needs_attention: components["schemas"]["NeedsAttention"][];
             /**
              * Route Plan Id
              * @default
@@ -2664,6 +2933,8 @@ export interface components {
              * @default
              */
             installer_name?: string;
+            /** Needs Attention */
+            needs_attention?: components["schemas"]["NeedsAttention"][];
         };
         /** StopReassign */
         StopReassign: {
@@ -2676,6 +2947,7 @@ export interface components {
          *     into the stop's extra fields. Anything else (IBC#, PA, routing, progress, screens) is a 422.
          */
         StoreDetailsUpdate: {
+            place?: components["schemas"]["PickedPlace"] | null;
             /** Store Name */
             store_name?: string | null;
             /** Addr */
@@ -2804,6 +3076,20 @@ export interface components {
             route: components["schemas"]["FilterOption"][];
             /** Visit */
             visit: components["schemas"]["FilterOption"][];
+        };
+        /**
+         * StorePage
+         * @description A page of the store list, with the filtered total and where the page starts.
+         */
+        StorePage: {
+            /** Items */
+            items: components["schemas"]["Stop"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+            /** Total */
+            total: number;
+            /** Offset */
+            offset: number;
         };
         /** StoreRef */
         StoreRef: {
@@ -3092,6 +3378,8 @@ export interface operations {
         parameters: {
             query: {
                 address: string;
+                /** @description The store's name: Google can place the business */
+                name?: string;
             };
             header?: never;
             path?: never;
@@ -3106,6 +3394,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GeocodeResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    search_places_api_places_search_get: {
+        parameters: {
+            query: {
+                address: string;
+                name?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaceHit"][];
                 };
             };
             /** @description Validation Error */
@@ -3195,17 +3515,8 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Created without stops; no routing job */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProjectCreated"];
-                };
-            };
             /** @description Successful Response */
-            202: {
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3525,6 +3836,12 @@ export interface operations {
             query?: {
                 limit?: number;
                 cursor?: string | null;
+                /** @description Jump to this row (page × limit) */
+                offset?: number | null;
+                north?: number | null;
+                south?: number | null;
+                east?: number | null;
+                west?: number | null;
                 status?: components["schemas"]["ScreenStatus"][] | null;
                 /** @description Repeatable; empty value = unassigned */
                 installer?: string[] | null;
@@ -3547,6 +3864,8 @@ export interface operations {
                 /** @description Repeatable; Visited, Partly visited, Not visited */
                 visit?: string[] | null;
                 q?: string;
+                /** @description Only stores added without a name or a verified address */
+                needs_attention?: boolean;
                 /** @description a store attribute, status, installer, day, screens, fields.<key> */
                 sort?: string;
                 dir?: string;
@@ -3565,7 +3884,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Page_Stop_"];
+                    "application/json": components["schemas"]["StorePage"];
                 };
             };
             /** @description Validation Error */
@@ -3604,6 +3923,8 @@ export interface operations {
                 /** @description Repeatable; Visited, Partly visited, Not visited */
                 visit?: string[] | null;
                 q?: string;
+                /** @description Only stores added without a name or a verified address */
+                needs_attention?: boolean;
                 /** @description a store attribute, status, installer, day, screens, fields.<key> */
                 sort?: string;
                 dir?: string;
@@ -3661,6 +3982,8 @@ export interface operations {
                 /** @description Repeatable; Visited, Partly visited, Not visited */
                 visit?: string[] | null;
                 q?: string;
+                /** @description Only stores added without a name or a verified address */
+                needs_attention?: boolean;
                 /** @description a store attribute, status, installer, day, screens, fields.<key> */
                 sort?: string;
                 dir?: string;
@@ -3698,6 +4021,7 @@ export interface operations {
             query?: {
                 pending?: boolean;
                 limit?: number;
+                unit?: string;
                 status?: components["schemas"]["ScreenStatus"][] | null;
                 /** @description Repeatable; empty value = unassigned */
                 installer?: string[] | null;
@@ -3720,6 +4044,8 @@ export interface operations {
                 /** @description Repeatable; Visited, Partly visited, Not visited */
                 visit?: string[] | null;
                 q?: string;
+                /** @description Only stores added without a name or a verified address */
+                needs_attention?: boolean;
                 /** @description a store attribute, status, installer, day, screens, fields.<key> */
                 sort?: string;
                 dir?: string;
@@ -3810,6 +4136,8 @@ export interface operations {
                 /** @description Repeatable; Visited, Partly visited, Not visited */
                 visit?: string[] | null;
                 q?: string;
+                /** @description Only stores added without a name or a verified address */
+                needs_attention?: boolean;
                 /** @description a store attribute, status, installer, day, screens, fields.<key> */
                 sort?: string;
                 dir?: string;
@@ -4867,6 +5195,148 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoutePlanBundle"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_day_lock_api_route_plans__plan_id__days_lock_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DayLockSet"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoutePlanBundle"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    day_insert_options_api_route_plans__plan_id__days_insert_options_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InsertQuery"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InsertOptions"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    day_insert_api_route_plans__plan_id__days_insert_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DayInsert"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoutePlanBundle"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    move_stop_to_next_day_api_route_plans__plan_id__stops__project_id___stop_uid__next_day_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plan_id: string;
+                project_id: string;
+                stop_uid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MoveToNextDay"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

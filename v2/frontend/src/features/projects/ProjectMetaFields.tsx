@@ -9,7 +9,7 @@ import { PROJECT_TYPE_LABELS } from "@/lib/status";
 type FieldName = keyof ProjectMetaForm;
 
 /** Metadata inputs shared by the edit dialog, the import wizard and the Settings tab. Works with any form whose
- * values include the metadata fields (Settings adds `stops_per_day`). The PA and the field agent each sit behind a
+ * values include the metadata fields. The PA and the field agent each sit behind a
  * checkbox: a sheet may list several PAs, and many projects have no field agent. */
 export function ProjectMetaFields<T extends ProjectMetaForm>({ form }: { form: UseFormReturn<T> }) {
   const { register, formState, watch, setValue } = form;

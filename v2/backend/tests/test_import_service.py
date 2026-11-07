@@ -47,7 +47,7 @@ class VerifyRowTests(unittest.TestCase):
     def test_geocode_and_places_ok_is_valid_100(self):
         geocoder = FakeGeocoder(
             geocodes={"1 Main St": geocode_ok("1 Main St")},
-            places={"Shop, 1 Main St": {"ok": True, "name": "Shop", "formatted": "999 Other Rd"}},
+            places={"Shop, 1 Main St": {"ok": True, "name": "Shop", "formatted": "1 Main Street, Atlanta, GA"}},
         )
         result = verify_row(self.row("1 Main St", "Shop"), geocoder)
         self.assertEqual((result["status"], result["confidence"]), ("valid", 100))
@@ -58,6 +58,29 @@ class VerifyRowTests(unittest.TestCase):
         self.assertEqual(result["formatted"], "1 Main St, Atlanta, GA 30303, USA")
         self.assertEqual(result["details"]["dma"], "ATL")
 
+    def test_a_place_at_another_house_number_confirms_nothing(self):
+        geocoder = FakeGeocoder(
+            geocodes={"1 Main St": geocode_ok("1 Main St")},
+            places={"Shop, 1 Main St": {"ok": True, "name": "Assisted Living", "formatted": "1709 Main St"}},
+        )
+        result = verify_row(self.row("1 Main St", "Shop"), geocoder)
+        self.assertEqual((result["status"], result["confidence"], result["place_name"]), ("valid", 70, ""))
+        self.assertEqual(result["verified_by"], ["geocoding"])
+
+    def test_the_store_by_name_places_a_road_only_address(self):
+        typed = "10777 E Highway 40"
+        geocoder = FakeGeocoder(
+            geocodes={typed: {"ok": True, "partial": True, "formatted": "Silver Springs, FL", "lat": 1, "lng": 2}},
+            places={f"Forest Food & Fuel, {typed}": {
+                "ok": True, "name": "Forest Food & Fuel", "lat": 29.2, "lng": -81.9,
+                "formatted": "10777 FL-40, Silver Springs, FL 34488, USA",
+            }},
+        )
+        result = verify_row(self.row(typed, "Forest Food & Fuel"), geocoder)
+        self.assertEqual((result["status"], result["confidence"], result["lat"]), ("valid", 100, 29.2))
+        self.assertEqual((result["verified_by"], result["place_name"]), (["places"], "Forest Food & Fuel"))
+        self.assertEqual([kind for kind, _ in geocoder.calls].count("find_place"), 1)  # not asked twice
+
     def test_geocode_only_is_valid_70(self):
         result = verify_row(self.row("1 Main St"), FakeGeocoder(geocodes={"1 Main St": geocode_ok("1 Main St")}))
         self.assertEqual((result["status"], result["confidence"], result["verified_by"]), ("valid", 70, ["geocoding"]))
@@ -67,7 +90,7 @@ class VerifyRowTests(unittest.TestCase):
         geocoder = FakeGeocoder(geocodes={"Main St": geocode_ok("Main St", partial=True)})
         result = verify_row(self.row("Main St"), geocoder)
         self.assertEqual((result["status"], result["confidence"]), ("needs_review", 40))
-        self.assertEqual(result["error"], "Partial match — please review")
+        self.assertIn("Google could not find this house number", result["error"])
         self.assertIsNotNone(result["lat"])
 
     def test_geocode_failure_is_needs_review_0_with_autocomplete(self):
@@ -78,10 +101,11 @@ class VerifyRowTests(unittest.TestCase):
         self.assertEqual(result["error"], "Could not geocode address")
         self.assertIsNone(result["lat"])
 
-    def test_places_is_skipped_when_geocoding_fails(self):
+    def test_the_business_is_looked_up_when_geocoding_fails(self):
+        # Google may know a store only by its name (no street address): searching the business is the way to it.
         geocoder = FakeGeocoder()
         verify_row(self.row("nowhere", "Shop"), geocoder)
-        self.assertNotIn("find_place", [kind for kind, _ in geocoder.calls])
+        self.assertIn(("find_place", "Shop, nowhere"), geocoder.calls)
 
     def test_places_still_confirms_a_partial_match(self):
         geocoder = FakeGeocoder(geocodes={"Main St": geocode_ok("Main St", partial=True)})

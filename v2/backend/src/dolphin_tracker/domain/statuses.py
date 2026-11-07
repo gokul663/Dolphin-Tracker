@@ -89,3 +89,21 @@ def derive_store_status(screens: Iterable[Any]) -> ScreenStatus:
     `screens` holds Screen models (anything with `.status`), statuses, or their string values."""
     present = {ScreenStatus(getattr(item, "status", item)) for item in screens}
     return next((status for status in STATUS_PRECEDENCE if status in present), ScreenStatus.UPCOMING)
+
+
+class VisitState(StrEnum):
+    """The Projects view overlay (ROUTE-PLANNER §6), from the store's per-stick visit times."""
+
+    NONE = "none"
+    PARTLY = "partly"
+    VISITED = "visited"
+
+
+def visit_state(screen_ids: list[str], screen_visits: dict[str, str], since: str = "") -> VisitState:
+    """Visited when every stick has a visit at or after `since` (the store's latest plan; "" = ever)."""
+    if not screen_ids:
+        return VisitState.NONE
+    counted = sum(1 for screen_id in screen_ids if screen_visits.get(screen_id) and screen_visits[screen_id] >= since)
+    if counted == 0:
+        return VisitState.NONE
+    return VisitState.VISITED if counted == len(screen_ids) else VisitState.PARTLY

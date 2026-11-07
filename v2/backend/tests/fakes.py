@@ -36,10 +36,14 @@ class FakeGeocoder:
         geocodes: dict[str, dict] | None = None,
         places: dict[str, dict] | None = None,
         autocomplete: dict[str, list[str]] | None = None,
+        details: dict[str, dict] | None = None,
+        searches: dict[str, list[dict]] | None = None,
     ) -> None:
         self.geocodes = geocodes or {}
         self.places = places or {}
         self.autocompletes = autocomplete or {}
+        self.details = details or {}  # place id (= the suggestion text) → place_details() result
+        self.searches = searches or {}  # text query → search_places() hits
         self.calls: list[tuple[str, str]] = []
         self._lock = threading.Lock()
 
@@ -62,6 +66,19 @@ class FakeGeocoder:
     def find_place(self, query: str) -> dict[str, Any]:
         self._log("find_place", query)
         return self.places.get(query, {"ok": False, "status": "ZERO_RESULTS"})
+
+    def search_places(self, query: str) -> list[dict[str, Any]]:
+        self._log("search_places", query)
+        return self.searches.get(query, [])
+
+    def autocomplete_places(self, query: str) -> list[dict[str, str]]:
+        """Autocomplete with place ids: each suggestion's id is the suggestion itself (see `details`)."""
+        self._log("autocomplete", query)
+        return [{"description": text, "place_id": text} for text in self.autocompletes.get(query, [])]
+
+    def place_details(self, place_id: str) -> dict[str, Any]:
+        self._log("place_details", place_id)
+        return self.details.get(place_id, {"ok": False, "status": "NOT_FOUND"})
 
 
 def status_write(status, **extra):

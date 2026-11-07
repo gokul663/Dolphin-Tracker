@@ -81,6 +81,22 @@ class KpiV2Tests(unittest.TestCase):
         self.assertEqual((kpi.committed_dolphin_screens, kpi.committed_store_tvs), (3, 1))
         self.assertEqual((kpi.actual_dolphin_screens, kpi.actual_store_tvs), (4, 1))
 
+    def test_stores_by_visit_state_since_their_latest_plan(self):
+        at = "2026-11-01T10:00:00+00:00"
+        before, after = "2026-10-01T10:00:00+00:00", "2026-11-02T10:00:00+00:00"
+        stops = [
+            Stop(uid="a", store_name="a", addr="1", screens=[Screen(id="s1"), Screen(id="s2")],
+                 screen_visits={"s1": after, "s2": after}, last_planned_at=at),
+            Stop(uid="b", store_name="b", addr="2", screens=[Screen(id="s3"), Screen(id="s4")],
+                 screen_visits={"s3": after}, last_planned_at=at),
+            Stop(uid="c", store_name="c", addr="3", screens=[Screen(id="s5")], screen_visits={"s5": before},
+                 last_planned_at=at),  # visited before its latest plan: not counted
+            Stop(uid="d", store_name="d", addr="4"),
+        ]
+        kpi = kpi_summary(stop.model_dump(mode="json") for stop in stops)
+        self.assertEqual(kpi.by_visit, {"none": 2, "partly": 1, "visited": 1})
+        self.assertIn("screen_visits", KPI_ATTRIBUTES)
+
     def test_project_detail_carries_kpis(self):
         projects, stores = InMemoryProjectRepository(), InMemoryStoreRepository()
         projects.put(Project(id="p1", name="One", project_type=ProjectType.OFFLINE))

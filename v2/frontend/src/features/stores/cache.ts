@@ -1,18 +1,9 @@
-import type { InfiniteData } from "@tanstack/react-query";
-import type { Page, Pin, RoutesBundle, Stop } from "@/lib/api/types";
+import type { Pin, RoutesBundle, Stop, StorePage } from "@/lib/api/types";
 
-export type StopPages = InfiniteData<Page<Stop>, string | null>;
-
-/** Copy of the cached pages with one stop patched; untouched pages keep their identity. */
-export function patchStopInPages(data: StopPages | undefined, uid: string, patch: Partial<Stop>): StopPages | undefined {
-  if (!data) return data;
-  let changed = false;
-  const pages = data.pages.map((page) => {
-    if (!page.items.some((stop) => stop.uid === uid)) return page;
-    changed = true;
-    return { ...page, items: page.items.map((stop) => (stop.uid === uid ? { ...stop, ...patch } : stop)) };
-  });
-  return changed ? { ...data, pages } : data;
+/** Copy of a cached store-list page with one stop patched; the same object when the stop is not on it. */
+export function patchStopInPage(data: StorePage | undefined, uid: string, patch: Partial<Stop>): StorePage | undefined {
+  if (!data || !data.items.some((stop) => stop.uid === uid)) return data;
+  return { ...data, items: data.items.map((stop) => (stop.uid === uid ? { ...stop, ...patch } : stop)) };
 }
 
 /** Pins carry status, so a progress edit recolours the map immediately too. */

@@ -11,7 +11,7 @@ class InstallerOpsTests(ProjectApiTestCase):
     def setUp(self):
         super().setUp()
         stops = [stop_input(i, state="GA" if i < 20 else "AL") for i in range(24)]
-        created = self.create_project(stops=stops)
+        created = self.create_routed_project(stops=stops)
         self.pid = created["project"]["id"]
         self.assertEqual(self.projects.get(self.pid).routing_status, RoutingStatus.READY)
 
@@ -69,7 +69,7 @@ class InstallerOpsTests(ProjectApiTestCase):
         self.check_caps(pending_only=True)
 
     def test_first_installer_routes_every_store(self):
-        unrouted = self.create_project(installers=[], stops=[stop_input(i) for i in range(6)])["project"]["id"]
+        unrouted = self.create_routed_project(installers=(), stops=[stop_input(i) for i in range(6)])["project"]["id"]
         self.pid = unrouted
         payload = self.finish(self.post("/installers", {"name": "Ann"}))
         self.assertEqual(payload["mode"], "recluster")

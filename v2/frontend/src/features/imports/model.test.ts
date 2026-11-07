@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   applyGeocode,
+  applyPlace,
+  overridable,
+  undoPick,
   buildStops,
   duplicateText,
   filterRows,
@@ -38,7 +41,7 @@ const RESULT: ImportResult = {
 
 const geo = (overrides: Partial<GeocodeResult> = {}): GeocodeResult => ({
   ok: true, status: "OK", formatted: "2 Main St, Atlanta, GA 30303, USA", lat: 33.71, lng: -84.4, addr: "2 Main St",
-  city: "Atlanta", state: "GA", zip: "30303", partial: false, suggestions: [], error: "", ...overrides,
+  city: "Atlanta", state: "GA", zip: "30303", partial: false, suggestions: [], error: "", matched_by: "", ...overrides,
 });
 
 describe("columns (STORE-MODEL §6)", () => {
@@ -87,6 +90,45 @@ describe("review rows", () => {
     const fixed = applyGeocode(rows[2] as ReviewRow, geo(), "2 Main St, Atlanta");
     expect(fixed).toMatchObject({ status: "valid", lat: 33.71, coordinates_source: "geocode", address: "2 Main St, Atlanta" });
     expect(applyGeocode(rows[2] as ReviewRow, geo({ ok: false, suggestions: ["x"] })).status).toBe("needs_review");
+  });
+
+  it("a road-only answer stays in review; a business or suggestion match says so", () => {
+    const roadOnly = applyGeocode(rows[2] as ReviewRow, geo({ partial: true }));
+    expect(roadOnly.status).toBe("needs_review");
+    expect(rowProblems(roadOnly)).toContain("Address is not verified");
+    expect(applyGeocode(rows[2] as ReviewRow, geo({ matched_by: "places" })).verified_by).toEqual(["places"]);
+    expect(applyGeocode(rows[2] as ReviewRow, geo({ matched_by: "autocomplete" })).verified_by).toEqual(["autocomplete"]);
+  });
+
+  it("a Google place picked by hand verifies the row at its pin, and Undo puts the row back", () => {
+    const before = applyGeocode(rows[2] as ReviewRow, geo({ partial: true }), "101 S Council Rd, Sunset, TX 76270");
+    const hit = { place_id: "p1", name: "Sunset Gas And Grill", formatted: "Sunset, TX 76270", lat: 33.45, lng: -97.77,
+      addr: "", city: "Sunset", state: "TX", zip: "76270" };
+    const picked = applyPlace(before, hit);
+    expect(picked).toMatchObject({ status: "valid", lat: 33.45, lng: -97.77, formatted: "Sunset Gas And Grill · Sunset, TX 76270" });
+    expect(picked.addr).toBe(before.addr); // the place has no street address: the typed street stays
+    expect(picked.verified_by).toEqual(["google search"]);
+    expect(rowProblems(picked)).toEqual([]);
+    const undone = undoPick(picked);
+    expect(undone).toMatchObject({ status: "needs_review", lat: before.lat, address: before.address });
+    expect(undone.previous).toBeUndefined();
+    // Two picks in a row: Undo goes back to before the first.
+    const twice = applyPlace(picked, { ...hit, lat: 1 });
+    expect(undoPick(twice).status).toBe("needs_review");
+  });
+
+  it("Add anyway: a row without a name or a verified address is imported, flagged, and without a map pin", () => {
+    const unverified = { ...applyGeocode(rows[2] as ReviewRow, geo({ partial: true })), store_name: "" };
+    expect(rowProblems(unverified)).toEqual(["Store name is required", "Address is not verified"]);
+    expect(overridable(unverified)).toEqual(["store_name", "address"]);
+    const anyway = { ...unverified, addAnyway: true };
+    expect(rowProblems(anyway)).toEqual([]);
+    expect(reviewSummary([anyway]).needsAttention).toBe(1);
+    const [stop] = buildStops([anyway]);
+    expect(stop).toMatchObject({ needs_attention: ["store_name", "address"], lat: null, lng: null, geocoded: "" });
+    expect(rowProblems({ ...anyway, external_id: " " })).toEqual(["IBC# is required"]); // never skipped
+    const [verified] = buildStops([{ ...applyGeocode(rows[2] as ReviewRow, geo()), store_name: "", addAnyway: true }]);
+    expect(verified).toMatchObject({ needs_attention: ["store_name"], lat: 33.71 }); // the pin stays when verified
   });
 
   it("builds stop inputs with attributes, screens, installer and other data", () => {

@@ -8,6 +8,11 @@ from dolphin_tracker.api.deps import get_route_plan_service, get_store_search_se
 from dolphin_tracker.api.schemas import PoolFacets
 from dolphin_tracker.domain.models import Page, ScreenStatus
 from dolphin_tracker.domain.route_plans import (
+    DayInsert,
+    DayLockSet,
+    InsertOptions,
+    InsertQuery,
+    MoveToNextDay,
     NextDay,
     PlanPreview,
     PlanResult,
@@ -134,3 +139,27 @@ def next_day(plan_id: str, body: NextDay, service: PlanDep) -> RoutePlanBundle:
 @router.post("/route-plans/{plan_id}/close", response_model=RoutePlanBundle)
 def close_plan(plan_id: str, service: PlanDep) -> RoutePlanBundle:
     return service.close(plan_id)
+
+
+@router.post("/route-plans/{plan_id}/days/lock", response_model=RoutePlanBundle)
+def set_day_lock(plan_id: str, body: DayLockSet, service: PlanDep) -> RoutePlanBundle:
+    """Lock or unlock one installer's day: recalculations leave a locked day's stores and order alone."""
+    return service.set_lock(plan_id, body)
+
+
+@router.post("/route-plans/{plan_id}/days/insert-options", response_model=InsertOptions)
+def day_insert_options(plan_id: str, body: InsertQuery, service: PlanDep) -> InsertOptions:
+    """Every place a store can go on a day (between which stores), with the extra driving each costs."""
+    return service.insert_options(plan_id, body)
+
+
+@router.post("/route-plans/{plan_id}/days/insert", response_model=RoutePlanBundle)
+def day_insert(plan_id: str, body: DayInsert, service: PlanDep) -> RoutePlanBundle:
+    return service.insert(plan_id, body)
+
+
+@router.post("/route-plans/{plan_id}/stops/{project_id}/{stop_uid}/next-day", response_model=RoutePlanBundle)
+def move_stop_to_next_day(
+    plan_id: str, project_id: str, stop_uid: str, body: MoveToNextDay, service: PlanDep
+) -> RoutePlanBundle:
+    return service.move_to_next_day(plan_id, project_id, stop_uid, body)

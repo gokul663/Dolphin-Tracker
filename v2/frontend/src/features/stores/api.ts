@@ -1,5 +1,5 @@
-import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { keys } from "@/lib/api/keys";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keys, type StorePageParams } from "@/lib/api/keys";
 import { storesApi, type StoreFilters } from "@/lib/api/resources";
 import {
   deriveStatus,
@@ -10,17 +10,18 @@ import {
   type ScreenInput,
   type Stop,
   type StoreDetailsUpdate,
+  type StorePage,
 } from "@/lib/api/types";
-import { patchPin, patchStopInPages, patchStopInRoutes, type StopPages } from "@/features/stores/cache";
+import { patchPin, patchStopInPage, patchStopInRoutes } from "@/features/stores/cache";
 
-export const STORE_PAGE_SIZE = 100;
+export const STORE_PAGE_SIZES = [20, 30, 50] as const;
+export const DEFAULT_STORE_PAGE_SIZE = 20;
 
-export function useStoreList(projectId: string, filters: StoreFilters) {
-  return useInfiniteQuery({
-    queryKey: keys.storeList(projectId, filters),
-    queryFn: ({ pageParam }) => storesApi.list(projectId, filters, { limit: STORE_PAGE_SIZE, cursor: pageParam }),
-    initialPageParam: null as string | null,
-    getNextPageParam: (last) => last.next_cursor,
+/** One numbered page of the filtered, sorted stores (with the total), optionally only those in the map view. */
+export function useStoreList(projectId: string, filters: StoreFilters, page: StorePageParams) {
+  return useQuery({
+    queryKey: keys.storeList(projectId, filters, page),
+    queryFn: () => storesApi.list(projectId, filters, page),
     placeholderData: keepPreviousData,
   });
 }
@@ -43,10 +44,11 @@ export function useFilterOptions(projectId: string, filters: StoreFilters) {
 }
 
 /** Pending stores per state, top 10, under every active filter except State. */
-export function useStoresByState(projectId: string, filters: StoreFilters) {
+/** Every state with upcoming installs (stores, or screens), most first; the State filter itself is ignored. */
+export function useStoresByState(projectId: string, filters: StoreFilters, unit: "stores" | "screens" = "stores") {
   return useQuery({
-    queryKey: keys.byState(projectId, { ...filters, state: [] }),
-    queryFn: () => storesApi.byState(projectId, { ...filters, state: [] }),
+    queryKey: [...keys.byState(projectId, { ...filters, state: [] }), unit],
+    queryFn: () => storesApi.byState(projectId, { ...filters, state: [] }, true, unit),
     placeholderData: keepPreviousData,
   });
 }
@@ -63,8 +65,8 @@ export function useStore(projectId: string, uid: string | null) {
 function useStoreStopInCaches(projectId: string) {
   const client = useQueryClient();
   return (stop: Stop) => {
-    client.setQueriesData<StopPages>({ queryKey: [...keys.stores(projectId), "list"] }, (data) =>
-      patchStopInPages(data, stop.uid, stop),
+    client.setQueriesData<StorePage>({ queryKey: [...keys.stores(projectId), "list"] }, (data) =>
+      patchStopInPage(data, stop.uid, stop),
     );
     client.setQueryData(keys.store(projectId, stop.uid), stop);
   };
@@ -105,7 +107,7 @@ export function editedKeys(body: StoreDetailsUpdate): Set<string> {
 
 type Client = ReturnType<typeof useQueryClient>;
 type Snapshot = {
-  lists: [readonly unknown[], StopPages | undefined][];
+  lists: [readonly unknown[], StorePage | undefined][];
   pins: [readonly unknown[], Pin[] | undefined][];
   detail: Stop | undefined;
   routes: RoutesBundle | undefined;
@@ -118,12 +120,12 @@ async function applyOptimistic(client: Client, projectId: string, uid: string, p
     client.cancelQueries({ queryKey: keys.routes(projectId) }),
   ]);
   const snapshot: Snapshot = {
-    lists: client.getQueriesData<StopPages>({ queryKey: [...keys.stores(projectId), "list"] }),
+    lists: client.getQueriesData<StorePage>({ queryKey: [...keys.stores(projectId), "list"] }),
     pins: client.getQueriesData<Pin[]>({ queryKey: [...keys.stores(projectId), "pins"] }),
     detail: client.getQueryData<Stop>(keys.store(projectId, uid)),
     routes: client.getQueryData<RoutesBundle>(keys.routes(projectId)),
   };
-  for (const [key, data] of snapshot.lists) client.setQueryData(key, patchStopInPages(data, uid, patch));
+  for (const [key, data] of snapshot.lists) client.setQueryData(key, patchStopInPage(data, uid, patch));
   for (const [key, data] of snapshot.pins) client.setQueryData(key, patchPin(data, uid, patch));
   if (snapshot.detail) client.setQueryData(keys.store(projectId, uid), { ...snapshot.detail, ...patch });
   if (snapshot.routes) client.setQueryData(keys.routes(projectId), patchStopInRoutes(snapshot.routes, uid, patch));

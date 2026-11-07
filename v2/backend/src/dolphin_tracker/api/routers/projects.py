@@ -38,14 +38,12 @@ def list_projects(
 @router.post(
     "",
     response_model=ProjectCreated,
-    status_code=202,
-    responses={201: {"model": ProjectCreated, "description": "Created without stops; no routing job"}},
+    status_code=201,
 )
-def create_project(body: ProjectCreate, service: ServiceDep, response: Response) -> ProjectCreated:
-    project, job_id, skipped = service.create(body)
-    if job_id is None:
-        response.status_code = 201
-    return ProjectCreated(project=project, job_id=job_id, skipped=skipped)
+def create_project(body: ProjectCreate, service: ServiceDep) -> ProjectCreated:
+    """Stores only: routing happens in route plans, so creating a project never starts a job."""
+    project, skipped = service.create(body)
+    return ProjectCreated(project=project, skipped=skipped)
 
 
 @router.get("/{project_id}", response_model=ProjectSummary)

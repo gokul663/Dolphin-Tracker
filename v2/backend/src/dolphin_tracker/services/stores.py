@@ -16,6 +16,7 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass, field, replace
 from typing import Any
 
+from dolphin_tracker.domain.base import ApiModel
 from dolphin_tracker.domain.cursors import encode_cursor, offset_from_cursor
 from dolphin_tracker.domain.errors import ConflictError, NotFoundError, ValidationFailed
 from dolphin_tracker.domain.import_mapping import clean_mapping, split_duplicates
@@ -23,7 +24,6 @@ from dolphin_tracker.domain.models import (
     PENDING_STATUSES,
     PROGRESS_FIELDS,
     STATUS_PRECEDENCE,
-    Page,
     Project,
     RoutingStatus,
     Screen,
@@ -31,6 +31,7 @@ from dolphin_tracker.domain.models import (
     ScreenStatus,
     Stop,
     StopInput,
+    attention_of,
 )
 from dolphin_tracker.domain.parsing import clean_cell
 from dolphin_tracker.domain.route_optimizer import state_key
@@ -47,7 +48,7 @@ from dolphin_tracker.domain.validation import (
 from dolphin_tracker.domain.visits import VisitState, visit_state
 from dolphin_tracker.repositories.projects import ProjectRepository
 from dolphin_tracker.repositories.stores import StoreRepository
-from dolphin_tracker.services.geocoding import Geocoder
+from dolphin_tracker.services.geocoding import Geocoder, resolve_address
 from dolphin_tracker.services.routing import sync_routing_slot
 
 FILTER_FIELDS = (
@@ -68,6 +69,29 @@ SEARCHED = ("display_id", "external_id", "store_name", "addr", "city", "zip", "c
             "owner_name", "onsite_contact_name", "installer_name")
 
 
+class StorePage(ApiModel):
+    """A page of the store list, with the filtered total and where the page starts."""
+
+    items: list[Stop]
+    next_cursor: str | None = None
+    total: int
+    offset: int
+
+
+@dataclass(frozen=True)
+class Bounds:
+    north: float
+    south: float
+    east: float
+    west: float
+
+
+def in_bounds(stop: Stop, bounds: Bounds) -> bool:
+    if stop.lat is None or stop.lng is None:
+        return False
+    return bounds.south <= stop.lat <= bounds.north and bounds.west <= stop.lng <= bounds.east
+
+
 @dataclass
 class StoreQuery:
     """Filters (STORE-MODEL §5), search and sort. Within one filter values are OR'ed; filters are AND'ed."""
@@ -83,6 +107,7 @@ class StoreQuery:
     screen_size: list[str] = field(default_factory=list)  # any screen's size
     route: list[str] = field(default_factory=list)  # "In route" / "Not in route"
     visit: list[str] = field(default_factory=list)  # "Visited" / "Partly visited" / "Not visited"
+    needs_attention: bool = False  # only stores added without a name or a verified address
     q: str = ""
     sort: str = "store_name"
     dir: str = "asc"
@@ -207,6 +232,8 @@ class StoreService:
         needle = query.q.strip().lower()
         if needle:
             stops = [stop for stop in stops if _matches(stop, needle)]
+        if query.needs_attention:
+            stops = [stop for stop in stops if stop.needs_attention]
         return stops
 
     def _query(self, project: Project, query: StoreQuery, stops: list[Stop] | None = None) -> list[Stop]:
@@ -226,14 +253,25 @@ class StoreService:
         return present + blank
 
     def list(
-        self, project_id: str, query: StoreQuery | None = None, *, limit: int = 50, cursor: str | None = None
-    ) -> Page[Stop]:
+        self,
+        project_id: str,
+        query: StoreQuery | None = None,
+        *,
+        limit: int = 50,
+        cursor: str | None = None,
+        offset: int | None = None,
+        bounds: Bounds | None = None,
+    ) -> StorePage:
+        """One page of the filtered, sorted stores, with the total so the table can page by number. `offset` jumps
+        straight to a page (a `cursor` wins when both are given); `bounds` keeps only stores inside the map view."""
         project = self._project(project_id)
-        offset = offset_from_cursor(cursor)
+        start = offset_from_cursor(cursor) if cursor else (offset or 0)
         stops = self._query(project, query or StoreQuery())
-        window = stops[offset : offset + limit]
-        next_cursor = encode_cursor({"offset": offset + limit}) if offset + limit < len(stops) else None
-        return Page(items=window, next_cursor=next_cursor)
+        if bounds is not None:
+            stops = [stop for stop in stops if in_bounds(stop, bounds)]
+        window = stops[start : start + limit]
+        next_cursor = encode_cursor({"offset": start + limit}) if start + limit < len(stops) else None
+        return StorePage(items=window, next_cursor=next_cursor, total=len(stops), offset=start)
 
     def get(self, project_id: str, stop_uid: str) -> Stop:
         self._project(project_id)
@@ -256,6 +294,7 @@ class StoreService:
                 "day": stop.day,
                 "route_plan_id": stop.route_plan_id,
                 "visit_state": stop_visit_state(stop),
+                "screen_statuses": [screen.status for screen in stop.screens],
             }
             for stop in self._query(project, query or StoreQuery())
             if stop.lat is not None and stop.lng is not None
@@ -285,16 +324,31 @@ class StoreService:
         return result
 
     def by_state(
-        self, project_id: str, query: StoreQuery | None = None, *, pending: bool = True, limit: int = 10
+        self,
+        project_id: str,
+        query: StoreQuery | None = None,
+        *,
+        pending: bool = True,
+        limit: int = 10,
+        unit: str = "stores",
     ) -> list[dict[str, Any]]:
-        """Stores per state, most first (the "Top states by upcoming installs" chart): the active filters apply
-        except State itself, so clicking a bar never empties the chart. `pending` keeps pending-status stores."""
+        """Stores or screens per state, most first (the "Top states by upcoming installs" chart): the active filters
+        apply except State itself, so clicking a bar never empties the chart. `pending` keeps pending-status stores
+        (or, counting screens, pending-status screens; a store without screen rows counts as one screen)."""
+        if unit not in ("stores", "screens"):
+            raise ValueError("unit must be stores or screens")
         project = self._project(project_id)
         stops = self._filter(project, self._stores.list_all(project_id), (query or StoreQuery()).without("state"))
-        counts = Counter(
-            stop.state for stop in stops if stop.state and (not pending or stop.status in PENDING_STATUSES)
-        )
-        ranked = sorted(counts.items(), key=lambda item: (-item[1], item[0]))[:limit]
+        counts: Counter[str] = Counter()
+        for stop in stops:
+            if not stop.state:
+                continue
+            if unit == "stores":
+                counts[stop.state] += int(not pending or stop.status in PENDING_STATUSES)
+            else:
+                statuses = [screen.status for screen in stop.screens] or [stop.status]
+                counts[stop.state] += sum(1 for status in statuses if not pending or status in PENDING_STATUSES)
+        ranked = sorted(((s, c) for s, c in counts.items() if c), key=lambda item: (-item[1], item[0]))[:limit]
         return [{"state": state, "count": count} for state, count in ranked]
 
     def field_usage(self, project_id: str) -> dict[str, int]:
@@ -343,6 +397,8 @@ class StoreService:
         and progress attributes are never part of this write (the API model rejects them)."""
         project = self._project(project_id)
         current = self.get(project_id, stop_uid)
+        changes = dict(changes)
+        picked = changes.pop("place", None)  # a Google place the person chose: saved at its pin, no address check
         unknown = set(changes) - EDITABLE_FIELDS - {"fields"}
         if unknown:
             raise ValidationFailed(f"Not editable here: {', '.join(sorted(unknown))}", errors=sorted(unknown))
@@ -360,19 +416,31 @@ class StoreService:
             raise ValidationFailed("; ".join(errors), errors=errors, fields=problems)
 
         address_changed = any(key in update and update[key] != getattr(current, key) for key in ADDRESS_PARTS)
-        if address_changed:
+        if address_changed or picked:
             assert self._geocoder is not None
             parts = [update.get(key, getattr(current, key)) for key in ADDRESS_PARTS]
             lookup = ", ".join(part for part in parts if part)
-            geo = self._geocoder.geocode(lookup)
+            if picked:
+                formatted = picked.get("formatted") or lookup
+                geo = {"ok": True, "lat": picked["lat"], "lng": picked["lng"], "formatted": formatted}
+            else:
+                geo = resolve_address(self._geocoder, lookup, update.get("store_name", current.store_name))
             if not geo.get("ok") or geo.get("partial"):
                 raise ValidationFailed(
-                    "Address could not be verified by Google. Please enter a more specific address.",
+                    "Address could not be verified by Google. Pick a suggestion or correct the address.",
                     google_status=geo.get("status"),
-                    suggestions=geo.get("suggestions") or self._geocoder.autocomplete(lookup),
+                    suggestions=geo.get("suggestions") or [],
                 )
             update.update(lat=geo.get("lat"), lng=geo.get("lng"), geocoded=geo.get("formatted") or lookup)
             update["route_stale"] = True  # the routes were built for the old location
+        # A store added without a name or a verified address stops needing attention once that is fixed.
+        attention = [
+            reason for reason in current.needs_attention
+            if not (reason == "store_name" and str(update.get("store_name", current.store_name)).strip())
+            and not (reason == "address" and update.get("lat") is not None)
+        ]
+        if attention != list(current.needs_attention):
+            update["needs_attention"] = [str(reason) for reason in attention]
         update = {
             key: value for key, value in update.items() if key not in EDITABLE_FIELDS or value != getattr(current, key)
         }  # unchanged values need no write
@@ -450,6 +518,7 @@ class StoreService:
             **stop_details(stop),
             screens=stop.build_screens(),
             installer_name=stop.installer_name.strip(),
+            needs_attention=attention_of(stop),
         )
 
     def _append(self, project: Project, stops: list[StopInput], pa: str, mapping: dict[str, str]) -> dict[str, Any]:

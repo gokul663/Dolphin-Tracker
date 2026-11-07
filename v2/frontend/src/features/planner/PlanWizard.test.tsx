@@ -34,6 +34,11 @@ describe("PlanWizard", () => {
 
     await userEvent.clear(screen.getByLabelText(/Stops per day/));
     await userEvent.type(screen.getByLabelText(/Stops per day/), "12");
+    await userEvent.type(screen.getByLabelText(/Max driving per day/), "30");
+    expect(screen.getByText(/Between 0 and 24 hours/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Next/ }).hasAttribute("disabled")).toBe(true);
+    await userEvent.clear(screen.getByLabelText(/Max driving per day/));
+    await userEvent.type(screen.getByLabelText(/Max driving per day/), "6.5");
     await userEvent.click(screen.getByRole("button", { name: /Next/ }));
 
     expect(await screen.findByRole("region", { name: "Ann preview" })).toBeTruthy();
@@ -43,6 +48,7 @@ describe("PlanWizard", () => {
     const created = api.calls.find((call) => call.method === "POST" && call.url.pathname === "/api/route-plans")!.body as Record<string, unknown>;
     expect(created).toMatchObject({
       stops_per_day: 12,
+      max_day_hours: 6.5,
       installers: [{ name: "Ann", start: { address: "33.75, -84.39", lat: 33.75, lng: -84.39 } }],
       stores: [{ project_id: "p1", stop_uid: "a" }, { project_id: "p1", stop_uid: "b" }],
     });

@@ -42,6 +42,20 @@ class PlacesApiTests(unittest.TestCase):
         self.assertEqual(self.client.get("/api/places/validate").status_code, 422)
         self.assertEqual(self.client.get("/api/places/validate", params={"address": ""}).status_code, 422)
 
+    def test_search_lists_the_store_then_the_places_at_its_address(self):
+        store = {"place_id": "p1", "name": "Sunset Gas And Grill", "formatted": "Sunset, TX 76270", "lat": 33.45,
+                 "lng": -97.77, "addr": "", "city": "Sunset", "state": "TX", "zip": "76270"}
+        nearby = {**store, "place_id": "p2", "name": "Dollar General", "formatted": "345 TX-101, Sunset, TX 76270"}
+        self.geocoder.searches = {
+            "Sunset Gas & Grill, 101 S Council Rd, Sunset, TX": [store],
+            "101 S Council Rd, Sunset, TX": [store, nearby],  # the store again: listed once
+        }
+        params = {"address": "101 S Council Rd, Sunset, TX", "name": "Sunset Gas & Grill"}
+        body = self.client.get("/api/places/search", params=params).json()
+        self.assertEqual([hit["name"] for hit in body], ["Sunset Gas And Grill", "Dollar General"])
+        self.assertEqual((body[0]["lat"], body[0]["lng"]), (33.45, -97.77))
+        self.assertEqual(self.client.get("/api/places/search").status_code, 422)
+
     def test_autocomplete(self):
         body = self.client.get("/api/places/autocomplete", params={"q": "2 Elm"}).json()
         self.assertEqual(len(body["suggestions"]), 2)

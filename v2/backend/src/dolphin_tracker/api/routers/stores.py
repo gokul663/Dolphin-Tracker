@@ -15,8 +15,8 @@ from dolphin_tracker.api.schemas import (
     StoreDetailsUpdate,
     StoreFilterOptions,
 )
-from dolphin_tracker.domain.models import Page, ScreenStatus, Stop
-from dolphin_tracker.services.stores import StoreQuery, StoreService
+from dolphin_tracker.domain.models import ScreenStatus, Stop
+from dolphin_tracker.services.stores import Bounds, StorePage, StoreQuery, StoreService
 
 router = APIRouter(prefix="/projects/{project_id}/stores", tags=["stores"])
 ServiceDep = Annotated[StoreService, Depends(get_store_service)]
@@ -38,6 +38,9 @@ def store_query(
     route: Annotated[list[str] | None, Query(description='Repeatable; "In route" or "Not in route"')] = None,
     visit: Annotated[list[str] | None, Query(description="Repeatable; Visited, Partly visited, Not visited")] = None,
     q: Annotated[str, Query(max_length=200)] = "",
+    needs_attention: Annotated[bool, Query(description="Only stores added without a name or a verified address")] = (
+        False
+    ),
     sort: Annotated[str, Query(description="a store attribute, status, installer, day, screens, fields.<key>")] = (
         "store_name"
     ),
@@ -46,7 +49,7 @@ def store_query(
     return StoreQuery(
         status=status or [], installer=installer or [], pa=pa or [], state=state or [], city=city or [],
         dma=dma or [], venue_type=venue_type or [], dd_code=dd_code or [], screen_size=screen_size or [],
-        route=route or [], visit=visit or [], q=q, sort=sort, dir=dir,
+        route=route or [], visit=visit or [], q=q, sort=sort, dir=dir, needs_attention=needs_attention,
     )
 
 
@@ -57,16 +60,26 @@ def _bad_request(exc: ValueError) -> HTTPException:
     return HTTPException(status_code=400, detail=str(exc))
 
 
-@router.get("", response_model=Page[Stop])
+@router.get("", response_model=StorePage)
 def list_stores(
     project_id: str,
     service: ServiceDep,
     query: QueryDep,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     cursor: str | None = None,
-) -> Page[Stop]:
+    offset: Annotated[int | None, Query(ge=0, description="Jump to this row (page × limit)")] = None,
+    north: Annotated[float | None, Query(ge=-90, le=90)] = None,
+    south: Annotated[float | None, Query(ge=-90, le=90)] = None,
+    east: Annotated[float | None, Query(ge=-180, le=180)] = None,
+    west: Annotated[float | None, Query(ge=-180, le=180)] = None,
+) -> StorePage:
+    """A page of stores. Give all four of north/south/east/west to keep only stores inside the map view."""
+    edges = (north, south, east, west)
+    if any(edge is not None for edge in edges) and None in edges:
+        raise HTTPException(status_code=400, detail="Give all of north, south, east and west, or none")
+    bounds = Bounds(north, south, east, west) if north is not None else None  # type: ignore[arg-type]
     try:
-        return service.list(project_id, query, limit=limit, cursor=cursor)
+        return service.list(project_id, query, limit=limit, cursor=cursor, offset=offset, bounds=bounds)
     except ValueError as exc:
         raise _bad_request(exc) from exc
 
@@ -95,10 +108,11 @@ def stores_by_state(
     query: QueryDep,
     pending: bool = True,
     limit: Annotated[int, Query(ge=1, le=60)] = 10,
+    unit: Annotated[str, Query(pattern="^(stores|screens)$")] = "stores",
 ) -> list[dict]:
-    """Top states by store count (pending stores only by default), under the active filters except State."""
+    """Top states by store or screen count (pending only by default), under the active filters except State."""
     try:
-        return service.by_state(project_id, query, pending=pending, limit=limit)
+        return service.by_state(project_id, query, pending=pending, limit=limit, unit=unit)
     except ValueError as exc:
         raise _bad_request(exc) from exc
 

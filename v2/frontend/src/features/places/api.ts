@@ -3,7 +3,15 @@ import { keys } from "@/lib/api/keys";
 import { configApi, placesApi } from "@/lib/api/resources";
 
 export function useValidateAddress() {
-  return useMutation({ mutationFn: (address: string) => placesApi.validate(address) });
+  return useMutation({
+    mutationFn: (input: string | { address: string; name?: string }) =>
+      typeof input === "string" ? placesApi.validate(input) : placesApi.validate(input.address, input.name),
+  });
+}
+
+/** Google Search's places for a store (name + address), to pick the right one by hand. */
+export function useSearchPlaces() {
+  return useMutation({ mutationFn: ({ address, name }: { address: string; name?: string }) => placesApi.search(address, name) });
 }
 
 export function useMapsConfig() {

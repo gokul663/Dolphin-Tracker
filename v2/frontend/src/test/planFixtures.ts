@@ -7,15 +7,15 @@ export function makePlanStop(uid: string, overrides: Partial<PlanStop> = {}): Pl
   return {
     project_id: "p1", stop_uid: uid, external_id: `IBC-${uid}`, store_name: `Store ${uid}`, addr: `${uid} Main St`, city: "Atlanta",
     state: "GA", zip: "30303", lat: 33.7, lng: -84.4, screen_ids: [`${uid}-s1`], installer: "West", day: 1, seq: 0,
-    visited_screens: [], added_at: "2026-11-06T00:00:00Z", ...overrides,
+    drive_minutes: null, visited_screens: [], added_at: "2026-11-06T00:00:00Z", ...overrides,
   };
 }
 
 export function makeRoutePlan(overrides: Partial<RoutePlan> = {}): RoutePlan {
   return {
-    id: "plan1", name: "GA week", status: "active", stops_per_day: 10,
+    id: "plan1", name: "GA week", status: "active", stops_per_day: 10, max_day_hours: 0, locked_days: [],
     installers: [{ name: "West", start: WEST }, { name: "East", start: EAST }],
-    days: [{ number: 1, date: "2026-11-06", starts: { West: WEST, East: EAST } }],
+    days: [{ number: 1, date: "2026-11-06", starts: { West: WEST, East: EAST }, stops_per_day: null, max_day_hours: null }],
     store_count: 4, version: 3, created_at: "2026-11-06T00:00:00Z", updated_at: "2026-11-06T00:00:00Z", closed_at: "",
     ...overrides,
   };

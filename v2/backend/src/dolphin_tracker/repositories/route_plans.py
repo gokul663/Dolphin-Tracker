@@ -23,8 +23,8 @@ from dolphin_tracker.repositories.dynamo import (
 )
 
 WRITE_WORKERS = 16
-ASSIGNMENT_FIELDS = frozenset({"installer", "day", "seq"})
-PlanStopChange = tuple[str, dict[str, Any]]  # plan stop key, {installer?, day?, seq?}
+ASSIGNMENT_FIELDS = frozenset({"installer", "day", "seq", "drive_minutes"})
+PlanStopChange = tuple[str, dict[str, Any]]  # plan stop key, {installer?, day?, seq?, drive_minutes?}
 
 
 class RoutePlanRepository(Protocol):
@@ -42,8 +42,8 @@ class RoutePlanRepository(Protocol):
         ...
     def get_stop(self, plan_id: str, key: str) -> PlanStop | None: ...
     def update_assignments(self, plan_id: str, changes: list[PlanStopChange]) -> int:
-        """Set installer/day/seq only, so a visit recorded meanwhile is never overwritten. Stops removed meanwhile
-        are skipped. Returns how many were written."""
+        """Set installer/day/seq/drive_minutes only, so a visit recorded meanwhile is never overwritten. Stops
+        removed meanwhile are skipped. Returns how many were written."""
         ...
     def delete_stop(self, plan_id: str, key: str) -> None: ...
     def record_visit(self, plan_id: str, key: str, screen_id: str) -> PlanStop | None:
@@ -54,7 +54,7 @@ class RoutePlanRepository(Protocol):
 def check_assignment(change: dict[str, Any]) -> None:
     extra = set(change) - ASSIGNMENT_FIELDS
     if extra:
-        raise ValueError(f"Assignment writes may only touch installer/day/seq, got {sorted(extra)}")
+        raise ValueError(f"Assignment writes may only touch installer/day/seq/drive_minutes, got {sorted(extra)}")
 
 
 class DynamoRoutePlanRepository:

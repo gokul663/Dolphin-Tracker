@@ -19,7 +19,7 @@ import type { Pin, StopStatus } from "@/lib/api/types";
 import { STOP_STATUSES } from "@/lib/api/types";
 
 const pin = (uid: string, lat: number, lng: number, status: StopStatus = "Upcoming"): Pin => ({
-  uid, lat, lng, status, store_name: uid, installer: "Ann", day: 1, route_plan_id: "", visit_state: "none",
+  uid, lat, lng, status, store_name: uid, installer: "Ann", day: 1, route_plan_id: "", visit_state: "none", screen_statuses: [],
 });
 
 describe("groupPins", () => {
@@ -83,8 +83,8 @@ describe("markerSvg", () => {
 
 describe("marker signatures and style diffs", () => {
   const base: Pin[] = [
-    { uid: "a", lat: 33.7, lng: -84.4, status: "Upcoming", store_name: "A", installer: "Ann", day: 1, route_plan_id: "", visit_state: "none" },
-    { uid: "b", lat: 33.9, lng: -84.1, status: "Upcoming", store_name: "B", installer: "Ann", day: 1, route_plan_id: "", visit_state: "none" },
+    { uid: "a", lat: 33.7, lng: -84.4, status: "Upcoming", store_name: "A", installer: "Ann", day: 1, route_plan_id: "", visit_state: "none", screen_statuses: [] },
+    { uid: "b", lat: 33.9, lng: -84.1, status: "Upcoming", store_name: "B", installer: "Ann", day: 1, route_plan_id: "", visit_state: "none", screen_statuses: [] },
   ];
 
   it("ignores status in the location signature, so a recolour never rebuilds or refits", () => {
@@ -126,5 +126,37 @@ describe("marker signatures and style diffs", () => {
     expect(markerZIndex({ status: "Completed", count: 1, emphasis: "normal", overlay: NO_OVERLAY })).toBe(1);
     expect(markerZIndex({ status: "Completed", count: 3, emphasis: "normal", overlay: NO_OVERLAY })).toBe(1003);
     expect(markerZIndex({ status: "Completed", count: 1, emphasis: "hover", overlay: NO_OVERLAY })).toBe(5000);
+  });
+});
+
+describe("screens view", () => {
+  const withScreens = (uid: string, lat: number, status: StopStatus, statuses: StopStatus[]): Pin => ({
+    ...pin(uid, lat, -84, status),
+    screen_statuses: statuses,
+  });
+  const pins = [
+    withScreens("a", 33, "Upcoming", ["Completed", "Upcoming", "Upcoming"]),
+    withScreens("b", 33, "Completed", ["Completed"]), // same address as a
+    withScreens("c", 34, "Upcoming", []), // no screen rows: one screen in the store's status
+  ];
+
+  it("counts screens by their own status", () => {
+    const counts = statusCounts(pins, "screens");
+    expect([counts.Upcoming, counts.Completed]).toEqual([3, 2]);
+    expect(statusCounts(pins).Upcoming).toBe(2); // locations: a and c are Upcoming stores
+  });
+
+  it("filters screens, dropping a store only when none of its screens is left, and recolours it", () => {
+    const completed = filterByStatus(pins, new Set<StopStatus>(["Completed"]), "screens");
+    expect(completed.map((p) => [p.uid, p.status, p.screen_statuses.length])).toEqual([["a", "Completed", 1], ["b", "Completed", 1]]);
+    expect(filterByStatus(pins, new Set<StopStatus>(["Completed"])).map((p) => p.uid)).toEqual(["b"]); // locations
+  });
+
+  it("puts the screen count on the pin in the screens view, the store count otherwise", () => {
+    const groups = groupPins(pins);
+    const shared = groups.find((group) => group.pins.length === 2)!;
+    expect(shared.screens).toBe(4);
+    expect(markerStyles(groups, null, null, "screens").get(shared.key)?.count).toBe(4);
+    expect(markerStyles(groups, null, null).get(shared.key)?.count).toBe(2);
   });
 });

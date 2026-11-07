@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { Bounds } from "@/components/map/pins";
+import type { Bounds, MapUnit } from "@/components/map/pins";
 
 export type SortDir = "asc" | "desc";
 
@@ -22,7 +22,15 @@ interface StoresUiState {
   selectedId: string | null;
   hoveredId: string | null;
   drawerOpen: boolean;
+  /** What the map and the top-states chart count. */
+  unit: MapUnit;
+  /** Only the stores added without a name or a verified address. */
+  needsAttention: boolean;
+  setNeedsAttention: (value: boolean) => void;
   enterProject: (projectId: string) => void;
+  setUnit: (unit: MapUnit) => void;
+  /** Open a project with the filters from a link (the full-page map and chart open in their own tab). */
+  loadView: (projectId: string, view: StoresView) => void;
   setSearch: (search: string) => void;
   toggleFacet: (facet: Facet, value: string) => void;
   /** The top-states chart: a state bar selects that state alone; clicking the selected bar clears State. */
@@ -36,7 +44,38 @@ interface StoresUiState {
   clearFilters: () => void;
 }
 
-const FILTERS = { search: "", facets: NO_FACETS, sort: "store_name", dir: "asc" as SortDir, onlyInView: false };
+const FILTERS = { search: "", facets: NO_FACETS, sort: "store_name", dir: "asc" as SortDir, onlyInView: false, needsAttention: false };
+
+/** The part of the Stores state a link carries: search, filters and the count unit. */
+export interface StoresView {
+  search: string;
+  facets: FacetSelection;
+  unit: MapUnit;
+  needsAttention?: boolean;
+}
+
+const UNIT_PARAM = "unit";
+const SEARCH_PARAM = "q";
+
+/** `?q=…&status=Upcoming&state=TX&unit=screens`: repeated keys for several values of one filter. */
+export function viewToParams(view: StoresView): URLSearchParams {
+  const params = new URLSearchParams();
+  if (view.search) params.set(SEARCH_PARAM, view.search);
+  for (const facet of FACETS) for (const value of view.facets[facet]) params.append(facet, value);
+  if (view.unit !== "locations") params.set(UNIT_PARAM, view.unit);
+  if (view.needsAttention) params.set("attention", "1");
+  return params;
+}
+
+export function viewFromParams(params: URLSearchParams): StoresView {
+  const facets = Object.fromEntries(FACETS.map((facet) => [facet, params.getAll(facet)])) as unknown as FacetSelection;
+  return {
+    search: params.get(SEARCH_PARAM) ?? "",
+    facets,
+    unit: params.get(UNIT_PARAM) === "screens" ? "screens" : "locations",
+    ...(params.get("attention") === "1" ? { needsAttention: true } : {}),
+  };
+}
 
 export const toggleValue = (values: string[], value: string) =>
   values.includes(value) ? values.filter((item) => item !== value) : [...values, value];
@@ -49,12 +88,17 @@ export const useStoresUi = create<StoresUiState>((set) => ({
   selectedId: null,
   hoveredId: null,
   drawerOpen: false,
+  unit: "locations",
   enterProject: (projectId) =>
     set((state) =>
       state.projectId === projectId
         ? state
-        : { projectId, ...FILTERS, bounds: null, selectedId: null, hoveredId: null, drawerOpen: false },
+        : { projectId, ...FILTERS, unit: "locations", bounds: null, selectedId: null, hoveredId: null, drawerOpen: false },
     ),
+  setUnit: (unit) => set({ unit }),
+  setNeedsAttention: (needsAttention) => set({ needsAttention }),
+  loadView: (projectId, view) =>
+    set({ projectId, ...FILTERS, ...view, bounds: null, selectedId: null, hoveredId: null, drawerOpen: false }),
   setSearch: (search) => set({ search }),
   toggleFacet: (facet, value) => set((state) => ({ facets: { ...state.facets, [facet]: toggleValue(state.facets[facet], value) } })),
   toggleState: (value) =>

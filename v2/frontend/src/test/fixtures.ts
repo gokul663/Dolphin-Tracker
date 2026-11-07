@@ -23,6 +23,8 @@ export function makeKpi(overrides: Partial<Kpi> = {}): Kpi {
     committed_dolphin_screens: 11, committed_store_tvs: 3, actual_dolphin_screens: 10, actual_store_tvs: 2,
     by_installer: { Ann: 6, Bo: 4 }, by_dma: {}, by_venue_type: {},
     address_status: { total: 10, complete: 4, pending: 6 },
+    by_visit: { none: 7, partly: 1, visited: 2 },
+    needs_attention: 0,
     ...overrides,
   };
 }
@@ -55,7 +57,7 @@ export function makeStop(overrides: Partial<Stop> = {}): Stop {
     installer: "Ann", day: 1, seq: 0, fields: {}, screens: [makeScreen({ id: `${overrides.uid ?? "u1"}-s1`, status })],
     status, comment: "", additional_task: false, installer_name: "", route_stale: false, route_plan_id: "",
     last_planned_at: "", screen_visits: {}, last_visit_at: "",
-    updated_at: "2026-10-01T00:00:00+00:00", updated_by: "", ...overrides,
+    updated_at: "2026-10-01T00:00:00+00:00", updated_by: "", needs_attention: [], ...overrides,
   };
 }
 

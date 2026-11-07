@@ -1,5 +1,19 @@
 import { useState } from "react";
-import { Check, ChevronDown, ChevronUp, ClipboardCheck, ClipboardCopy, Download, Map as MapIcon, Trash2 } from "lucide-react";
+import {
+  ArrowRightToLine,
+  Check,
+  ChevronDown,
+  ChevronUp,
+  ClipboardCheck,
+  ClipboardCopy,
+  Download,
+  Lock,
+  LockOpen,
+  Map as MapIcon,
+  Pencil,
+  Plus,
+  Trash2,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -8,7 +22,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import {
   copyAddresses,
   dayMapsLinks,
+  dayDriveMinutes,
+  dayLimits,
   dayMiles,
+  formatDuration,
   fullAddress,
   isVisited,
   planCsv,
@@ -30,19 +47,28 @@ interface Props {
   onOpen: (stop: PlanStop) => void;
   onReassign: (stop: PlanStop, installer: string) => void;
   onRemove: (stop: PlanStop) => void;
+  onMoveNext: (stop: PlanStop) => void;
+  onToggleLock: (locked: boolean) => void;
+  onAdd: () => void;
 }
 
 const KIND_LABEL = { past: "Done", current: "Today", forecast: "Forecast" } as const;
 
 /** One installer's day in a plan: stops in order, visit state, live status, route links and exports. */
-export function PlanDayCard({ bundle, installer, color, day, active, onOpen, onReassign, onRemove }: Props) {
+export function PlanDayCard({ bundle, installer, color, day, active, onOpen, onReassign, onRemove, onMoveNext, onToggleLock, onAdd }: Props) {
   const [collapsed, setCollapsed] = useState(day.kind === "past");
+  const [editing, setEditing] = useState(false);
+  const editable = active && day.kind !== "past";
+  const locked = bundle.plan.locked_days.some((lock) => lock.installer === installer && lock.day === day.number);
   const [copied, setCopied] = useState(false);
   const open = day.stops.filter((stop) => !isVisited(stop));
   const visited = day.stops.length - open.length;
   const links = dayMapsLinks(day.kind === "forecast" ? null : day.start, open);
   const names = bundle.plan.installers.map((i) => i.name);
   const label = `${installer}, day ${day.number}`;
+  const drive = dayDriveMinutes(day.stops);
+  const limits = dayLimits(bundle.plan, day.kind === "forecast" ? undefined : day.number);
+  const limit = limits.hours * 60;
 
   const copy = async () => {
     try {
@@ -67,14 +93,52 @@ export function PlanDayCard({ bundle, installer, color, day, active, onOpen, onR
             Day {day.number}
             {day.date && <span className="ml-2 font-mono text-[11px] tracking-normal text-slate-500">{day.date}</span>}
           </div>
-          <Badge variant={day.kind === "current" ? "default" : "outline"} className="font-mono text-[10px]">
-            {KIND_LABEL[day.kind]}
-          </Badge>
+          <div className="flex flex-wrap items-center gap-1">
+            <Badge variant={day.kind === "current" ? "default" : "outline"} className="font-mono text-[10px]">
+              {KIND_LABEL[day.kind]}
+            </Badge>
+            {locked && (
+              <Badge variant="outline" className="gap-1 border-amber-300 bg-amber-50 font-mono text-[10px] text-amber-800">
+                <Lock className="size-3" /> Locked
+              </Badge>
+            )}
+          </div>
+          {editable && (
+            <div className="mt-2 flex gap-1">
+              <Button
+                size="xs"
+                variant={locked ? "default" : "outline"}
+                aria-pressed={locked}
+                aria-label={locked ? `Unlock ${label}` : `Lock ${label}`}
+                title={locked ? "Unlock: recalculations may change this day again" : "Lock: recalculations leave this day's stores and order alone"}
+                onClick={() => onToggleLock(!locked)}
+              >
+                {locked ? <LockOpen /> : <Lock />} {locked ? "Unlock" : "Lock"}
+              </Button>
+              <Button
+                size="xs"
+                variant={editing ? "default" : "outline"}
+                aria-pressed={editing}
+                aria-label={editing ? `Done editing ${label}` : `Edit ${label}`}
+                onClick={() => {
+                  setEditing(!editing);
+                  setCollapsed(false);
+                }}
+              >
+                {editing ? <Check /> : <Pencil />} {editing ? "Done" : "Edit"}
+              </Button>
+            </div>
+          )}
         </div>
         <div className="flex flex-col items-end gap-1 font-mono text-[10px] text-slate-500">
           <span>
             {day.stops.length} stops · {visited} visited · {dayMiles(day.stops, day.start)} mi
           </span>
+          {drive !== null && (
+            <span aria-label="Driving time" className={cn(limit > 0 && drive > limit && "font-semibold text-amber-700")}>
+              ≈ {formatDuration(drive)} driving{limit > 0 ? ` of ${formatDuration(limit)} max` : ""}
+            </span>
+          )}
           {day.start && day.kind !== "forecast" && <span className="max-w-56 truncate">from {day.start.address}</span>}
           <Button size="icon" variant="ghost" className="size-7" aria-expanded={!collapsed} aria-label={collapsed ? `Expand ${label}` : `Collapse ${label}`} onClick={() => setCollapsed(!collapsed)}>
             {collapsed ? <ChevronDown /> : <ChevronUp />}
@@ -130,9 +194,14 @@ export function PlanDayCard({ bundle, installer, color, day, active, onOpen, onR
                           </SelectContent>
                         </Select>
                       )}
-                      {canEdit && stop.visited_screens.length === 0 && (
-                        <Button size="icon-xs" variant="ghost" aria-label={`Remove ${stop.store_name} from the plan`} onClick={() => onRemove(stop)}>
-                          <Trash2 />
+                      {editing && canEdit && (
+                        <Button size="xs" variant="outline" aria-label={`Move ${stop.store_name} to the next day`} onClick={() => onMoveNext(stop)}>
+                          <ArrowRightToLine /> Next day
+                        </Button>
+                      )}
+                      {editing && canEdit && stop.visited_screens.length === 0 && (
+                        <Button size="xs" variant="outline" className="text-rose-700" aria-label={`Remove ${stop.store_name} from the plan`} onClick={() => onRemove(stop)}>
+                          <Trash2 /> Remove
                         </Button>
                       )}
                     </div>
@@ -141,6 +210,14 @@ export function PlanDayCard({ bundle, installer, color, day, active, onOpen, onR
               );
             })}
           </ol>
+          {editing && (
+            <div className="border-t bg-slate-50 p-3">
+              <Button size="sm" variant="outline" onClick={onAdd}>
+                <Plus /> Add store to this day
+              </Button>
+              <p className="mt-1.5 text-xs text-slate-500">You choose where it goes, between which stores.</p>
+            </div>
+          )}
           <div className="flex flex-wrap gap-1.5 border-t p-3">
             {open.length === 0 ? (
               <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700">

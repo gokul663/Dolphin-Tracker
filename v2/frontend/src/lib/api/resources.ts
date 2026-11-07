@@ -45,8 +45,8 @@ import type {
   RoutePlanCreate,
   RoutePlanUpdate,
   Visit,
-  VisitInput,
-} from "@/lib/api/types";
+  VisitInput, DayInsert, DayLockSet, InsertOptions, InsertQuery, StorePage, PlaceHit } from "@/lib/api/types";
+import type { StorePageParams } from "@/lib/api/keys";
 
 /** The store list/pins/export/facet query (STORE-MODEL §5). Repeated values OR together; filters AND. */
 export interface StoreFilters {
@@ -65,6 +65,8 @@ export interface StoreFilters {
   route?: string[];
   /** "Visited" / "Partly visited" / "Not visited", counted since the store's latest plan. */
   visit?: string[];
+  /** Only stores added without a name or a verified address (not fixed yet). */
+  needs_attention?: boolean;
   q?: string;
   sort?: string;
   dir?: "asc" | "desc";
@@ -85,6 +87,7 @@ function storeQuery(filters: StoreFilters) {
     screen_size: filters.screen_size,
     route: filters.route,
     visit: filters.visit,
+    needs_attention: filters.needs_attention || undefined,
     q: filters.q || undefined,
     sort: filters.sort,
     dir: filters.dir,
@@ -101,8 +104,13 @@ export const configApi = {
 };
 
 export const placesApi = {
-  validate: (address: string) => api<GeocodeResult>("/places/validate", { query: { address } }),
+  /** `name` (the store's) lets Google place the business itself, as Google Search does. */
+  validate: (address: string, name = "") =>
+    api<GeocodeResult>("/places/validate", { query: { address, ...(name.trim() ? { name: name.trim() } : {}) } }),
   autocomplete: (q: string) => api<{ suggestions: string[] }>("/places/autocomplete", { query: { q } }),
+  /** What Google Search lists for a store: the store by name at its address, then the places at that address. */
+  search: (address: string, name = "") =>
+    api<PlaceHit[]>("/places/search", { query: { address, ...(name.trim() ? { name: name.trim() } : {}) } }),
 };
 
 export const projectsApi = {
@@ -128,16 +136,18 @@ export const projectsApi = {
 };
 
 export const storesApi = {
-  list: (projectId: string, filters: StoreFilters, params: { limit?: number; cursor?: string | null } = {}) =>
-    api<Page<Stop>>(`/projects/${enc(projectId)}/stores`, {
-      query: { ...storeQuery(filters), limit: params.limit, cursor: params.cursor },
+  list: (projectId: string, filters: StoreFilters, page: StorePageParams) =>
+    api<StorePage>(`/projects/${enc(projectId)}/stores`, {
+      query: { ...storeQuery(filters), limit: page.limit, offset: page.offset, ...(page.bounds ?? {}) },
     }),
   pins: (projectId: string, filters: StoreFilters = {}) =>
     api<Pin[]>(`/projects/${enc(projectId)}/stores/pins`, { query: storeQuery(filters) }),
   filters: (projectId: string, filters: StoreFilters) =>
     api<StoreFilterOptions>(`/projects/${enc(projectId)}/stores/filters`, { query: storeQuery(filters) }),
-  byState: (projectId: string, filters: StoreFilters, pending = true) =>
-    api<StateCount[]>(`/projects/${enc(projectId)}/stores/by-state`, { query: { ...storeQuery(filters), pending } }),
+  byState: (projectId: string, filters: StoreFilters, pending = true, unit: "stores" | "screens" = "stores") =>
+    api<StateCount[]>(`/projects/${enc(projectId)}/stores/by-state`, {
+      query: { ...storeQuery(filters), pending, unit, limit: 60 }, // every state: the chart grows a row per state
+    }),
   fieldUsage: (projectId: string) => api<Record<string, number>>(`/projects/${enc(projectId)}/stores/field-usage`),
   /** A plain URL for an <a download> link: the browser streams the CSV itself. */
   exportUrl: (projectId: string, filters: StoreFilters) =>
@@ -211,6 +221,12 @@ export const routePlansApi = {
       body: { installer, version },
     }),
   nextDay: (id: string, body: NextDay) => api<RoutePlanBundle>(`${plan(id)}/next-day`, { method: "POST", body }),
+  setDayLock: (id: string, body: DayLockSet) => api<RoutePlanBundle>(`${plan(id)}/days/lock`, { method: "POST", body }),
+  insertOptions: (id: string, body: InsertQuery) =>
+    api<InsertOptions>(`${plan(id)}/days/insert-options`, { method: "POST", body }),
+  insert: (id: string, body: DayInsert) => api<RoutePlanBundle>(`${plan(id)}/days/insert`, { method: "POST", body }),
+  moveToNextDay: (id: string, projectId: string, uid: string, version?: number) =>
+    api<RoutePlanBundle>(`${plan(id)}/stops/${enc(projectId)}/${enc(uid)}/next-day`, { method: "POST", body: { version } }),
   close: (id: string) => api<RoutePlanBundle>(`${plan(id)}/close`, { method: "POST" }),
 };
 

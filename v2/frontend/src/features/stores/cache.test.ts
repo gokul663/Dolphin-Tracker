@@ -1,31 +1,28 @@
 import { describe, expect, it } from "vitest";
-import { patchPin, patchStopInPages, patchStopInRoutes, type StopPages } from "@/features/stores/cache";
-import type { Pin, RoutesBundle, Stop } from "@/lib/api/types";
+import { patchPin, patchStopInPage, patchStopInRoutes } from "@/features/stores/cache";
+import type { Pin, RoutesBundle, Stop, StorePage } from "@/lib/api/types";
 import { makeStop } from "@/test/fixtures";
 
 const stop = (uid: string): Stop => makeStop({ uid, display_id: uid, store_name: uid, installer: "A" });
 
-describe("patchStopInPages", () => {
-  const data: StopPages = {
-    pages: [{ items: [stop("a"), stop("b")], next_cursor: "c1" }, { items: [stop("c")], next_cursor: null }],
-    pageParams: [null, "c1"],
-  };
+describe("patchStopInPage", () => {
+  const data: StorePage = { items: [stop("a"), stop("b")], next_cursor: null, total: 2, offset: 0 };
 
-  it("patches the stop and keeps untouched pages identical", () => {
-    const next = patchStopInPages(data, "c", { status: "Completed", comment: "done" });
-    expect(next?.pages[1]?.items[0]).toMatchObject({ uid: "c", status: "Completed", comment: "done" });
-    expect(next?.pages[0]).toBe(data.pages[0]);
-    expect(data.pages[1]?.items[0]?.status).toBe("Upcoming"); // original untouched
+  it("patches the stop and leaves the original untouched", () => {
+    const next = patchStopInPage(data, "b", { status: "Completed", comment: "done" });
+    expect(next?.items[1]).toMatchObject({ uid: "b", status: "Completed", comment: "done" });
+    expect(next?.items[0]).toBe(data.items[0]);
+    expect(data.items[1]?.status).toBe("Upcoming");
   });
 
-  it("returns the same object when the stop is not cached", () => {
-    expect(patchStopInPages(data, "zzz", { comment: "x" })).toBe(data);
-    expect(patchStopInPages(undefined, "a", { comment: "x" })).toBeUndefined();
+  it("returns the same object when the stop is not on the page", () => {
+    expect(patchStopInPage(data, "zzz", { comment: "x" })).toBe(data);
+    expect(patchStopInPage(undefined, "a", { comment: "x" })).toBeUndefined();
   });
 });
 
 describe("patchPin", () => {
-  const pins: Pin[] = [{ uid: "a", lat: 1, lng: 2, status: "Upcoming", store_name: "a", installer: "A", day: 1, route_plan_id: "", visit_state: "none" }];
+  const pins: Pin[] = [{ uid: "a", lat: 1, lng: 2, status: "Upcoming", store_name: "a", installer: "A", day: 1, route_plan_id: "", visit_state: "none", screen_statuses: [] }];
   it("recolours on a status change and ignores other progress fields", () => {
     expect(patchPin(pins, "a", { status: "Completed" })?.[0]?.status).toBe("Completed");
     expect(patchPin(pins, "a", { comment: "x" })).toBe(pins);

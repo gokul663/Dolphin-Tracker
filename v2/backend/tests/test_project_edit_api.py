@@ -142,7 +142,7 @@ class AppendTests(ProjectApiTestCase):
 class DeleteAndPatchTests(ProjectApiTestCase):
     def setUp(self):
         super().setUp()
-        self.project_id = self.create_project()["project"]["id"]
+        self.project_id = self.create_routed_project()["project"]["id"]
 
     def test_delete_requires_exact_name(self):
         path = f"/api/projects/{self.project_id}"
@@ -156,15 +156,13 @@ class DeleteAndPatchTests(ProjectApiTestCase):
     def patch(self, body: dict):
         return self.client.patch(f"/api/projects/{self.project_id}", json=body)
 
-    def test_patch_metadata_cap_and_schema(self):
+    def test_patch_metadata_and_schema(self):
         tier = {"key": "tier", "label": "Tier", "type": "select", "options": ["A", "B"]}
         schema = [tier]
-        response = self.patch({"name": " Renamed ", "stops_per_day": 30, "store_percentage": None,
-                               "field_schema": schema})
+        response = self.patch({"name": " Renamed ", "store_percentage": None, "field_schema": schema})
         self.assertEqual(response.status_code, 200, response.text)
         project = response.json()
-        values = (project["name"], project["stops_per_day"], project["store_percentage"])
-        self.assertEqual(values, ("Renamed", 30, None))
+        self.assertEqual((project["name"], project["store_percentage"]), ("Renamed", None))
         self.assertEqual(project["field_schema"][-1]["options"], ["A", "B"])
         self.assertEqual(project["installers"], ["Ann", "Bo"])
 
@@ -172,7 +170,7 @@ class DeleteAndPatchTests(ProjectApiTestCase):
         cases = [
             {"installers": ["X"]},  # installer endpoints only
             {"routing_status": "ready"},
-            {"stops_per_day": 0},
+            {"stops_per_day": 30},  # the per-day cap belongs to route plans
             {"pa": None},
             {"name": "  "},
             {"field_schema": [{"key": "addr", "label": "Address"}]},

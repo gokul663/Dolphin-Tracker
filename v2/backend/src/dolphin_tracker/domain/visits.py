@@ -13,6 +13,8 @@ from pydantic import Field, field_validator
 from dolphin_tracker.domain.base import ApiModel
 from dolphin_tracker.domain.lists import clean_name
 from dolphin_tracker.domain.models import now_iso
+from dolphin_tracker.domain.statuses import VisitState as VisitState  # re-exported
+from dolphin_tracker.domain.statuses import visit_state as visit_state
 
 DATE_PATTERN = r"^\d{4}-\d{2}-\d{2}$"
 
@@ -74,19 +76,3 @@ class Visit(VisitInput):
     created_at: str = Field(default_factory=now_iso)
 
 
-class VisitState(StrEnum):
-    """The Projects view overlay (ROUTE-PLANNER §6), from the store's per-stick visit times."""
-
-    NONE = "none"
-    PARTLY = "partly"
-    VISITED = "visited"
-
-
-def visit_state(screen_ids: list[str], screen_visits: dict[str, str], since: str = "") -> VisitState:
-    """Visited when every stick has a visit at or after `since` (the store's latest plan; "" = ever)."""
-    if not screen_ids:
-        return VisitState.NONE
-    counted = sum(1 for screen_id in screen_ids if screen_visits.get(screen_id) and screen_visits[screen_id] >= since)
-    if counted == 0:
-        return VisitState.NONE
-    return VisitState.VISITED if counted == len(screen_ids) else VisitState.PARTLY

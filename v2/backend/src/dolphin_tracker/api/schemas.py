@@ -217,6 +217,7 @@ class ProjectUpdate(ApiModel):
 
     name: str | None = Field(default=None, max_length=200)
     pa: str | None = Field(default=None, max_length=500)
+    device_pa: str | None = Field(default=None, max_length=500)  # the device report's PA name; "" stops syncing
     project_type: ProjectType | None = None
     field_agent: str | None = Field(default=None, max_length=200)
     partner_account: str | None = Field(default=None, max_length=200)
@@ -226,6 +227,31 @@ class ProjectUpdate(ApiModel):
     fa_percentage: float | None = Field(default=None, ge=0, le=100)
     field_schema: list[FieldDef] | None = None
     expected_version: int | None = Field(default=None, description="409 if the project has moved past this version")
+
+
+class ExternalIdSet(ApiModel):
+    model_config = ConfigDict(extra="forbid")
+
+    external_id: str = Field(min_length=1, max_length=100)
+
+
+class ReviewAdd(ApiModel):
+    """How to place a reviewed record that joins no existing store: the person's address (checked with Google),
+    a Google place they picked, or add it anyway (flagged for an address check). All optional."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    address: str = Field(default="", max_length=500)
+    place: PlaceHit | None = None
+    add_anyway: bool = False
+
+
+class DeviceOverwrite(ApiModel):
+    """Which device-report values to copy into the store's own fields; `location` is lat/lng."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    fields: list[Literal["store_name", "addr", "city", "state", "zip", "location"]] = Field(min_length=1)
 
 
 class AppendStops(ApiModel):

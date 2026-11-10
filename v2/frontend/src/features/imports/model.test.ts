@@ -149,3 +149,30 @@ describe("review rows", () => {
     expect(screensPreview(rows[1] as ReviewRow)).toBe("1 screen");
   });
 });
+
+describe("DD code entries with several codes", () => {
+  const packed = () =>
+    ({
+      ...toReviewRows({ ...RESULT, rows: [RESULT.rows[0]!] })[0]!,
+      screens: [{ stick_number: "DD-002-02969. DD-002-01380", venue_id: "DD-HJGK7Z. DD-HB8P6I", status: "Completed" as const }],
+      problems: { venue_id: "DD code: 'DD-HJGK7Z. DD-HB8P6I' looks like 2 codes", image_url: "Pictures: bad link" },
+    }) as ReviewRow;
+
+  it("block the row (unlike other unusable values), even with Add anyway", async () => {
+    const { packedScreens } = await import("@/features/imports/model");
+    const row = packed();
+    expect(packedScreens(row)).toHaveLength(1);
+    expect(rowProblems(row)).toContain("DD code holds several codes: use the suggested split or fix the sheet");
+    expect(rowProblems({ ...row, addAnyway: true })).toContain("DD code holds several codes: use the suggested split or fix the sheet");
+    expect(valueProblems(row)).toEqual(["Pictures: bad link"]); // a picture link still only warns
+    expect(buildStops([row])).toEqual([]);
+  });
+
+  it("the suggestion makes one screen per code with its stick", async () => {
+    const { splitRowScreens } = await import("@/features/imports/model");
+    expect(splitRowScreens(packed()).map((screen) => [screen.stick_number, screen.venue_id, screen.status])).toEqual([
+      ["DD-002-02969", "DD-HJGK7Z", "Completed"],
+      ["DD-002-01380", "DD-HB8P6I", "Completed"],
+    ]);
+  });
+});

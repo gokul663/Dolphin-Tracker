@@ -22,6 +22,7 @@ import { addressLine } from "@/features/stores/details";
 import { STORE_PAGE_SIZES, useUpdateStoreDetails } from "@/features/stores/api";
 import type { Project, Stop } from "@/lib/api/types";
 import { STATUS_META } from "@/lib/status";
+import { DEVICE_TONE } from "@/features/device/DeviceBits";
 import { cn } from "@/lib/utils";
 import { coreError } from "@/lib/validation/fields";
 
@@ -78,6 +79,31 @@ function ScreenDots({ stop }: { stop: Stop }) {
 }
 
 const dash = <span className="text-slate-300">—</span>;
+
+export const ATTENTION_LABELS: Record<string, string> = {
+  store_name: "no store name",
+  address: "address not verified",
+  not_reporting: "Completed but not in Dolphin data",
+  dd_code_review: "a DD code entry holds several codes",
+  external_id: "no IBC#",
+};
+
+/** A value from the Dolphin data, in its colour; the sheet's value on hover. Clicking opens the store. */
+function DeviceValue({ value, sheet, onOpen }: { value: string; sheet: string; onOpen: () => void }) {
+  return (
+    <button
+      type="button"
+      className={cn("block w-full truncate text-left hover:underline", DEVICE_TONE.text)}
+      title={sheet && sheet !== value ? `Dolphin data. Sheet: ${sheet}` : "Dolphin data"}
+      onClick={(event) => {
+        event.stopPropagation();
+        onOpen();
+      }}
+    >
+      {value}
+    </button>
+  );
+}
 
 /** ROUTE-PLANNER §6: stores being tended (in a route) and serviced ones stand out in the list. */
 function rowTint(stop: Stop): string {
@@ -145,7 +171,7 @@ export function StoresTable(props: Props) {
                 <AlertTriangle
                   size={12}
                   className="shrink-0 text-amber-600"
-                  aria-label={`Needs attention: ${reasons.map((r) => (r === "store_name" ? "no store name" : "address not verified")).join(", ")}`}
+                  aria-label={`Needs attention: ${reasons.map((r) => ATTENTION_LABELS[r] ?? r).join(", ")}`}
                 />
               )}
               {info.getValue() || info.row.original.display_id}
@@ -156,16 +182,21 @@ export function StoresTable(props: Props) {
       helper.accessor("store_name", {
         header: "Store name",
         size: 200,
-        cell: (info) => (
+        cell: (info) => {
+          const shown = info.row.original.device?.store_name;
+          // The Dolphin data's name shows over the sheet's; it is changed in the store (Overwrite), not here.
+          if (shown) return <DeviceValue value={shown} sheet={info.getValue()} onOpen={() => onOpen(info.row.original.uid)} />;
+          return (
           <EditableCell
             label={`store name of ${info.row.original.external_id || info.row.original.display_id}`}
             value={info.getValue()}
             validate={(value) => coreError("store_name", value)}
             onSave={(value) => details.mutateAsync({ uid: info.row.original.uid, body: { store_name: value } })}
           />
-        ),
+          );
+        },
       }),
-      helper.accessor((stop) => [stop.city, stop.state].filter(Boolean).join(", "), {
+      helper.accessor((stop) => [stop.device?.city || stop.city, stop.device?.state || stop.state].filter(Boolean).join(", "), {
         id: "place",
         header: "City, state",
         size: 145,
@@ -180,7 +211,9 @@ export function StoresTable(props: Props) {
             }}
           >
             {info.row.original.route_stale && <AlertTriangle size={12} className="shrink-0 text-amber-600" aria-label="Route may be stale" />}
-            <span className="truncate">{info.getValue() || "—"}</span>
+            <span className={cn("truncate", (info.row.original.device?.city || info.row.original.device?.state) && DEVICE_TONE.text)}>
+              {info.getValue() || "—"}
+            </span>
           </button>
         ),
       }),

@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import Any
 
 from dolphin_tracker.domain.cursors import encode_cursor, offset_from_cursor
+from dolphin_tracker.domain.device import ReviewItem
 from dolphin_tracker.domain.errors import ConflictError, NotFoundError
 from dolphin_tracker.domain.lists import Category, NameEntry, NameListKind, name_key
 from dolphin_tracker.domain.models import Job, JobStatus, Page, Project, RoutingStatus, Screen, Stop, now_iso
@@ -14,6 +15,7 @@ from dolphin_tracker.repositories.route_plans import PlanStopChange, check_assig
 from dolphin_tracker.repositories.stores import (
     IMMUTABLE_STOP_FIELDS,
     RoutingChange,
+    check_device_change,
     check_progress_change,
     check_routing_change,
     screens_write,
@@ -153,6 +155,30 @@ class InMemoryStoreRepository:
     def update_progress_many(self, project_id: str, changes: list[RoutingChange]) -> int:
         for _, change in changes:
             check_progress_change(change)
+        written = 0
+        for stop_uid, change in changes:
+            if stop_uid in self._items.get(project_id, {}):
+                self.update_fields(project_id, stop_uid, change)
+                written += 1
+        return written
+
+    def set_external_id(self, project_id: str, stop_uid: str, external_id: str, needs_attention: list[str]) -> Stop:
+        current = self._items.get(project_id, {}).get(stop_uid)
+        if current is None:
+            raise NotFoundError(f"Stop {stop_uid} not found")
+        markers = self._markers.setdefault(project_id, {})
+        if external_id in markers:
+            raise ConflictError(f"IBC# {external_id} already exists in this project")
+        if current.external_id:
+            raise ConflictError("This store already has an IBC#")
+        markers[external_id] = stop_uid
+        updated = current.model_copy(update={"external_id": external_id, "needs_attention": needs_attention})
+        self._items[project_id][stop_uid] = Stop.model_validate(updated.model_dump())
+        return self._items[project_id][stop_uid].model_copy(deep=True)
+
+    def update_device_many(self, project_id: str, changes: list[RoutingChange]) -> int:
+        for _, change in changes:
+            check_device_change(change)
         written = 0
         for stop_uid, change in changes:
             if stop_uid in self._items.get(project_id, {}):
@@ -362,3 +388,33 @@ class InMemoryRoutePlanRepository:
             stop = stop.model_copy(update={"visited_screens": [*stop.visited_screens, screen_id]})
             self._stops[plan_id][key] = stop
         return stop.model_copy(deep=True)
+
+
+class InMemoryDeviceReviewRepository:
+    def __init__(self) -> None:
+        self._items: dict[str, dict[str, ReviewItem]] = {}
+
+    def list(self, project_id: str) -> list[ReviewItem]:
+        bucket = self._items.get(project_id, {})
+        return [bucket[key].model_copy(deep=True) for key in sorted(bucket)]
+
+    def get(self, project_id: str, key: str) -> ReviewItem | None:
+        item = self._items.get(project_id, {}).get(key)
+        return item.model_copy(deep=True) if item else None
+
+    def replace(self, project_id: str, items: list[ReviewItem]) -> int:
+        current = self._items.get(project_id, {})
+        changed = sum(1 for item in items if current.get(item.key) != item) + len(
+            set(current) - {item.key for item in items}
+        )
+        self._items[project_id] = {item.key: item.model_copy(deep=True) for item in items}
+        return changed
+
+    def put(self, project_id: str, item: ReviewItem) -> None:
+        self._items.setdefault(project_id, {})[item.key] = item.model_copy(deep=True)
+
+    def delete(self, project_id: str, key: str) -> None:
+        self._items.get(project_id, {}).pop(key, None)
+
+    def delete_all(self, project_id: str) -> None:
+        self._items.pop(project_id, None)

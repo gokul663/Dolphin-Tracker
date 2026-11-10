@@ -86,3 +86,54 @@ def status_write(status, **extra):
     from dolphin_tracker.domain.models import Screen
 
     return {"screens": [Screen(status=status).model_dump(mode="json")], "status": str(status), **extra}
+
+
+def report_row(venue_id: str, status: str = "Online", **extra) -> dict:
+    """One `dolphin-internal-report` document as Mongo returns it (only the fields the tracker reads)."""
+    from datetime import datetime
+
+    return {
+        "Venue ID": venue_id,
+        "Date": "11-09-2026",
+        "Status": status,
+        "Last Seen (UTC)": datetime(2026, 11, 9, 22, 3, 51),
+        "Offline Days": 0,
+        "Serial Number": f"SN-{venue_id}",
+        "Venue Name": f"CMS_{venue_id}",
+        "Store Name": f"Store {venue_id}",
+        "Address": "5680 Stadium Dr, Kalamazoo, MI 49009",
+        "City": "Kalamazoo",
+        "State": "Michigan",
+        "State Code": "MI",
+        "Zip Code": "49009",
+        "Latitude": 42.2675,
+        "Longitude": -85.661,
+        "PA Name": "IBC",
+        "PK External ID": "",
+        "ingested_at_utc": datetime(2026, 11, 10, 3, 2, 6),
+        **extra,
+    }
+
+
+class FakeDeviceData:
+    """Stands in for the device report: `rows` are report documents for the newest day, any PA."""
+
+    def __init__(self, rows: list[dict] | None = None, date: str = "2026-11-09") -> None:
+        self.rows = rows or []
+        self.date = date
+        self.snapshots: list[str] = []
+
+    def latest_date(self) -> str:
+        return self.date
+
+    def list_pas(self) -> tuple[str, list[str]]:
+        return self.date, sorted({row["PA Name"] for row in self.rows})
+
+    def snapshot(self, pa: str):
+        from dolphin_tracker.domain.device import DeviceRecord, DeviceSnapshot, utc_iso
+
+        self.snapshots.append(pa)
+        rows = [row for row in self.rows if row["PA Name"] == pa]
+        ingested = max((utc_iso(row["ingested_at_utc"]) for row in rows), default="")
+        return DeviceSnapshot(pa=pa, date=self.date, ingested_at=ingested,
+                              records=[DeviceRecord.from_report(row) for row in rows])

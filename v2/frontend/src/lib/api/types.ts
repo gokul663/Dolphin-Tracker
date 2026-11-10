@@ -48,7 +48,7 @@ export type ImportJobCreated = Schemas["ImportJobCreated"];
 export type ImportResult = Schemas["ImportResult"];
 export type ImportRow = Schemas["ImportRow"];
 export type GeocodeResult = Schemas["GeocodeResult"];
-export type PlaceHit = Schemas["PlaceHit"];
+export type PlaceHit = Schemas["PlaceHit-Output"];
 export type NameEntry = Schemas["NameEntry"];
 export type NameListKind = "installers" | "managers";
 export type Category = Schemas["Category-Output"];
@@ -83,6 +83,16 @@ export type PoolStore = Schemas["PoolStore"];
 export type PoolFacets = Schemas["PoolFacets"];
 export type FacetValue = Schemas["FacetValue"];
 export type MapsConfig = Schemas["MapsConfig"];
+export type DeviceSyncState = Schemas["DeviceSyncState"];
+export type StoreDevice = Schemas["StoreDevice"];
+export type ScreenDevice = Schemas["ScreenDevice"];
+export type ReviewItem = Schemas["ReviewItem"];
+export type ReviewPage = Schemas["ReviewPage"];
+export type SyncResult = Schemas["SyncResult"];
+export type PaList = Schemas["PaList"];
+export type OverwriteResult = Schemas["OverwriteResult"];
+export type ReviewAdd = Schemas["ReviewAdd"];
+export type OverwriteField = Schemas["DeviceOverwrite"]["fields"][number];
 
 /** `Page[T]` from the backend: every list endpoint returns this with an opaque cursor. */
 export interface Page<T> {
@@ -129,6 +139,8 @@ export interface ValidationDetail {
   fields?: Record<string, string>;
   suggestions?: string[];
   google_status?: string | null;
+  /** Needs review → Add: the address Google was asked about ("" when the report has none). */
+  address?: string;
 }
 
 export class ApiError extends Error {

@@ -16,7 +16,8 @@ import { useStoreFields, useValidateAddress } from "@/features/places/api";
 import { GoogleSearchPicker } from "@/features/places/GoogleSearchPicker";
 import type { PlaceHit } from "@/lib/api/types";
 import { ScreensEditor } from "@/features/stores/ScreensEditor";
-import { useStore, useUpdateProgress, useUpdateStoreDetails } from "@/features/stores/api";
+import { StoreDeviceSection } from "@/features/device/StoreDeviceSection";
+import { useSetExternalId, useStore, useUpdateProgress, useUpdateStoreDetails } from "@/features/stores/api";
 import {
   actualCounts,
   addressChanged,
@@ -117,7 +118,14 @@ export function StoreDrawer({ project, stopId, open, onClose }: Props) {
           {store.isError && <p className="py-4 text-sm text-rose-700">{store.error.message}</p>}
           {specs.isError && <p className="py-4 text-sm text-rose-700">Could not load the store fields: {specs.error.message}</p>}
           {stop && specs.data && (
-            <DetailsEditor key={`${stop.uid}-details`} project={project} stop={stop} specs={specs.data} sections={sections}>
+            // Re-keyed when an Overwrite from the Dolphin data changes the saved values, so the form shows them.
+            <DetailsEditor
+              key={`${stop.uid}-details-${[stop.store_name, stop.addr, stop.city, stop.state, stop.zip, stop.lat, stop.lng].join("|")}`}
+              project={project}
+              stop={stop}
+              specs={specs.data}
+              sections={sections}
+            >
               <Section title="Screens" sections={sections}>
                 {/* Reset only when the saved rows change, so saving details keeps unsaved screen edits. */}
                 <ScreensEditor key={`${stop.uid}-${JSON.stringify(stop.screens)}`} project={project} stop={stop} />
@@ -358,7 +366,9 @@ function DetailsEditor({
   };
 
   const control = (spec: StoreFieldSpec) =>
-    spec.editable ? (
+    spec.name === "external_id" && !stop.external_id ? (
+      <ExternalIdInput key={spec.name} projectId={project.id} uid={stop.uid} />
+    ) : spec.editable ? (
       <FieldControl key={spec.name} spec={spec} value={form[spec.name] ?? null} onChange={(value) => set(spec.name, value)} error={errors[spec.name]} />
     ) : (
       <ReadOnly
@@ -371,6 +381,7 @@ function DetailsEditor({
 
   return (
     <div className="space-y-3 pt-4">
+      <StoreDeviceSection project={project} stop={stop} />
       {DETAIL_GROUPS.map((group) => (
         <Section
           key={group}
@@ -565,5 +576,37 @@ function OtherData({ project, stop, sections }: { project: Project; stop: Stop; 
         </dl>
       )}
     </Section>
+  );
+}
+
+/** A store added from the Dolphin data has no IBC#: enter it once here (it is fixed after that, like any IBC#). */
+function ExternalIdInput({ projectId, uid }: { projectId: string; uid: string }) {
+  const [value, setValue] = useState("");
+  const save = useSetExternalId(projectId);
+  return (
+    <div className="space-y-1.5">
+      <Label htmlFor="store-external_id" className="flex items-center gap-1 text-amber-800">
+        <AlertTriangle size={12} /> IBC# (missing)
+      </Label>
+      <form
+        className="flex gap-1"
+        onSubmit={(event) => {
+          event.preventDefault();
+          save.mutate(
+            { uid, externalId: value.trim() },
+            {
+              onSuccess: (stop) => toast.success(`IBC# ${stop.external_id} saved`),
+              onError: (error) => toast.error(error instanceof Error ? error.message : "Could not save the IBC#"),
+            },
+          );
+        }}
+      >
+        <Input id="store-external_id" value={value} placeholder="e.g. FL18993" onChange={(event) => setValue(event.target.value.toUpperCase())} aria-invalid />
+        <Button type="submit" variant="outline" disabled={!value.trim() || save.isPending}>
+          {save.isPending && <Loader2 className="animate-spin" />} Save
+        </Button>
+      </form>
+      <p className="text-xs text-slate-500">The Dolphin data has no IBC# for this store. It cannot be changed once saved.</p>
+    </div>
   );
 }

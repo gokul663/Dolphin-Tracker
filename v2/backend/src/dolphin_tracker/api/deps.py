@@ -10,6 +10,8 @@ from botocore.config import Config
 from fastapi import Depends
 
 from dolphin_tracker.config import Settings, get_settings, resolve_google_server_key
+from dolphin_tracker.repositories.device_data import DeviceDataSource, make_device_data
+from dolphin_tracker.repositories.device_review import DeviceReviewRepository, DynamoDeviceReviewRepository
 from dolphin_tracker.repositories.dynamo import dynamodb_resource
 from dolphin_tracker.repositories.files import FileStore, make_file_store
 from dolphin_tracker.repositories.jobs import DynamoJobRepository, JobRepository
@@ -19,6 +21,7 @@ from dolphin_tracker.repositories.route_plans import DynamoRoutePlanRepository, 
 from dolphin_tracker.repositories.stores import DynamoStoreRepository, StoreRepository
 from dolphin_tracker.repositories.visits import DynamoVisitRepository, VisitRepository
 from dolphin_tracker.repositories.worker_invoker import WorkerInvoker, make_invoker
+from dolphin_tracker.services.device_sync import DeviceSyncService
 from dolphin_tracker.services.drive_times import GoogleDriveTimes
 from dolphin_tracker.services.geocoding import GoogleGeocoder
 from dolphin_tracker.services.imports import ImportService
@@ -175,6 +178,36 @@ def get_visit_service(
 
 def get_places_service(geocoder: Annotated[GoogleGeocoder, Depends(get_geocoder)]) -> PlacesService:
     return PlacesService(geocoder)
+
+
+def get_device_review_repository(table: Annotated[object, Depends(get_table)]) -> DeviceReviewRepository:
+    return DynamoDeviceReviewRepository(table)
+
+
+@lru_cache
+def _device_data(function_name: str, mongo_uri: str, mongo_uri_secret: str, region: str) -> DeviceDataSource | None:
+    settings = Settings(
+        _env_file=None, device_data_function_name=function_name, mongo_uri=mongo_uri,
+        mongo_uri_secret=mongo_uri_secret, aws_region=region,
+    )
+    return make_device_data(settings)  # one Mongo client (local) or Lambda client per process
+
+
+def get_device_data(settings: SettingsDep) -> DeviceDataSource | None:
+    return _device_data(
+        settings.device_data_function_name, settings.mongo_uri, settings.mongo_uri_secret, settings.aws_region
+    )
+
+
+def get_device_sync_service(
+    projects: Annotated[ProjectRepository, Depends(get_project_repository)],
+    stores: Annotated[StoreRepository, Depends(get_store_repository)],
+    reviews: Annotated[DeviceReviewRepository, Depends(get_device_review_repository)],
+    source: Annotated[DeviceDataSource | None, Depends(get_device_data)],
+    store_service: Annotated[StoreService, Depends(get_store_service)],
+    geocoder: Annotated[GoogleGeocoder, Depends(get_geocoder)],
+) -> DeviceSyncService:
+    return DeviceSyncService(projects, stores, reviews, source, store_service, geocoder)
 
 
 def get_db_probe(settings: SettingsDep) -> Callable[[], bool]:

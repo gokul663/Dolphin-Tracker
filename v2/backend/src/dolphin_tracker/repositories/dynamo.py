@@ -20,6 +20,7 @@ class Keys:
     STOP_PREFIX = "STOP#"
     EXTERNAL_ID_PREFIX = "EXT#"
     VISIT_PREFIX = "VISIT#"
+    DEVICE_REVIEW_PREFIX = "DEVREVIEW#"
 
     @staticmethod
     def project(project_id: str) -> dict[str, str]:
@@ -33,6 +34,11 @@ class Keys:
     def external_id(project_id: str, normalised: str) -> dict[str, str]:
         """Uniqueness marker for a store's IBC# within its project (STORE-MODEL §2)."""
         return {"PK": f"PROJECT#{project_id}", "SK": f"{Keys.EXTERNAL_ID_PREFIX}{normalised}"}
+
+    @staticmethod
+    def device_review(project_id: str, key: str) -> dict[str, str]:
+        """A device-report record not in the project yet, by its venue_code_key."""
+        return {"PK": f"PROJECT#{project_id}", "SK": f"{Keys.DEVICE_REVIEW_PREFIX}{key}"}
 
     @staticmethod
     def job(job_id: str) -> dict[str, str]:

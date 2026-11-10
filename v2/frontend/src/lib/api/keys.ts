@@ -28,6 +28,8 @@ export const keys = {
   routePlans: ["route-plans"] as const,
   routePlanList: (status: string) => ["route-plans", "list", status] as const,
   routePlan: (id: string) => ["route-plans", id] as const,
+  devicePas: ["device-data", "pas"] as const,
+  deviceReview: (id: string) => ["projects", id, "device-review"] as const,
   storeSearch: ["store-search"] as const,
   storeSearchPins: (filters: PoolFilters) => ["store-search", "pins", filters] as const,
   storeSearchFacets: (filters: PoolFilters) => ["store-search", "facets", filters] as const,

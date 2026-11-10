@@ -31,6 +31,8 @@ import {
   rowProblems,
   screensPreview,
   valueProblems,
+  packedScreens,
+  splitRowScreens,
   type ReviewRow,
   type RowFilter,
 } from "@/features/imports/model";
@@ -263,6 +265,27 @@ export function ReviewStep({ rows, onRowsChange }: Props) {
                     {!row.excluded && problems.length > 0 && (
                       <div className="mt-1 text-xs text-rose-600">
                         {problems.join(" · ")}
+                      </div>
+                    )}
+                    {!row.excluded && packedScreens(row).length > 0 && (
+                      <div className="mt-1 flex flex-wrap items-center gap-2 rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-xs text-rose-800">
+                        <span>
+                          Suggestion:{" "}
+                          {splitRowScreens(row)
+                            .filter((screen) => screen.venue_id)
+                            .map((screen) => (screen.stick_number ? `${screen.venue_id} (stick ${screen.stick_number})` : screen.venue_id))
+                            .join("; ")}
+                        </span>
+                        <Button
+                          size="xs"
+                          variant="outline"
+                          onClick={() => {
+                            const { venue_id: _fixed, ...problemsLeft } = row.problems;
+                            patch(row.index, { screens: splitRowScreens(row), problems: problemsLeft });
+                          }}
+                        >
+                          Use suggestion
+                        </Button>
                       </div>
                     )}
                     {values.length > 0 && (

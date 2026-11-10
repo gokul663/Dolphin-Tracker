@@ -8,6 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { actualCounts } from "@/features/stores/details";
+import { ScreenDeviceLine, splitCodes } from "@/features/device/DeviceBits";
+import { AlertTriangle } from "lucide-react";
 import { useUpdateScreens } from "@/features/stores/api";
 import { deriveStatus, STOP_STATUSES, type Project, type ScreenStatus, type Stop } from "@/lib/api/types";
 import { STATUS_META } from "@/lib/status";
@@ -27,7 +29,8 @@ export interface ScreenRow {
 }
 
 let nextKey = 0;
-export const toRows = (stop: Pick<Stop, "screens">): ScreenRow[] => stop.screens.map((screen) => ({ key: screen.id, ...screen }));
+export const toRows = (stop: Pick<Stop, "screens">): ScreenRow[] =>
+  stop.screens.map(({ device: _device, status_changed_at: _changed, ...screen }) => ({ key: screen.id, ...screen }));
 
 /** STORE-MODEL §4.1: a new row is Upcoming, a Dolphin screen, wall-mounted, no mount yet. */
 export const newRow = (): ScreenRow => ({
@@ -36,6 +39,19 @@ export const newRow = (): ScreenRow => ({
 });
 
 export const toInputs = (rows: ScreenRow[]) => rows.map(({ key: _key, ...row }) => row);
+
+/** The suggested fix for an entry holding several DD codes: one row per code, its stick at the same position when
+ *  the counts match; the first keeps the row's id. Applied only when the person presses Split (then Save). */
+export function splitSuggestion(row: ScreenRow): ScreenRow[] {
+  const codes = splitCodes(row.venue_id);
+  const sticks = splitCodes(row.stick_number);
+  const paired = sticks.length === codes.length;
+  return codes.map((code, index) => ({
+    ...(index === 0 ? row : { ...newRow(), status: row.status, screen_size: row.screen_size, is_dolphin_screen: row.is_dolphin_screen }),
+    venue_id: code,
+    stick_number: paired ? sticks[index]! : index === 0 ? row.stick_number : "",
+  }));
+}
 
 /** Screen rows of one store: add, edit, delete (with confirmation), save as a full replace (PUT …/screens). */
 export function ScreensEditor({ project, stop }: { project: Project; stop: Stop }) {
@@ -46,6 +62,7 @@ export function ScreensEditor({ project, stop }: { project: Project; stop: Stop 
   const dirty = JSON.stringify(toInputs(rows)) !== saved;
   const counts = actualCounts(rows);
   const derived = deriveStatus(rows.map((row) => row.status));
+  const devices = new Map(stop.screens.map((screen) => [screen.id, screen.device]));
 
   const patch = (key: string, change: Partial<ScreenRow>) =>
     setRows((current) => current.map((row) => (row.key === key ? { ...row, ...change } : row)));
@@ -102,6 +119,26 @@ export function ScreensEditor({ project, stop }: { project: Project; stop: Stop 
                 <Trash2 />
               </Button>
             </div>
+            {row.id && devices.get(row.id) && <ScreenDeviceLine device={devices.get(row.id)!} />}
+            {splitCodes(row.venue_id).length > 1 && (
+              <div role="alert" className="flex flex-wrap items-center gap-2 rounded-md border border-amber-300 bg-amber-50 px-2 py-1.5 text-xs text-amber-900">
+                <AlertTriangle size={13} />
+                <span className="min-w-0 flex-1">
+                  This DD code entry holds {splitCodes(row.venue_id).length} codes, so it matches no device. Suggestion:{" "}
+                  {splitSuggestion(row)
+                    .map((part) => (part.stick_number ? `${part.venue_id} (stick ${part.stick_number})` : part.venue_id))
+                    .join("; ")}
+                  .
+                </span>
+                <Button
+                  size="xs"
+                  variant="outline"
+                  onClick={() => setRows((current) => current.flatMap((item) => (item.key === row.key ? splitSuggestion(item) : [item])))}
+                >
+                  Split into {splitCodes(row.venue_id).length} screens
+                </Button>
+              </div>
+            )}
             <div className="grid grid-cols-3 gap-2">
               {([["stick_number", "Stick #"], ["venue_id", "DD code"], ["screen_size", "Size"]] as const).map(([key, label]) => (
                 <div key={key} className="space-y-1">

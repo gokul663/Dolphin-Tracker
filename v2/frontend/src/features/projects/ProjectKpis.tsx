@@ -39,12 +39,12 @@ export function ProjectKpis({ kpi, onNeedsAttention }: { kpi: Kpi; onNeedsAttent
           onClick={onNeedsAttention}
           className="flex flex-col items-center justify-center rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-center text-amber-800 shadow-sm hover:bg-amber-100"
           aria-label={`${kpi.needs_attention} stores need attention`}
-          title="Stores added without a name or a verified address: show them"
+          title="Stores needing attention (no name, IBC# or verified address; Completed but not in the Dolphin data; several DD codes in one entry): show them"
         >
           <span className="flex items-center gap-1 text-2xl font-semibold leading-tight tabular-nums">
             <AlertTriangle className="size-5" /> {kpi.needs_attention.toLocaleString()}
           </span>
-          <span className="whitespace-nowrap font-mono text-[10px] uppercase tracking-wider">Need attention</span>
+          <span className="max-w-[10ch] text-balance font-mono text-[10px] uppercase leading-tight tracking-wider">Need attention</span>
         </button>
       )}
       <KpiSection title="Stores" ariaLabel="Store KPIs" tone="stores">
@@ -164,7 +164,7 @@ function KpiCard({
       >
         {value.toLocaleString()}
       </div>
-      <div className="whitespace-nowrap font-mono text-[10px] uppercase tracking-wider text-slate-500">
+      <div className="max-w-[10ch] text-balance break-words font-mono text-[10px] uppercase leading-tight tracking-wider text-slate-500">
         {label}
       </div>
     </div>

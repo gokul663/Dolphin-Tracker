@@ -9,9 +9,12 @@ from aws_cdk import Duration
 from aws_cdk import aws_apigatewayv2 as apigwv2
 from aws_cdk import aws_apigatewayv2_integrations as integrations
 from aws_cdk import aws_dynamodb as dynamodb
+from aws_cdk import aws_events as events
+from aws_cdk import aws_events_targets as targets
 from aws_cdk import aws_lambda as lambda_
 from aws_cdk import aws_logs as logs
 from aws_cdk import aws_s3 as s3
+from aws_cdk import aws_secretsmanager as secretsmanager
 from aws_cdk import aws_ssm as ssm
 from constructs import Construct
 
@@ -66,6 +69,8 @@ class ApiStack(cdk.Stack):
             self, "GoogleServerKey", parameter_name=cfg.ssm_google_server_key
         )
 
+        mongo_uri = secretsmanager.Secret.from_secret_name_v2(self, "MongoUri", cfg.mongo_uri_secret)
+
         code = _code()
         placeholder = not PACKAGE_DIR.is_dir()
         common_env = {
@@ -80,6 +85,23 @@ class ApiStack(cdk.Stack):
             "POWERTOOLS_SERVICE_NAME": "dolphin-tracker",
             "LOG_LEVEL": "INFO",
         }
+
+        # The only function that holds the Mongo secret: reads the CMS device report for the API and the worker.
+        self.device_data_fn = lambda_.Function(
+            self,
+            "DeviceData",
+            log_group=_log_group(self, "DeviceDataLogs", cfg),
+            runtime=RUNTIME,
+            architecture=ARCH,
+            handler="index.handler" if placeholder else "dolphin_tracker.handlers.device_data.handler",
+            code=code,
+            memory_size=512,
+            timeout=Duration.seconds(25),  # under the API's 29 s, so a slow Mongo fails the call cleanly
+            environment={**common_env, "DT_MONGO_URI_SECRET": cfg.mongo_uri_secret},
+            description="Reads the CMS device report (MongoDB, read-only)",
+        )
+        mongo_uri.grant_read(self.device_data_fn)
+        common_env = {**common_env, "DT_DEVICE_DATA_FUNCTION_NAME": self.device_data_fn.function_name}
 
         self.worker_fn = lambda_.Function(
             self,
@@ -114,6 +136,19 @@ class ApiStack(cdk.Stack):
             files_bucket.grant_read_write(fn)
             google_key.grant_read(fn)
         self.worker_fn.grant_invoke(self.api_fn)
+        for fn in (self.api_fn, self.worker_fn):
+            self.device_data_fn.grant_invoke(fn)
+
+        # Daily device sync after the CMS's nightly load (about 03:00 UTC); projects also sync when opened.
+        events.Rule(
+            self,
+            "DeviceSyncSchedule",
+            schedule=events.Schedule.cron(minute="0", hour="12"),
+            targets=[targets.LambdaFunction(
+                self.worker_fn, event=events.RuleTargetInput.from_object({"task": "device_sync_all"}), retry_attempts=1,
+            )],
+            description="Sync every project's device data from the CMS report",
+        )
 
         self.http_api = apigwv2.HttpApi(
             self,

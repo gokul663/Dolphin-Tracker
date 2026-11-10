@@ -9,6 +9,7 @@ from typing import Any, Generic, Self, TypeVar
 from pydantic import ConfigDict, Field, field_validator, model_validator
 
 from dolphin_tracker.domain.base import ApiModel
+from dolphin_tracker.domain.device import DeviceSyncState, ScreenDevice, StoreDevice, split_codes
 from dolphin_tracker.domain.kpi import Kpi
 from dolphin_tracker.domain.statuses import (  # re-exported: callers import statuses from models
     LEGACY_STATUSES,
@@ -56,6 +57,10 @@ class Screen(ApiModel):
     has_mount: bool = False
     has_ceiling_mount: bool = False  # False: wall mount, the default
     status: ScreenStatus = ScreenStatus.UPCOMING
+    # When `status` last changed (a person or the device sync); "" = unknown (set by a sheet or before this
+    # existed). A screen Completed after the device report's day is not expected in that report yet.
+    status_changed_at: str = ""
+    device: ScreenDevice | None = None  # the device report's latest day, when this screen's DD code is in it
 
     @field_validator("status", mode="before")
     @classmethod
@@ -105,6 +110,8 @@ class Project(ApiModel):
     id: str
     name: str
     pa: str = ""
+    device_pa: str = ""  # the PA name in the device report this project syncs with; "" = no sync
+    device_sync: DeviceSyncState | None = None
     project_type: ProjectType
     installers: list[str] = Field(default_factory=list)
     field_agent: str = ""
@@ -170,6 +177,12 @@ class StoreDetails(ApiModel):
 class NeedsAttention(StrEnum):
     STORE_NAME = "store_name"
     ADDRESS = "address"
+    # Added from the Dolphin data without an IBC#: entered once in the store (then fixed like any IBC#).
+    EXTERNAL_ID = "external_id"
+    # A Completed screen whose DD code is missing from the device report (set and cleared by the device sync).
+    NOT_REPORTING = "not_reporting"
+    # A screen's DD code entry holds several codes: not parsed, so it needs a manual fix (device sync sets it).
+    DD_CODE_REVIEW = "dd_code_review"
 
 
 class Stop(StoreDetails):
@@ -201,6 +214,8 @@ class Stop(StoreDetails):
     # Added by hand without a store name and/or a verified address ("store_name", "address"). Each reason clears
     # itself once fixed: a name is entered, or the address is verified (or a Google place picked).
     needs_attention: list[NeedsAttention] = Field(default_factory=list)
+    device: StoreDevice | None = None  # device-report values shown over the sheet's (Overwrite copies them in)
+    device_alert_ignored: str = ""  # report day whose "not in Dolphin data" alert was ignored
     # Route Planner (ROUTE-PLANNER §3, §7): the active plan holding this store ("" = none), and when the store last
     # joined a plan (kept after the plan closes; the "Visited" overlay counts visits from then on).
     route_plan_id: str = ""
@@ -231,6 +246,8 @@ PROGRESS_FIELDS = frozenset({"screens", "status", "comment", "additional_task", 
 # Written only by the route-plan and visit paths, never by detail, progress or routing writes.
 PLAN_FIELDS = frozenset({"route_plan_id", "last_planned_at"})
 VISIT_FIELDS = frozenset({"screen_visits", "last_visit_at"})
+# Written only by the device sync: the screens it re-statuses, their summary, the report overlay and the alert.
+DEVICE_FIELDS = frozenset({"screens", "status", "device", "needs_attention", "device_alert_ignored"})
 
 
 class ScreenInput(ApiModel):
@@ -349,8 +366,12 @@ class ProjectSummary(Project):
 def attention_of(stop: StopInput) -> list[NeedsAttention]:
     """Why a new store needs attention: no name, or an address added without being verified (no map pin)."""
     reasons = []
+    if NeedsAttention.EXTERNAL_ID in stop.needs_attention and not stop.external_id.strip():
+        reasons.append(NeedsAttention.EXTERNAL_ID)
     if not stop.store_name.strip():
         reasons.append(NeedsAttention.STORE_NAME)
     if NeedsAttention.ADDRESS in stop.needs_attention or stop.lat is None or stop.lng is None:
         reasons.append(NeedsAttention.ADDRESS)
+    if any(len(split_codes(screen.venue_id)) > 1 for screen in stop.screens):
+        reasons.append(NeedsAttention.DD_CODE_REVIEW)  # "DD-1. DD-2" in one entry: split it by hand
     return reasons

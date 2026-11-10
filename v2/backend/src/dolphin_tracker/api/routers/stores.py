@@ -8,6 +8,7 @@ from dolphin_tracker.api.deps import get_store_service
 from dolphin_tracker.api.schemas import (
     AppendResult,
     AppendStops,
+    ExternalIdSet,
     Pin,
     ProgressUpdate,
     ScreensUpdate,
@@ -154,6 +155,12 @@ def update_store(project_id: str, stop_uid: str, body: StoreDetailsUpdate, servi
 @router.put("/{stop_uid}/screens", response_model=Stop)
 def update_screens(project_id: str, stop_uid: str, body: ScreensUpdate, service: ServiceDep) -> Stop:
     return service.update_screens(project_id, stop_uid, body.screens, updated_by=body.updated_by)
+
+
+@router.put("/{stop_uid}/external-id", response_model=Stop)
+def set_external_id(project_id: str, stop_uid: str, body: ExternalIdSet, service: ServiceDep) -> Stop:
+    """The IBC# of a store that has none (added from the Dolphin data); fixed once set."""
+    return service.set_external_id(project_id, stop_uid, body.external_id)
 
 
 @router.patch("/{stop_uid}/progress", response_model=Stop)

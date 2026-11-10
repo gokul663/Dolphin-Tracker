@@ -2,6 +2,7 @@
  * Import wizard logic (STORE-MODEL §6), kept pure so it can be unit-tested:
  *   the server's column mapping (re-point a column) → review rows (fix, exclude; duplicates excluded) → stop inputs.
  */
+import { splitCodes } from "@/lib/codes";
 import type {
   GeocodeResult,
   ImportResult,
@@ -254,11 +255,33 @@ export const located = (row: ReviewRow) =>
   (row.status === "valid" ||
     (row.status === "needs_review" && row.coordinates_source === "sheet"));
 
-/** Why a row cannot be imported (empty when it can). Excluded rows have none: they are skipped. */
+/** Screens whose DD code entry holds several codes ("DD-HJGK7Z. DD-HB8P6I"): it did not parse, so the row waits
+ *  for a manual fix (split it, edit the sheet, or exclude the row). */
+export const packedScreens = (row: Pick<ReviewRow, "screens">) =>
+  row.screens.filter((screen) => splitCodes(screen.venue_id).length > 1);
+
+/** The suggested fix: one screen per code, its stick at the same position when the counts match. */
+export function splitRowScreens(row: Pick<ReviewRow, "screens">): ReviewRow["screens"] {
+  return row.screens.flatMap((screen) => {
+    const codes = splitCodes(screen.venue_id);
+    if (codes.length < 2) return [screen];
+    const sticks = splitCodes(screen.stick_number);
+    const paired = sticks.length === codes.length;
+    return codes.map((code, index) => ({
+      ...screen,
+      venue_id: code,
+      stick_number: paired ? sticks[index]! : index === 0 ? screen.stick_number : "",
+    }));
+  });
+}
+
+/** Why a row cannot be imported (empty when it can). Excluded rows have none: they are skipped. An unverified
+ *  address and an unparsed DD code block a row; other unusable values (a picture link, a phone) do not. */
 export function rowProblems(row: ReviewRow): string[] {
   if (row.excluded) return [];
   const problems: string[] = [];
   if (!row.external_id.trim()) problems.push("IBC# is required");
+  if (packedScreens(row).length) problems.push("DD code holds several codes: use the suggested split or fix the sheet");
   if (row.addAnyway) return problems; // the rest is accepted: the store is flagged as needing attention
   if (!row.store_name.trim()) problems.push("Store name is required");
   if (!located(row)) problems.push("Address is not verified");
@@ -269,7 +292,7 @@ export function rowProblems(row: ReviewRow): string[] {
 export function valueProblems(row: ReviewRow): string[] {
   if (row.excluded) return [];
   return Object.entries(row.problems)
-    .filter(([key]) => key !== "external_id" && key !== "store_name")
+    .filter(([key]) => key !== "external_id" && key !== "store_name" && key !== "venue_id") // venue_id blocks
     .map(([, message]) => message);
 }
 

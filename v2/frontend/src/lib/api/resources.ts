@@ -45,7 +45,7 @@ import type {
   RoutePlanCreate,
   RoutePlanUpdate,
   Visit,
-  VisitInput, DayInsert, DayLockSet, InsertOptions, InsertQuery, StorePage, PlaceHit } from "@/lib/api/types";
+  VisitInput, OverwriteField, ReviewAdd, OverwriteResult, PaList, ReviewItem, ReviewPage, SyncResult, DayInsert, DayLockSet, InsertOptions, InsertQuery, StorePage, PlaceHit } from "@/lib/api/types";
 import type { StorePageParams } from "@/lib/api/keys";
 
 /** The store list/pins/export/facet query (STORE-MODEL §5). Repeated values OR together; filters AND. */
@@ -157,6 +157,8 @@ export const storesApi = {
     api<Stop>(`/projects/${enc(projectId)}/stores/${enc(uid)}`, { method: "PATCH", body }),
   updateScreens: (projectId: string, uid: string, body: ScreensUpdate) =>
     api<Stop>(`/projects/${enc(projectId)}/stores/${enc(uid)}/screens`, { method: "PUT", body }),
+  setExternalId: (projectId: string, uid: string, externalId: string) =>
+    api<Stop>(`/projects/${enc(projectId)}/stores/${enc(uid)}/external-id`, { method: "PUT", body: { external_id: externalId } }),
   updateProgress: (projectId: string, uid: string, body: ProgressUpdate) =>
     api<Stop>(`/projects/${enc(projectId)}/stores/${enc(uid)}/progress`, { method: "PATCH", body }),
   append: (projectId: string, body: AppendStops) =>
@@ -246,4 +248,28 @@ export const visitsApi = {
     }),
   create: (projectId: string, uid: string, body: VisitInput) =>
     api<Visit>(`/projects/${enc(projectId)}/stores/${enc(uid)}/visits`, { method: "POST", body }),
+};
+
+/** The CMS device report (MongoDB, read through the device-data Lambda) and each project's sync with it. */
+export const deviceSyncApi = {
+  pas: () => api<PaList>("/device-data/pas"),
+  sync: (projectId: string, onlyIfStale = false) =>
+    api<SyncResult>(`/projects/${enc(projectId)}/device-sync`, {
+      method: "POST",
+      query: onlyIfStale ? { only_if_stale: true } : {},
+    }),
+  review: (projectId: string, params: { limit: number; cursor?: string | null; includeSnoozed?: boolean }) =>
+    api<ReviewPage>(`/projects/${enc(projectId)}/device-sync/review`, {
+      query: { limit: params.limit, cursor: params.cursor ?? undefined, include_snoozed: params.includeSnoozed || undefined },
+    }),
+  add: (projectId: string, key: string, body: Partial<ReviewAdd> = {}) =>
+    api<Stop>(`/projects/${enc(projectId)}/device-sync/review/${enc(key)}/add`, { method: "POST", body }),
+  snooze: (projectId: string, key: string) =>
+    api<ReviewItem>(`/projects/${enc(projectId)}/device-sync/review/${enc(key)}/snooze`, { method: "POST" }),
+  overwriteAll: (projectId: string, fields: OverwriteField[]) =>
+    api<OverwriteResult>(`/projects/${enc(projectId)}/device-sync/overwrite`, { method: "POST", body: { fields } }),
+  overwriteStore: (projectId: string, uid: string, fields: OverwriteField[]) =>
+    api<OverwriteResult>(`/projects/${enc(projectId)}/stores/${enc(uid)}/device-overwrite`, { method: "POST", body: { fields } }),
+  ignoreAlert: (projectId: string, uid: string) =>
+    api<Stop>(`/projects/${enc(projectId)}/stores/${enc(uid)}/device-alert/ignore`, { method: "POST" }),
 };

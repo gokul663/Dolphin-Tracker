@@ -7,3 +7,4 @@ pydantic-settings>=2.6,<3
 openpyxl>=3.1,<4
 httpx>=0.27,<1
 aws-lambda-powertools>=3.0,<4
+pymongo>=4,<5

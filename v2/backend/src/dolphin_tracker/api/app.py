@@ -6,9 +6,20 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.cors import CORSMiddleware
 
 from dolphin_tracker import __version__
-from dolphin_tracker.api.routers import health, jobs, lists, places, projects, route_plans, stores, visits
+from dolphin_tracker.api.routers import (
+    device_sync,
+    health,
+    jobs,
+    lists,
+    places,
+    projects,
+    route_plans,
+    stores,
+    visits,
+)
 from dolphin_tracker.config import Settings, get_settings
 from dolphin_tracker.domain.errors import ConflictError, NotFoundError, ValidationFailed
+from dolphin_tracker.repositories.device_data import DeviceDataUnavailable
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -43,6 +54,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     api.include_router(lists.router)
     api.include_router(visits.router)
     api.include_router(route_plans.router)
+    api.include_router(device_sync.router)
     app.include_router(api)
 
     @app.exception_handler(NotFoundError)
@@ -56,6 +68,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.exception_handler(ValidationFailed)
     async def _unprocessable(_: Request, exc: ValidationFailed) -> JSONResponse:
         return JSONResponse(status_code=422, content={"detail": exc.detail})
+
+    @app.exception_handler(DeviceDataUnavailable)
+    async def _device_data_down(_: Request, exc: DeviceDataUnavailable) -> JSONResponse:
+        return JSONResponse(status_code=503, content={"detail": str(exc)})
 
     @app.exception_handler(NotImplementedError)
     async def _not_implemented(_: Request, exc: NotImplementedError) -> JSONResponse:

@@ -34,7 +34,7 @@ class AllowedOriginsTests(unittest.TestCase):
                            "cloudfront_domain": None})
         self.assertEqual((cfg.google_browser_key, cfg.google_map_id), ("browser-k", "map-1"))
         self.assertFalse(cfg.retain_data)
-        self.assertIsNone(cfg.cloudfront_domain)
+        self.assertEqual(cfg.cloudfront_domain, load("dev").cloudfront_domain)  # a None override keeps the configured value
 
 
 if __name__ == "__main__":

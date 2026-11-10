@@ -18,12 +18,14 @@ from typing import Any
 
 from dolphin_tracker.domain.base import ApiModel
 from dolphin_tracker.domain.cursors import encode_cursor, offset_from_cursor
+from dolphin_tracker.domain.device_sync import packed_screens, shown_location
 from dolphin_tracker.domain.errors import ConflictError, NotFoundError, ValidationFailed
 from dolphin_tracker.domain.import_mapping import clean_mapping, split_duplicates
 from dolphin_tracker.domain.models import (
     PENDING_STATUSES,
     PROGRESS_FIELDS,
     STATUS_PRECEDENCE,
+    NeedsAttention,
     Project,
     RoutingStatus,
     Screen,
@@ -32,6 +34,7 @@ from dolphin_tracker.domain.models import (
     Stop,
     StopInput,
     attention_of,
+    now_iso,
 )
 from dolphin_tracker.domain.parsing import clean_cell
 from dolphin_tracker.domain.route_optimizer import state_key
@@ -42,12 +45,13 @@ from dolphin_tracker.domain.validation import (
     STORE_FIELDS,
     Kind,
     StoreField,
+    normalize_external_id,
     stop_details,
     validate_store_values,
 )
 from dolphin_tracker.domain.visits import VisitState, visit_state
 from dolphin_tracker.repositories.projects import ProjectRepository
-from dolphin_tracker.repositories.stores import StoreRepository
+from dolphin_tracker.repositories.stores import StoreRepository, screens_write
 from dolphin_tracker.services.geocoding import Geocoder, resolve_address
 from dolphin_tracker.services.routing import sync_routing_slot
 
@@ -87,9 +91,10 @@ class Bounds:
 
 
 def in_bounds(stop: Stop, bounds: Bounds) -> bool:
-    if stop.lat is None or stop.lng is None:
+    lat, lng = shown_location(stop)  # where the map draws it: the device report's location when it has one
+    if lat is None or lng is None:
         return False
-    return bounds.south <= stop.lat <= bounds.north and bounds.west <= stop.lng <= bounds.east
+    return bounds.south <= lat <= bounds.north and bounds.west <= lng <= bounds.east
 
 
 @dataclass
@@ -177,6 +182,9 @@ def _sort_value(stop: Stop, sort: str) -> Any:
 def _matches(stop: Stop, needle: str) -> bool:
     haystack = [str(getattr(stop, name)) for name in SEARCHED]
     haystack.extend(f"{screen.stick_number} {screen.venue_id}" for screen in stop.screens)
+    if stop.device:  # the device report's names and address are searchable too
+        haystack.extend([stop.device.store_name, stop.device.venue_name, stop.device.address])
+    haystack.extend(screen.device.serial_number for screen in stop.screens if screen.device)
     haystack.extend(str(value) for value in stop.fields.values() if value not in (None, ""))
     return any(needle in text.lower() for text in haystack)
 
@@ -283,11 +291,12 @@ class StoreService:
     def pins(self, project_id: str, query: StoreQuery | None = None) -> list[dict[str, Any]]:
         """Whole-project map payload, located stops only (deliberately unpaginated, rule 4)."""
         project = self._project(project_id)
+        located = [(stop, *shown_location(stop)) for stop in self._query(project, query or StoreQuery())]
         return [
             {
                 "uid": stop.uid,
-                "lat": stop.lat,
-                "lng": stop.lng,
+                "lat": lat,
+                "lng": lng,
                 "status": stop.status,
                 "store_name": stop.store_name,
                 "installer": stop.installer,
@@ -296,8 +305,8 @@ class StoreService:
                 "visit_state": stop_visit_state(stop),
                 "screen_statuses": [screen.status for screen in stop.screens],
             }
-            for stop in self._query(project, query or StoreQuery())
-            if stop.lat is not None and stop.lng is not None
+            for stop, lat, lng in located
+            if lat is not None and lng is not None
         ]
 
     def filters(self, project_id: str, query: StoreQuery | None = None) -> dict[str, list[dict[str, Any]]]:
@@ -459,15 +468,39 @@ class StoreService:
         current = self.get(project_id, stop_uid)
         if not screens:
             raise ValidationFailed("A store needs at least one screen")
-        known = {screen.id for screen in current.screens}
-        rows = [
-            screen.model_copy(update={"id": screen.id if screen.id in known else None}).to_screen()
-            for screen in screens
-        ]
+        known = {screen.id: screen for screen in current.screens}
+        now = now_iso()
+        rows = []
+        for screen in screens:
+            before = known.get(screen.id or "")
+            row = screen.model_copy(update={"id": screen.id if before else None}).to_screen()
+            # The device report's values stay with the screen; a status change is stamped (device alert timing).
+            changed = row.status != (before.status if before else ScreenStatus.UPCOMING)
+            stamp = now if changed else (before.status_changed_at if before else "")
+            rows.append(row.model_copy(update={
+                "device": before.device if before else None, "status_changed_at": stamp,
+            }))
         ids = [row.id for row in rows]
         if len(set(ids)) != len(ids):
             raise ValidationFailed("The same screen appears twice")
+        if NeedsAttention.DD_CODE_REVIEW in current.needs_attention and not packed_screens(rows):
+            # The person split the packed DD code entry: the store no longer needs that review.
+            reasons = [str(r) for r in current.needs_attention if r != NeedsAttention.DD_CODE_REVIEW]
+            changes = {**screens_write(rows, updated_by.strip()), "needs_attention": reasons}
+            return self._stores.update_fields(project_id, stop_uid, changes)
         return self._stores.update_screens(project_id, stop_uid, rows, updated_by=updated_by.strip())
+
+    def set_external_id(self, project_id: str, stop_uid: str, external_id: str) -> Stop:
+        """Enter the IBC# of a store that has none (added from the Dolphin data). Once set it is fixed, like any
+        IBC#; 409 if another store of the project has it."""
+        current = self.get(project_id, stop_uid)
+        if current.external_id:
+            raise ConflictError("This store already has an IBC#; it cannot be changed")
+        value = normalize_external_id(external_id)
+        if not value:
+            raise ValidationFailed("Enter the IBC#")
+        reasons = [str(r) for r in current.needs_attention if r != NeedsAttention.EXTERNAL_ID]
+        return self._stores.set_external_id(project_id, stop_uid, value, reasons)
 
     def update_progress(self, project_id: str, stop_uid: str, changes: dict[str, Any]) -> Stop:
         """Comment / additional task / installer name / updated_by. Status is per screen (`update_screens`)."""

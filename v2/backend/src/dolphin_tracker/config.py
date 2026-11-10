@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     google_server_key_param: str = ""  # SSM SecureString name, used in Lambda when the direct value is empty
     google_browser_key: str = ""
     google_map_id: str = ""  # created by the user in Google Cloud; public, like the browser key
+    mongo_uri: str = ""  # direct value for local dev
+    mongo_uri_secret: str = ""  # Secrets Manager name, used in Lambda when the direct value is empty
+    device_data_function_name: str = ""  # the device-data Lambda; when set, the report is read through it
 
     @property
     def cors_origin_list(self) -> list[str]:
@@ -52,6 +55,16 @@ def resolve_google_server_key(settings: Settings | None = None) -> str:
     return _ssm_secure_string(settings.google_server_key_param, settings.aws_region)
 
 
+def resolve_mongo_uri(settings: Settings | None = None) -> str:
+    """Return the device-status MongoDB URI from settings, or fetch it once from Secrets Manager by name."""
+    settings = settings or get_settings()
+    if settings.mongo_uri:
+        return settings.mongo_uri
+    if not settings.mongo_uri_secret:
+        return ""
+    return _secrets_manager_string(settings.mongo_uri_secret, settings.aws_region)
+
+
 @lru_cache
 def _ssm_secure_string(name: str, region: str) -> str:
     # Cached on hashable strings: Settings itself is a pydantic model and cannot be an lru_cache key.
@@ -60,3 +73,11 @@ def _ssm_secure_string(name: str, region: str) -> str:
     client = boto3.client("ssm", region_name=region)
     response = client.get_parameter(Name=name, WithDecryption=True)
     return response["Parameter"]["Value"].strip()
+
+
+@lru_cache
+def _secrets_manager_string(name: str, region: str) -> str:
+    import boto3  # local import keeps module import cheap for tests
+
+    client = boto3.client("secretsmanager", region_name=region)
+    return client.get_secret_value(SecretId=name)["SecretString"].strip()

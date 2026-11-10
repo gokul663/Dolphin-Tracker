@@ -147,6 +147,15 @@ function settle(client: Client, projectId: string) {
 }
 
 /** Progress edits are optimistic: lists, detail, pins and the routes bundle update at once and roll back on error. */
+/** Enter the IBC# of a store that has none (added from the Dolphin data); fixed once saved. */
+export function useSetExternalId(projectId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ uid, externalId }: { uid: string; externalId: string }) => storesApi.setExternalId(projectId, uid, externalId),
+    onSuccess: () => client.invalidateQueries({ queryKey: keys.project(projectId) }), // KPIs, list, the store
+  });
+}
+
 export function useUpdateProgress(projectId: string) {
   const client = useQueryClient();
   const store = useStoreStopInCaches(projectId);

@@ -39,12 +39,17 @@ class EnvConfig:
     def ssm_google_server_key(self) -> str:
         return f"/dolphin-tracker/{self.name}/google-maps-server-key"
 
+    @property
+    def mongo_uri_secret(self) -> str:
+        return f"/dolphin-tracker/{self.name}/mongodb-uri"
+
 
 ENVIRONMENTS: dict[str, EnvConfig] = {
     "dev": EnvConfig(
         name="dev",
         retain_data=False,
         cors_origins=["http://localhost:5173"],
+        cloudfront_domain="d2nm60ijusfh0v.cloudfront.net",  # the live site (DolphinTracker-Dev-Web)
         log_retention_days=14,
     ),
     "prod": EnvConfig(

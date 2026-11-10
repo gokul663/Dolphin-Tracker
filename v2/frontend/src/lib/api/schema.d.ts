@@ -457,6 +457,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{project_id}/stores/{stop_uid}/external-id": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set External Id
+         * @description The IBC# of a store that has none (added from the Dolphin data); fixed once set.
+         */
+        put: operations["set_external_id_api_projects__project_id__stores__stop_uid__external_id_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects/{project_id}/stores/{stop_uid}/progress": {
         parameters: {
             query?: never;
@@ -937,6 +957,161 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/device-data/pas": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Device Pas
+         * @description The PA names in the device report's newest day (Settings' "Sync with PA" list).
+         */
+        get: operations["list_device_pas_api_device_data_pas_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{project_id}/device-sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Sync Project */
+        post: operations["sync_project_api_projects__project_id__device_sync_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{project_id}/device-sync/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Review
+         * @description Report records whose DD code is in no store of the project ("Needs review").
+         */
+        get: operations["list_review_api_projects__project_id__device_sync_review_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{project_id}/device-sync/review/{key}/add": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add Reviewed
+         * @description 422 with Google's `suggestions` when the address cannot be verified (send `address`, `place` or
+         *     `add_anyway`), like an imported row.
+         */
+        post: operations["add_reviewed_api_projects__project_id__device_sync_review__key__add_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{project_id}/device-sync/review/{key}/snooze": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Snooze Reviewed
+         * @description "Not now": hidden until the next report day.
+         */
+        post: operations["snooze_reviewed_api_projects__project_id__device_sync_review__key__snooze_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{project_id}/device-sync/overwrite": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Overwrite All
+         * @description Copy the report's values into every synced store's own fields.
+         */
+        post: operations["overwrite_all_api_projects__project_id__device_sync_overwrite_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{project_id}/stores/{stop_uid}/device-overwrite": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Overwrite Store */
+        post: operations["overwrite_store_api_projects__project_id__stores__stop_uid__device_overwrite_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{project_id}/stores/{stop_uid}/device-alert/ignore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ignore Device Alert
+         * @description Hide "not in Dolphin data" until the next report day.
+         */
+        post: operations["ignore_device_alert_api_projects__project_id__stores__stop_uid__device_alert_ignore_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1037,6 +1212,56 @@ export interface components {
             locked: boolean;
             /** Version */
             version?: number | null;
+        };
+        /**
+         * DeviceOverwrite
+         * @description Which device-report values to copy into the store's own fields; `location` is lat/lng.
+         */
+        DeviceOverwrite: {
+            /** Fields */
+            fields: ("store_name" | "addr" | "city" | "state" | "zip" | "location")[];
+        };
+        /**
+         * DeviceSyncState
+         * @description The project's last sync, kept on its META.
+         */
+        DeviceSyncState: {
+            /** Pa */
+            pa: string;
+            /** Snapshot Date */
+            snapshot_date: string;
+            /**
+             * Ingested At
+             * @default
+             */
+            ingested_at: string;
+            /** Synced At */
+            synced_at: string;
+            /**
+             * Matched Screens
+             * @default 0
+             */
+            matched_screens: number;
+            /**
+             * Status Changes
+             * @default 0
+             */
+            status_changes: number;
+            /**
+             * Review Count
+             * @default 0
+             */
+            review_count: number;
+            /**
+             * Not Reporting
+             * @default 0
+             */
+            not_reporting: number;
+        };
+        /** ExternalIdSet */
+        ExternalIdSet: {
+            /** External Id */
+            external_id: string;
         };
         /** FacetValue */
         FacetValue: {
@@ -1602,7 +1827,7 @@ export interface components {
          * NeedsAttention
          * @enum {string}
          */
-        NeedsAttention: "store_name" | "address";
+        NeedsAttention: "store_name" | "address" | "external_id" | "not_reporting" | "dd_code_review";
         /**
          * NetworkType
          * @enum {string}
@@ -1627,6 +1852,18 @@ export interface components {
             max_day_hours?: number | null;
             /** Version */
             version?: number | null;
+        };
+        /** OverwriteResult */
+        OverwriteResult: {
+            /** Stores Updated */
+            stores_updated: number;
+        };
+        /** PaList */
+        PaList: {
+            /** Date */
+            date: string;
+            /** Pas */
+            pas: string[];
         };
         /** Page[NameEntry] */
         Page_NameEntry_: {
@@ -1707,7 +1944,52 @@ export interface components {
          * PlaceHit
          * @description A place Google Search lists for a store: its name, address and exact pin.
          */
-        PlaceHit: {
+        "PlaceHit-Input": {
+            /**
+             * Place Id
+             * @default
+             */
+            place_id?: string;
+            /**
+             * Name
+             * @default
+             */
+            name?: string;
+            /**
+             * Formatted
+             * @default
+             */
+            formatted?: string;
+            /** Lat */
+            lat: number;
+            /** Lng */
+            lng: number;
+            /**
+             * Addr
+             * @default
+             */
+            addr?: string;
+            /**
+             * City
+             * @default
+             */
+            city?: string;
+            /**
+             * State
+             * @default
+             */
+            state?: string;
+            /**
+             * Zip
+             * @default
+             */
+            zip?: string;
+        };
+        /**
+         * PlaceHit
+         * @description A place Google Search lists for a store: its name, address and exact pin.
+         */
+        "PlaceHit-Output": {
             /**
              * Place Id
              * @default
@@ -1973,6 +2255,12 @@ export interface components {
              * @default
              */
             pa: string;
+            /**
+             * Device Pa
+             * @default
+             */
+            device_pa: string;
+            device_sync: components["schemas"]["DeviceSyncState"] | null;
             project_type: components["schemas"]["ProjectType"];
             /** Installers */
             installers: string[];
@@ -2087,6 +2375,12 @@ export interface components {
              * @default
              */
             pa: string;
+            /**
+             * Device Pa
+             * @default
+             */
+            device_pa: string;
+            device_sync: components["schemas"]["DeviceSyncState"] | null;
             project_type: components["schemas"]["ProjectType"];
             /** Installers */
             installers: string[];
@@ -2156,6 +2450,8 @@ export interface components {
             name?: string | null;
             /** Pa */
             pa?: string | null;
+            /** Device Pa */
+            device_pa?: string | null;
             project_type?: components["schemas"]["ProjectType"] | null;
             /** Field Agent */
             field_agent?: string | null;
@@ -2199,6 +2495,118 @@ export interface components {
          * @enum {string}
          */
         Replan: "none" | "forecast" | "today";
+        /**
+         * ReviewAdd
+         * @description How to place a reviewed record that joins no existing store: the person's address (checked with Google),
+         *     a Google place they picked, or add it anyway (flagged for an address check). All optional.
+         */
+        ReviewAdd: {
+            /**
+             * Address
+             * @default
+             */
+            address?: string;
+            place?: components["schemas"]["PlaceHit-Input"] | null;
+            /**
+             * Add Anyway
+             * @default false
+             */
+            add_anyway?: boolean;
+        };
+        /**
+         * ReviewItem
+         * @description A report record whose venue is not in the project yet. `snoozed_date`: "Not now" until a newer report day.
+         */
+        ReviewItem: {
+            /** Venue Id */
+            venue_id: string;
+            /** Date */
+            date: string;
+            /**
+             * Status
+             * @default
+             */
+            status: string;
+            /**
+             * Last Seen
+             * @default
+             */
+            last_seen: string;
+            /** Offline Days */
+            offline_days: number | null;
+            /**
+             * Serial Number
+             * @default
+             */
+            serial_number: string;
+            /**
+             * Venue Name
+             * @default
+             */
+            venue_name: string;
+            /**
+             * Store Name
+             * @default
+             */
+            store_name: string;
+            /**
+             * Address
+             * @default
+             */
+            address: string;
+            /**
+             * Addr
+             * @default
+             */
+            addr: string;
+            /**
+             * City
+             * @default
+             */
+            city: string;
+            /**
+             * State
+             * @default
+             */
+            state: string;
+            /**
+             * Zip
+             * @default
+             */
+            zip: string;
+            /** Lat */
+            lat: number | null;
+            /** Lng */
+            lng: number | null;
+            /**
+             * Pa Name
+             * @default
+             */
+            pa_name: string;
+            /**
+             * External Id
+             * @default
+             */
+            external_id: string;
+            /** Key */
+            key: string;
+            /**
+             * Snoozed Date
+             * @default
+             */
+            snoozed_date: string;
+        };
+        /** ReviewPage */
+        ReviewPage: {
+            /** Items */
+            items: components["schemas"]["ReviewItem"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+            /** Total */
+            total: number;
+            /** Snoozed */
+            snoozed: number;
+        };
         /** RoutePlan */
         RoutePlan: {
             /** Id */
@@ -2369,6 +2777,45 @@ export interface components {
             has_ceiling_mount: boolean;
             /** @default Upcoming */
             status: components["schemas"]["ScreenStatus"];
+            /**
+             * Status Changed At
+             * @default
+             */
+            status_changed_at: string;
+            device: components["schemas"]["ScreenDevice"] | null;
+        };
+        /**
+         * ScreenDevice
+         * @description What the report said about one screen on its latest day (shown in the "from Dolphin data" colour).
+         */
+        ScreenDevice: {
+            /**
+             * Status
+             * @default
+             */
+            status: string;
+            /**
+             * Last Seen
+             * @default
+             */
+            last_seen: string;
+            /** Offline Days */
+            offline_days: number | null;
+            /**
+             * Serial Number
+             * @default
+             */
+            serial_number: string;
+            /**
+             * Venue Name
+             * @default
+             */
+            venue_name: string;
+            /**
+             * Date
+             * @default
+             */
+            date: string;
         };
         /**
          * ScreenInput
@@ -2715,6 +3162,12 @@ export interface components {
             route_stale: boolean;
             /** Needs Attention */
             needs_attention: components["schemas"]["NeedsAttention"][];
+            device: components["schemas"]["StoreDevice"] | null;
+            /**
+             * Device Alert Ignored
+             * @default
+             */
+            device_alert_ignored: string;
             /**
              * Route Plan Id
              * @default
@@ -3024,6 +3477,57 @@ export interface components {
             } | null;
         };
         /**
+         * StoreDevice
+         * @description Report values for the store, from its first matched screen. Shown over the sheet values, never written into
+         *     them unless someone presses Overwrite. Empty text and None mean the report has no value: the sheet's shows.
+         */
+        StoreDevice: {
+            /**
+             * Store Name
+             * @default
+             */
+            store_name: string;
+            /**
+             * Venue Name
+             * @default
+             */
+            venue_name: string;
+            /**
+             * Address
+             * @default
+             */
+            address: string;
+            /**
+             * Addr
+             * @default
+             */
+            addr: string;
+            /**
+             * City
+             * @default
+             */
+            city: string;
+            /**
+             * State
+             * @default
+             */
+            state: string;
+            /**
+             * Zip
+             * @default
+             */
+            zip: string;
+            /** Lat */
+            lat: number | null;
+            /** Lng */
+            lng: number | null;
+            /**
+             * Date
+             * @default
+             */
+            date: string;
+        };
+        /**
          * StoreFieldSpec
          * @description One first-class store attribute as the drawer shows it (`domain/validation.STORE_FIELDS`, §3 order).
          */
@@ -3102,6 +3606,17 @@ export interface components {
         Suggestions: {
             /** Suggestions */
             suggestions: string[];
+        };
+        /** SyncResult */
+        SyncResult: {
+            /** Synced */
+            synced: boolean;
+            state: components["schemas"]["DeviceSyncState"] | null;
+            /**
+             * Stores Updated
+             * @default 0
+             */
+            stores_updated: number;
         };
         /** ValidationError */
         ValidationError: {
@@ -3425,7 +3940,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PlaceHit"][];
+                    "application/json": components["schemas"]["PlaceHit-Output"][];
                 };
             };
             /** @description Validation Error */
@@ -4286,6 +4801,42 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["ScreensUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Stop"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_external_id_api_projects__project_id__stores__stop_uid__external_id_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                stop_uid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExternalIdSet"];
             };
         };
         responses: {
@@ -5345,6 +5896,266 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RoutePlanBundle"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_device_pas_api_device_data_pas_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaList"];
+                };
+            };
+        };
+    };
+    sync_project_api_projects__project_id__device_sync_post: {
+        parameters: {
+            query?: {
+                /** @description Skip when the project already has the newest day */
+                only_if_stale?: boolean;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SyncResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_review_api_projects__project_id__device_sync_review_get: {
+        parameters: {
+            query?: {
+                include_snoozed?: boolean;
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_reviewed_api_projects__project_id__device_sync_review__key__add_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ReviewAdd"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Stop"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    snooze_reviewed_api_projects__project_id__device_sync_review__key__snooze_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    overwrite_all_api_projects__project_id__device_sync_overwrite_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeviceOverwrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OverwriteResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    overwrite_store_api_projects__project_id__stores__stop_uid__device_overwrite_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                stop_uid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeviceOverwrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OverwriteResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ignore_device_alert_api_projects__project_id__stores__stop_uid__device_alert_ignore_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                stop_uid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Stop"];
                 };
             };
             /** @description Validation Error */

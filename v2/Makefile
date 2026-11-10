@@ -16,7 +16,7 @@ LOCAL_AWS := AWS_ACCESS_KEY_ID=local AWS_SECRET_ACCESS_KEY=local AWS_DEFAULT_REG
 .PHONY: help setup backend-setup infra-setup frontend-setup ddb-moto \
         backend-dev backend-test backend-lint build-lambda \
         frontend-dev frontend-build frontend-test frontend-typecheck \
-        infra-test infra-synth infra-diff infra-deploy ddb-up ddb-down ddb-table gen-api
+        infra-test infra-synth infra-diff infra-deploy ddb-up ddb-down ddb-table gen-api deploy-dev diff-dev
 
 help:
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-18s %s\n", $$1, $$2}'
@@ -85,3 +85,15 @@ ddb-table: ## Create the local table matching DataStack
 gen-api: ## Regenerate frontend/src/lib/api/schema.d.ts from the backend's OpenAPI (no running server needed)
 	cd $(BACKEND) && .venv/bin/python -c "import json; from dolphin_tracker.api.app import create_app; print(json.dumps(create_app().openapi()))" > ../$(FRONTEND)/openapi.json
 	cd $(FRONTEND) && $(NODE_SETUP); OPENAPI_URL=openapi.json npm run gen:api && rm -f openapi.json
+
+# One-command dev deploy: your AWS profile, and the Google browser key read from backend/.env (never committed).
+DEV_AWS := AWS_PROFILE=$${AWS_PROFILE:-dane-dolphin} AWS_REGION=us-east-1
+DEV_KEY = $(shell grep '^DT_GOOGLE_BROWSER_KEY=' $(BACKEND)/.env 2>/dev/null | cut -d= -f2- | tr -d "\"'")
+
+deploy-dev: ## Build and deploy the dev site (https://d2nm60ijusfh0v.cloudfront.net)
+	@[ -n "$(DEV_KEY)" ] || { echo "DT_GOOGLE_BROWSER_KEY is missing from $(BACKEND)/.env"; exit 1; }
+	$(DEV_AWS) $(MAKE) infra-deploy ENV=dev CDK="$(CDK) -c google_browser_key=$(DEV_KEY)"
+
+diff-dev: ## What deploy-dev would change, without deploying
+	@[ -n "$(DEV_KEY)" ] || { echo "DT_GOOGLE_BROWSER_KEY is missing from $(BACKEND)/.env"; exit 1; }
+	$(DEV_AWS) $(MAKE) infra-diff ENV=dev CDK="$(CDK) -c google_browser_key=$(DEV_KEY)"

@@ -15,7 +15,7 @@ import {
 function project(id: string, overrides: Partial<ProjectSummary["kpi"]> & { installers?: string[]; name?: string; pa?: string } = {}): ProjectSummary {
   const { installers = ["Ann"], name = `Project ${id}`, pa = "North", ...kpi } = overrides;
   return {
-    id, name, pa, project_type: "offline", installers, field_agent: "", partner_account: "",
+    id, name, pa, device_pa: "", device_sync: null, project_type: "offline", installers, field_agent: "", partner_account: "",
     pa_percentage: 40, dolphin_percentage: 60, store_percentage: null, fa_percentage: null, stops_per_day: 8,
     field_schema: [], routing_status: "ready", routing_job_id: "", stop_count: 0, version: 1,
     created_at: "", updated_at: "",

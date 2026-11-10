@@ -2,7 +2,10 @@ import os
 import unittest
 from unittest import mock
 
-from dolphin_tracker.config import Settings
+import boto3
+from moto import mock_aws
+
+from dolphin_tracker.config import Settings, resolve_mongo_uri
 
 
 class RegionSettingTests(unittest.TestCase):
@@ -22,3 +25,21 @@ class RegionSettingTests(unittest.TestCase):
 
     def test_init_by_field_name_still_works(self):
         self.assertEqual(Settings(_env_file=None, aws_region="us-west-2").aws_region, "us-west-2")
+
+
+class MongoUriTests(unittest.TestCase):
+    def test_empty_when_not_configured(self):
+        self.assertEqual(resolve_mongo_uri(Settings(_env_file=None, mongo_uri="", mongo_uri_secret="")), "")
+
+    def test_direct_value_wins(self):
+        settings = Settings(_env_file=None, mongo_uri="mongodb://local", mongo_uri_secret="/dt/test/ignored")
+        self.assertEqual(resolve_mongo_uri(settings), "mongodb://local")
+
+    @mock_aws
+    def test_reads_the_secret_when_only_a_name_is_set(self):
+        boto3.client("secretsmanager", region_name="us-east-1").create_secret(
+            Name="/dt/test/mongodb-uri", SecretString="mongodb://from-secret\n"
+        )
+        name = "/dt/test/mongodb-uri"
+        settings = Settings(_env_file=None, aws_region="us-east-1", mongo_uri="", mongo_uri_secret=name)
+        self.assertEqual(resolve_mongo_uri(settings), "mongodb://from-secret")

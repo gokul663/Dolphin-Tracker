@@ -4,7 +4,7 @@ import { DEFAULT_SCHEMA_FOR_TESTS } from "@/test/schema";
 
 export function makeProject(overrides: Partial<Project> = {}): Project {
   return {
-    id: "p1", name: "Atlanta refresh", pa: "North", project_type: "new_installation", installers: ["Ann", "Bo"],
+    id: "p1", name: "Atlanta refresh", pa: "North", device_pa: "", device_sync: null, project_type: "new_installation", installers: ["Ann", "Bo"],
     field_agent: "Fay", partner_account: "Acme", pa_percentage: 40, dolphin_percentage: 60, store_percentage: null,
     fa_percentage: null, stops_per_day: 8, field_schema: DEFAULT_SCHEMA_FOR_TESTS, import_mappings: {},
     routing_status: "ready", routing_job_id: "", stop_count: 3, version: 1, created_at: "2026-10-01T00:00:00+00:00",
@@ -36,7 +36,7 @@ export function makeSummary(overrides: Partial<ProjectSummary> = {}): ProjectSum
 export function makeScreen(overrides: Partial<Screen> = {}): Screen {
   return {
     id: "sc1", stick_number: "", venue_id: "", screen_size: "", is_dolphin_screen: true, has_mount: false,
-    has_ceiling_mount: false, status: "Upcoming", ...overrides,
+    has_ceiling_mount: false, status: "Upcoming", status_changed_at: "", device: null, ...overrides,
   };
 }
 
@@ -57,7 +57,8 @@ export function makeStop(overrides: Partial<Stop> = {}): Stop {
     installer: "Ann", day: 1, seq: 0, fields: {}, screens: [makeScreen({ id: `${overrides.uid ?? "u1"}-s1`, status })],
     status, comment: "", additional_task: false, installer_name: "", route_stale: false, route_plan_id: "",
     last_planned_at: "", screen_visits: {}, last_visit_at: "",
-    updated_at: "2026-10-01T00:00:00+00:00", updated_by: "", needs_attention: [], ...overrides,
+    updated_at: "2026-10-01T00:00:00+00:00", updated_by: "", needs_attention: [], device: null,
+    device_alert_ignored: "", ...overrides,
   };
 }
 

@@ -14,6 +14,7 @@ from itertools import zip_longest
 from typing import Any
 
 from dolphin_tracker.domain.addresses import normalized_address_key, parse_us_formatted_address, state_code
+from dolphin_tracker.domain.device import split_codes
 from dolphin_tracker.domain.parsing import ADDRESS_ALIASES, clean_cell
 from dolphin_tracker.domain.statuses import ScreenStatus, normalize_screen_status
 from dolphin_tracker.domain.validation import (
@@ -135,6 +136,22 @@ def _split_list(value: str) -> list[str]:
     return [part.strip() for part in value.split(",") if part.strip()]
 
 
+def packed_code_problem(row: Mapping[str, str]) -> str:
+    """A DD code entry that holds several codes ("DD-HJGK7Z. DD-HB8P6I") did not parse: it is kept as typed and
+    the row asks for a manual fix, with the split it looks like as a suggestion. "" when every entry is one code."""
+    sticks = _split_list(row.get(STICK_NUMBERS, ""))
+    for index, venue in enumerate(_split_list(row.get(VENUE_IDS, ""))):
+        codes = split_codes(venue)
+        if len(codes) < 2:
+            continue
+        stick_parts = split_codes(sticks[index]) if index < len(sticks) else []
+        pairs = [f"{code} (stick {stick_parts[n]})" if len(stick_parts) == len(codes) else code
+                 for n, code in enumerate(codes)]
+        return (f"DD code: '{venue}' looks like {len(codes)} codes in one entry. Suggestion: one screen each, "
+                f"{'; '.join(pairs)}. Fix the sheet (comma-separate them) or split the screen in the store.")
+    return ""
+
+
 def _date(value: str) -> str:
     """ISO date when the cell is a recognisable date (XLSX datetimes, YYYY-MM-DD, M/D/YYYY, M/D/YY), else as is."""
     text = value.strip()
@@ -252,6 +269,8 @@ def map_row(index: int, record: Mapping[str, str], mapping: Mapping[str, str]) -
     row.status, row.status_valid = normalize_screen_status(raw_status)
     row.status_raw = raw_status
     row.screens = build_screens(by_target, row.status)
+    if problem := packed_code_problem(by_target):
+        row.problems["venue_id"] = problem
 
     for name, raw in by_target.items():
         if name in CORE_TARGETS or name in SHEET_ONLY_TARGETS or not raw:  # blank cells keep the defaults

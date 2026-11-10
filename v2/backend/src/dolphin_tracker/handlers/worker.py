@@ -68,8 +68,27 @@ RUNNERS: dict[JobType, Callable[[dict[str, Any], WorkerDeps], None]] = {
 }
 
 
+def sync_all_devices() -> dict[str, Any]:
+    """The daily schedule (EventBridge, 12:00 UTC): sync every project that has a device PA chosen."""
+    from dolphin_tracker.repositories.device_data import make_device_data
+    from dolphin_tracker.repositories.device_review import DynamoDeviceReviewRepository
+    from dolphin_tracker.services.device_sync import DeviceSyncService
+
+    settings = get_settings()
+    deps = default_deps()
+    table = get_table(settings)
+    service = DeviceSyncService(
+        deps.projects, deps.stores, DynamoDeviceReviewRepository(table), make_device_data(settings)
+    )
+    result = service.sync_all()
+    logger.info("Device sync finished", extra=result)
+    return {"ok": not result["failed"], **result}
+
+
 def dispatch(event: dict[str, Any], deps: WorkerDeps | None = None) -> dict[str, Any]:
     """Run one job event. Shared by the Lambda handler and the inline (local) invoker."""
+    if event.get("task") == "device_sync_all":
+        return sync_all_devices()
     job_id = event.get("job_id", "")
     try:
         job_type = JobType(event["job_type"])

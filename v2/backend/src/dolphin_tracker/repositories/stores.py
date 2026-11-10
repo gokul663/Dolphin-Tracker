@@ -9,6 +9,7 @@ from botocore.exceptions import ClientError
 from dolphin_tracker.domain.cursors import encode_cursor
 from dolphin_tracker.domain.errors import ConflictError, NotFoundError
 from dolphin_tracker.domain.models import (
+    DEVICE_FIELDS,
     PROGRESS_FIELDS,
     ROUTING_FIELDS,
     Page,
@@ -50,6 +51,13 @@ class StoreRepository(Protocol):
         """Apply progress-field changes (e.g. `installer_name` on a rename) to many stops, in parallel like the
         routing writes. Keys outside PROGRESS_FIELDS are rejected. Returns how many were written."""
         ...
+    def set_external_id(self, project_id: str, stop_uid: str, external_id: str, needs_attention: list[str]) -> Stop:
+        """Give a store without an IBC# its IBC# (with its EXT# marker, in one transaction). ConflictError when another
+        store holds it or this store already has one; NotFoundError when the store is gone."""
+        ...
+    def update_device_many(self, project_id: str, changes: list[RoutingChange]) -> int:
+        """The device sync's writes (DEVICE_FIELDS only), in parallel. Returns how many were written."""
+        ...
     def update_screens(self, project_id: str, stop_uid: str, screens: list[Screen], *, updated_by: str = "") -> Stop:
         """Replace the screen rows; writes `screens`, the derived `status` and `updated_*` only."""
         ...
@@ -83,6 +91,12 @@ def check_routing_change(changes: dict[str, Any]) -> None:
     extra = set(changes) - ROUTING_FIELDS
     if extra:
         raise ValueError(f"Routing writes may only touch installer/day/seq, got {sorted(extra)}")
+
+
+def check_device_change(changes: dict[str, Any]) -> None:
+    extra = set(changes) - DEVICE_FIELDS
+    if extra:
+        raise ValueError(f"Device-sync writes may only touch {sorted(DEVICE_FIELDS)}, got {sorted(extra)}")
 
 
 def check_progress_change(changes: dict[str, Any]) -> None:
@@ -142,6 +156,36 @@ class DynamoStoreRepository:
             )
             external_id = stops[failed // 2].external_id if failed is not None else "?"
             raise ConflictError(f"IBC# {external_id} already exists in this project") from exc
+
+    def set_external_id(self, project_id: str, stop_uid: str, external_id: str, needs_attention: list[str]) -> Stop:
+        marker = {**Keys.external_id(project_id, external_id), "entity": "EXT", "stop_uid": stop_uid}
+        try:
+            self._table.meta.client.transact_write_items(TransactItems=[
+                {"Put": {"TableName": self._table.name, "Item": marker,
+                         "ConditionExpression": "attribute_not_exists(PK)"}},
+                {"Update": {
+                    "TableName": self._table.name,
+                    "Key": Keys.stop(project_id, stop_uid),
+                    "UpdateExpression": "SET external_id = :id, needs_attention = :na, updated_at = :now",
+                    "ConditionExpression": (
+                        "attribute_exists(PK) AND (attribute_not_exists(external_id) OR external_id = :none)"
+                    ),
+                    "ExpressionAttributeValues": {":id": external_id, ":na": needs_attention, ":now": now_iso(),
+                                                  ":none": ""},
+                }},
+            ])
+        except ClientError as exc:
+            if exc.response["Error"]["Code"] != "TransactionCanceledException":
+                raise
+            reasons = exc.response.get("CancellationReasons") or []
+            if reasons and reasons[0].get("Code") == "ConditionalCheckFailed":
+                raise ConflictError(f"IBC# {external_id} already exists in this project") from exc
+            if self.get(project_id, stop_uid) is None:
+                raise NotFoundError(f"Stop {stop_uid} not found") from exc
+            raise ConflictError("This store already has an IBC#") from exc
+        stop = self.get(project_id, stop_uid)
+        assert stop is not None
+        return stop
 
     def get(self, project_id: str, stop_uid: str) -> Stop | None:
         item = self._table.get_item(Key=Keys.stop(project_id, stop_uid)).get("Item")
@@ -234,6 +278,18 @@ class DynamoStoreRepository:
             )
             return sum(1 for written in results if written)
 
+    def update_device_many(self, project_id: str, changes: list[RoutingChange]) -> int:
+        for _, change in changes:
+            check_device_change(change)
+        if not changes:
+            return 0
+        updated_at = now_iso()
+        with ThreadPoolExecutor(max_workers=ROUTING_WRITE_WORKERS) as pool:
+            results = pool.map(
+                lambda entry: self._write_partial(project_id, entry[0], entry[1], updated_at), changes
+            )
+            return sum(1 for written in results if written)
+
     def list_projected(self, project_id: str, attributes: tuple[str, ...]) -> list[dict[str, Any]]:
         names = {f"#p{index}": name for index, name in enumerate(attributes)}
         items = self._iter_items(
@@ -289,7 +345,8 @@ class DynamoStoreRepository:
 
         # Visits live in the same partition (repositories/visits.py) and go with the project.
         stops, markers, visits = keys(Keys.STOP_PREFIX), keys(Keys.EXTERNAL_ID_PREFIX), keys(Keys.VISIT_PREFIX)
+        reviews = keys(Keys.DEVICE_REVIEW_PREFIX)  # the device sync's review list (repositories/device_review.py)
         with self._table.batch_writer() as batch:
-            for key in stops + markers + visits:
+            for key in stops + markers + visits + reviews:
                 batch.delete_item(Key=key)
         return len(stops)

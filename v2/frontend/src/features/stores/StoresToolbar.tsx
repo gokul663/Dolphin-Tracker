@@ -67,7 +67,7 @@ export function StoresToolbar({
           className="border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100"
           aria-pressed
           onClick={() => ui.setNeedsAttention(false)}
-          title="Showing only stores added without a name or a verified address"
+          title="Showing only stores that need attention: no name, an unverified address, or Completed but not in the Dolphin data"
         >
           <AlertTriangle /> Needs attention <X />
         </Button>

@@ -141,12 +141,12 @@ class ProjectService:
 
     UPDATABLE = frozenset(
         {
-            "name", "pa", "project_type", "field_agent", "partner_account", "pa_percentage", "dolphin_percentage",
-            "store_percentage", "fa_percentage", "field_schema",
+            "name", "pa", "device_pa", "project_type", "field_agent", "partner_account", "pa_percentage",
+            "dolphin_percentage", "store_percentage", "fa_percentage", "field_schema",
         }
     )
     REQUIRED_TEXT = ("name",)
-    NOT_NULL = ("name", "pa", "project_type", "field_agent", "partner_account", "field_schema")
+    NOT_NULL = ("name", "pa", "device_pa", "project_type", "field_agent", "partner_account", "field_schema")
 
     def update(self, project_id: str, changes: dict[str, Any], *, expected_version: int | None = None) -> Project:
         """Metadata only (bounds are checked by the request model). A new `stops_per_day` applies from the next
@@ -165,6 +165,8 @@ class ProjectService:
             raise ValidationFailed("; ".join(errors), errors=errors)
         if not update:
             raise ValidationFailed("No fields to update", errors=[])
+        if "device_pa" in update and update["device_pa"] != current.device_pa:
+            update["device_sync"] = None  # a different PA: the next sync starts over
         return self._projects.update(project_id, update, expected_version=expected_version)
 
     def delete(self, project_id: str, *, confirm: str) -> None:

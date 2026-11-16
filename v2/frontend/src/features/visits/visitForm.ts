@@ -55,7 +55,7 @@ const REQUIRED: [keyof VisitForm, string][] = [
   ["visit_date", "Date"],
   ["dd_code", "DD_Code"],
   ["venue_name", "Venue Name"],
-  ["installer", "Installer"],
+  ["installer", "Technician"],
   ["stick_number", "Stick number"],
   ["dolphin_manager", "Dolphin Manager"],
   ["network_type", "Network Type"],

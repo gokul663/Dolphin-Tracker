@@ -39,6 +39,7 @@ from dolphin_tracker.domain.models import (
 from dolphin_tracker.domain.parsing import clean_cell
 from dolphin_tracker.domain.route_optimizer import state_key
 from dolphin_tracker.domain.schema import coerce_fields, validate_fields, validate_stop_inputs, with_sheet_fields
+from dolphin_tracker.domain.statuses import BUCKET_ORDER, INSTALLED_STATUSES, StatusBucket, bucket_of
 from dolphin_tracker.domain.validation import (
     EDITABLE_FIELDS,
     FIELDS_BY_NAME,
@@ -56,21 +57,30 @@ from dolphin_tracker.services.geocoding import Geocoder, resolve_address
 from dolphin_tracker.services.routing import sync_routing_slot
 
 FILTER_FIELDS = (
-    "status", "installer", "pa", "state", "city", "dma", "venue_type", "dd_code", "screen_size", "route", "visit",
+    "status", "bucket", "installer", "pa", "state", "city", "dma", "venue_type", "dd_code", "screen_size", "route",
+    "visit", "install_type", "mount", "fulfilled", "technician",
 )
+NEEDS_MOUNT, NO_MOUNT_NEEDED = "Needs mount", "No mount needed"
+FULFILLED, NOT_FULFILLED, NO_COMMITMENT = "Fulfilled", "Not fulfilled", "No commitment"
 # The Projects-view overlays (ROUTE-PLANNER §6) as filter values.
 IN_ROUTE, NOT_IN_ROUTE = "In route", "Not in route"
 VISIT_LABELS = {VisitState.VISITED: "Visited", VisitState.PARTLY: "Partly visited", VisitState.NONE: "Not visited"}
-OVERLAY_ORDER = {value: index for index, value in enumerate([IN_ROUTE, NOT_IN_ROUTE, *VISIT_LABELS.values()])}
+OVERLAY_ORDER = {
+    value: index
+    for index, value in enumerate([
+        IN_ROUTE, NOT_IN_ROUTE, *VISIT_LABELS.values(), NEEDS_MOUNT, NO_MOUNT_NEEDED, FULFILLED, NOT_FULFILLED,
+        NO_COMMITMENT, *(bucket.value for bucket in BUCKET_ORDER),
+    ])
+}
 SORT_KEYS = frozenset(
-    {"store_name", "addr", "status", "installer", "day", "updated_at", "display_id", "screens"}
+    {"store_name", "addr", "status", "installer", "installer_name", "day", "updated_at", "display_id", "screens"}
     | {spec.name for spec in STORE_FIELDS if spec.kind not in (Kind.TRISTATE, Kind.BOOL)}
 )
 ADDRESS_PARTS = ("addr", "city", "state", "zip")
 TEXT_KINDS = frozenset({Kind.TEXT, Kind.MULTILINE, Kind.PHONE, Kind.EMAIL, Kind.URL, Kind.SELECT})
 CSV_FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
-SEARCHED = ("display_id", "external_id", "store_name", "addr", "city", "zip", "comment", "pa", "dma", "venue_type",
-            "owner_name", "onsite_contact_name", "installer_name")
+# The search box finds a store by its IBC#, name or address; DMA, venue type, DD code and the rest have filters.
+SEARCHED = ("display_id", "external_id", "store_name", "addr", "city", "state", "zip")
 
 
 class StorePage(ApiModel):
@@ -112,6 +122,11 @@ class StoreQuery:
     screen_size: list[str] = field(default_factory=list)  # any screen's size
     route: list[str] = field(default_factory=list)  # "In route" / "Not in route"
     visit: list[str] = field(default_factory=list)  # "Visited" / "Partly visited" / "Not visited"
+    bucket: list[StatusBucket] = field(default_factory=list)  # the store's status group (Completed, In Progress…)
+    install_type: list[str] = field(default_factory=list)  # Technician / Self install / Rep install
+    technician: list[str] = field(default_factory=list)  # the store's technician (installer_name); "" = none
+    mount: list[str] = field(default_factory=list)  # "Needs mount" / "No mount needed"
+    fulfilled: list[str] = field(default_factory=list)  # "Fulfilled" / "Not fulfilled" / "No commitment"
     needs_attention: bool = False  # only stores added without a name or a verified address
     q: str = ""
     sort: str = "store_name"
@@ -128,12 +143,15 @@ def pa_values(stop: Stop, project: Project) -> list[str]:
 
 
 def facet_values(stop: Stop, project: Project, name: str) -> list[str]:
-    """The value(s) a store has for one filter; "" counts as a value only for the installer (unassigned)."""
+    """The value(s) a store has for one filter; "" counts as a value only for the installer and technician
+    (unassigned)."""
     match name:
         case "status":
             return [stop.status.value]
         case "installer":
             return [stop.installer]
+        case "technician":  # who is assigned to install (the sheet's Technician column); "" = nobody yet
+            return [stop.installer_name]
         case "pa":
             return pa_values(stop, project)
         case "dd_code":
@@ -144,9 +162,31 @@ def facet_values(stop: Stop, project: Project, name: str) -> list[str]:
             return [IN_ROUTE if stop.route_plan_id else NOT_IN_ROUTE]
         case "visit":
             return [VISIT_LABELS[stop_visit_state(stop)]]
+        case "bucket":
+            return [bucket_of(stop.status).value]
+        case "mount":
+            return [NEEDS_MOUNT if needs_mount(stop) else NO_MOUNT_NEEDED]
+        case "fulfilled":
+            return [fulfillment(stop)]
         case _:
             value = getattr(stop, name)
             return [value] if value else []
+
+
+def needs_mount(stop: Stop) -> bool:
+    """Mounts still to bring: any typed wall / ceiling / TV mount count, or a screen flagged before those existed."""
+    counts = (stop.wall_mounts_needed, stop.ceiling_mounts_needed, stop.tv_mounts_needed)
+    return any(count for count in counts) or any(screen.needs_mount for screen in stop.screens)
+
+
+def fulfillment(stop: Stop) -> str:
+    """Fulfilled once the screen rows on the wall (Completed, Offline, Needs More Work) reach the committed Dolphin
+    screens + store TVs; "No commitment" when the sheet gave neither count."""
+    committed = (stop.committed_dolphin_screens or 0) + (stop.committed_store_tvs or 0)
+    if committed == 0:
+        return NO_COMMITMENT
+    installed = sum(1 for screen in stop.screens if screen.status in INSTALLED_STATUSES)
+    return FULFILLED if installed >= committed else NOT_FULFILLED
 
 
 def stop_visit_state(stop: Stop) -> VisitState:
@@ -180,12 +220,10 @@ def _sort_value(stop: Stop, sort: str) -> Any:
 
 
 def _matches(stop: Stop, needle: str) -> bool:
+    """IBC#, store name and address: the sheet's, or the device report's (its store and CMS names, its address)."""
     haystack = [str(getattr(stop, name)) for name in SEARCHED]
-    haystack.extend(f"{screen.stick_number} {screen.venue_id}" for screen in stop.screens)
-    if stop.device:  # the device report's names and address are searchable too
+    if stop.device:
         haystack.extend([stop.device.store_name, stop.device.venue_name, stop.device.address])
-    haystack.extend(screen.device.serial_number for screen in stop.screens if screen.device)
-    haystack.extend(str(value) for value in stop.fields.values() if value not in (None, ""))
     return any(needle in text.lower() for text in haystack)
 
 
@@ -208,6 +246,8 @@ def screen_summary(screen: Screen) -> str:
     """One screen row for the CSV: stick / DD code / size / kind / mount / status."""
     kind = "Dolphin screen" if screen.is_dolphin_screen else "Store TV"
     mount = f"{'ceiling' if screen.has_ceiling_mount else 'wall'} mount{'' if screen.has_mount else ' (none yet)'}"
+    if screen.needs_mount:
+        mount += ", needs mount"
     parts = [screen.stick_number or "—", screen.venue_id or "—", screen.screen_size or "—", kind, mount]
     return " / ".join([*parts, screen.status.value])
 
@@ -325,7 +365,7 @@ class StoreService:
                 counts.update(set(facet_values(stop, project, name)))
             if name == "status":
                 ordered = [status.value for status in STATUS_PRECEDENCE if counts[status.value]]
-            elif name in ("route", "visit"):
+            elif name in ("route", "visit", "bucket", "mount", "fulfilled"):
                 ordered = sorted(counts, key=lambda value: OVERLAY_ORDER[value])
             else:
                 ordered = sorted(counts, key=lambda value: (value == "", _natural(value)))

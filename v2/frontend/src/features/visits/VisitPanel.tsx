@@ -225,8 +225,8 @@ function VisitBody({ stop, project, planId, installer, visitDate }: { stop: Stop
             <Field label="FA">
               <Input value={project.field_agent} readOnly className="bg-slate-50" aria-label="FA" placeholder="No field agent" />
             </Field>
-            <Field label="Installer" required error={shown("installer")}>
-              <NameField kind="installers" aria-label="Installer" placeholder="Select or type installer name" value={form.installer} onChange={(value) => set({ installer: value })} />
+            <Field label="Technician" required error={shown("installer")}>
+              <NameField kind="installers" aria-label="Technician" placeholder="Select or type technician name" value={form.installer} onChange={(value) => set({ installer: value })} />
             </Field>
             <Field label="Stick number" required error={shown("stick_number")} htmlFor="visit-stick">
               <Input id="visit-stick" placeholder="Stick number" value={form.stick_number} onChange={(e) => set({ stick_number: e.target.value })} />

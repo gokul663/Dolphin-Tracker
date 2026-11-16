@@ -16,6 +16,7 @@ EMAIL_RE = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
 URL_TOKEN_RE = re.compile(r"https?://\S+", re.IGNORECASE)
 INT_RE = re.compile(r"-?\d+")
 OUTLET_STATUSES = ("New", "Existing")
+INSTALL_TYPES = ("Technician", "Self install", "Rep install")  # = statuses.INSTALL_TYPES (kept import-free)
 
 
 class Kind(StrEnum):
@@ -82,6 +83,7 @@ STORE_FIELDS: tuple[StoreField, ...] = (
     StoreField("image_url", "Pictures (image URL)", Group.PICTURES, Kind.URL),
     StoreField("cms_details_added", "CMS details added", Group.INSTALLATION, Kind.BOOL),
     StoreField("outlet_status", "Outlet status", Group.INSTALLATION, Kind.SELECT, options=OUTLET_STATUSES),
+    StoreField("install_type", "Install type", Group.INSTALLATION, Kind.SELECT, options=INSTALL_TYPES),
     # 4. Site notes (the sheet's comments group)
     StoreField("preferred_area", "Preferred area in store", Group.SITE_NOTES),
     StoreField("ceiling_type", "Ceiling type", Group.SITE_NOTES),
@@ -99,6 +101,10 @@ STORE_FIELDS: tuple[StoreField, ...] = (
     # 6. Screens: the committed counts (the actual counts are derived from the screen rows)
     StoreField("committed_dolphin_screens", "Dolphin screens (committed)", Group.SCREENS, Kind.INT),
     StoreField("committed_store_tvs", "Store TVs (committed)", Group.SCREENS, Kind.INT),
+    # Mounts to bring (typed in; independent of the per-screen Needs mount flag)
+    StoreField("wall_mounts_needed", "Wall mounts needed", Group.SCREENS, Kind.INT),
+    StoreField("ceiling_mounts_needed", "Ceiling mounts needed", Group.SCREENS, Kind.INT),
+    StoreField("tv_mounts_needed", "TV mounts needed", Group.SCREENS, Kind.INT),
 )
 FIELDS_BY_NAME: dict[str, StoreField] = {field.name: field for field in STORE_FIELDS}
 EDITABLE_FIELDS = frozenset(field.name for field in STORE_FIELDS if field.editable)

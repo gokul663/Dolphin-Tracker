@@ -4,26 +4,49 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { storeExportUrl } from "@/features/stores/api";
+import { storeExportUrl, useStoreSuggestions } from "@/features/stores/api";
+import { addressLine } from "@/features/stores/details";
 import type { StoreFilters } from "@/lib/api/resources";
-import type { Project } from "@/lib/api/types";
+import type { Project, Stop } from "@/lib/api/types";
 import { useShallow } from "zustand/react/shallow";
 import { useStoresUi } from "@/stores/ui";
 import { anyFacet } from "@/features/stores/filters";
 import { cn } from "@/lib/utils";
 
-/** One row: a compact search, the filter dropdowns (`children`), then "only in view", clear and CSV export. */
+/** "Only stores in map view" and the CSV export, for the status line above the search and filters. */
+export function StoresListActions({ project, filters }: { project: Project; filters: StoreFilters }) {
+  const onlyInView = useStoresUi((state) => state.onlyInView);
+  const setOnlyInView = useStoresUi((state) => state.setOnlyInView);
+  return (
+    <div className="flex items-center gap-3">
+      <div className="flex items-center gap-1.5">
+        <Checkbox id="only-in-view" checked={onlyInView} onCheckedChange={(checked) => setOnlyInView(checked === true)} />
+        <Label htmlFor="only-in-view" className="text-xs">
+          Only stores in map view
+        </Label>
+      </div>
+      <Button asChild variant="outline" size="sm">
+        <a href={storeExportUrl(project.id, filters)} download>
+          <Download /> CSV
+        </a>
+      </Button>
+    </div>
+  );
+}
+
+/** One row: the search (IBC#, name, address, with the closest stores as you type), the filter dropdowns
+ *  (`children`), then Needs attention and Clear. */
 export function StoresToolbar({
   project,
-  filters,
+  filters: _filters,
   children,
-  minimal = false,
+  onPick,
 }: {
   project: Project;
   filters: StoreFilters;
   children?: ReactNode;
-  /** The full-page map and chart: search and filters only (no table to limit or export). */
-  minimal?: boolean;
+  /** Open a store picked from the search suggestions (the Stores tab); without it, picking searches its name. */
+  onPick?: (uid: string) => void;
 }) {
   // Only the slices the toolbar shows: hover, selection and map bounds never re-render it.
   const ui = useStoresUi(
@@ -48,17 +71,7 @@ export function StoresToolbar({
 
   return (
     <div className="flex flex-wrap items-center gap-1.5">
-      <div className="relative w-64 shrink-0">
-        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-        <Input
-          aria-label="Search stores"
-          placeholder="Search IBC#, name, address, ZIP…"
-          title="Search IBC#, name, address, ZIP, DD code, comment"
-          value={draft}
-          onChange={(event) => setDraft(event.target.value)}
-          className="h-8 pl-9 text-sm"
-        />
-      </div>
+      <StoreSearch projectId={project.id} value={draft} onChange={setDraft} onPick={(stop) => (onPick ? onPick(stop.uid) : setDraft(stop.store_name))} />
       {children}
       {ui.needsAttention && (
         <Button
@@ -72,25 +85,88 @@ export function StoresToolbar({
           <AlertTriangle /> Needs attention <X />
         </Button>
       )}
-      {!minimal && (
-        <div className="ml-auto flex items-center gap-1.5">
-          <Checkbox id="only-in-view" checked={ui.onlyInView} onCheckedChange={(checked) => ui.setOnlyInView(checked === true)} />
-          <Label htmlFor="only-in-view" className="text-xs">
-            Only stores in map view
-          </Label>
-        </div>
-      )}
       {active ? (
-        <Button variant="ghost" size="sm" className={cn(minimal && "ml-auto")} onClick={ui.clearFilters}>
+        <Button variant="ghost" size="sm" onClick={ui.clearFilters}>
           <X /> Clear
         </Button>
       ) : null}
-      {!minimal && (
-        <Button asChild variant="outline" size="sm">
-          <a href={storeExportUrl(project.id, filters)} download>
-            <Download /> CSV
-          </a>
-        </Button>
+    </div>
+  );
+}
+
+/** The search box: IBC#, store name or address. As you type, the five closest stores drop down; Enter (or just
+ *  pausing) filters the list by the text instead. */
+function StoreSearch({
+  projectId,
+  value,
+  onChange,
+  onPick,
+}: {
+  projectId: string;
+  value: string;
+  onChange: (value: string) => void;
+  onPick: (stop: Stop) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(-1);
+  const needle = value.trim();
+  const suggestions = useStoreSuggestions(projectId, open ? needle : "");
+  const items = suggestions.data?.items ?? [];
+  const pick = (stop: Stop) => {
+    setOpen(false);
+    setActive(-1);
+    onPick(stop);
+  };
+  return (
+    <div className="relative w-72 shrink-0">
+      <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+      <Input
+        role="combobox"
+        aria-label="Search stores"
+        aria-expanded={open && items.length > 0}
+        aria-controls="store-suggestions"
+        aria-autocomplete="list"
+        placeholder="Search IBC#, store name or address…"
+        value={value}
+        onChange={(event) => {
+          onChange(event.target.value);
+          setOpen(true);
+          setActive(-1);
+        }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => window.setTimeout(() => setOpen(false), 150)} // let a click on a suggestion land first
+        onKeyDown={(event) => {
+          if (event.key === "ArrowDown") setActive((index) => Math.min(index + 1, items.length - 1));
+          else if (event.key === "ArrowUp") setActive((index) => Math.max(index - 1, -1));
+          else if (event.key === "Escape") setOpen(false);
+          else if (event.key === "Enter") {
+            if (active >= 0 && items[active]) pick(items[active]!);
+            else setOpen(false);
+          } else return;
+          event.preventDefault();
+        }}
+        className="h-8 pl-9 text-sm"
+      />
+      {open && needle.length > 0 && items.length > 0 && (
+        <ul id="store-suggestions" role="listbox" aria-label="Closest stores" className="absolute left-0 right-0 top-9 z-30 overflow-hidden rounded-md border bg-white py-1 shadow-lg">
+          {items.map((stop, index) => (
+            <li
+              key={stop.uid}
+              role="option"
+              aria-selected={index === active}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => pick(stop)}
+              onMouseEnter={() => setActive(index)}
+              className={cn("cursor-pointer px-3 py-1.5 text-sm", index === active ? "bg-sky-50" : "hover:bg-slate-50")}
+            >
+              <span className="flex items-baseline gap-2">
+                <span className="font-mono text-[11px] text-slate-500">{stop.external_id || stop.display_id}</span>
+                <span className="truncate font-medium text-slate-800">{stop.device?.store_name || stop.store_name}</span>
+              </span>
+              <span className="block truncate text-xs text-slate-500">{addressLine(stop)}</span>
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   );

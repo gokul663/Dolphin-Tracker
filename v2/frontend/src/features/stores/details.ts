@@ -95,3 +95,36 @@ export function filledCount(form: DetailsForm, specs: StoreFieldSpec[]): { fille
   }).length;
   return { filled, total: editable.length };
 }
+
+/** Screens on the wall: done, on the wall but not reporting (Offline), or visited and still needing work (backend
+ *  `INSTALLED_STATUSES`). */
+export const INSTALLED_STATUSES: ReadonlySet<string> = new Set(["Completed", "Offline", "Serviced - Needs More Work"]);
+
+/** Installed screens against the committed Dolphin screens + store TVs (backend `fulfillment`). */
+export function fulfillment(stop: {
+  screens: { status: string; is_dolphin_screen: boolean }[];
+  committed_dolphin_screens: number | null;
+  committed_store_tvs: number | null;
+}) {
+  const committed = (stop.committed_dolphin_screens ?? 0) + (stop.committed_store_tvs ?? 0);
+  const done = stop.screens.filter((screen) => INSTALLED_STATUSES.has(screen.status));
+  const installedScreens = done.filter((screen) => screen.is_dolphin_screen).length;
+  const installed = done.length;
+  return {
+    installed,
+    committed,
+    /** Completed Dolphin screens and Completed store TVs, apart. */
+    installedScreens,
+    installedTvs: installed - installedScreens,
+    fulfilled: committed > 0 && installed >= committed,
+  };
+}
+
+/** Who has worked on one screen, from its logged visits (newest first, as the history lists them): the latest
+ *  technician with the date, and everyone who has been there. */
+export function screenTechnicians(visits: { screen_id: string; installer: string; visit_date: string }[], screenId: string) {
+  const mine = visits.filter((visit) => visit.screen_id === screenId && visit.installer.trim());
+  const latest = mine.reduce<(typeof mine)[number] | null>((best, visit) => (!best || visit.visit_date > best.visit_date ? visit : best), null);
+  const all = [...new Set(mine.map((visit) => visit.installer.trim()))];
+  return { last: latest ? { name: latest.installer.trim(), date: latest.visit_date } : null, all };
+}

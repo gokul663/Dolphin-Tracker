@@ -26,7 +26,7 @@ class ImportServiceParseTests(unittest.TestCase):
         self.assertEqual((first.addr, first.city, first.state, first.zip), ("1 Main St", "Dallas", "TX", "75201"))
         self.assertEqual((first.status, first.status_valid), ("Completed", True))
         self.assertEqual((first.details, first.fields), ({"owner_phone": "555-0100"}, {"brand": "Acme"}))
-        self.assertEqual((second.status, second.status_valid, second.status_raw), ("Upcoming", False, "weird"))
+        self.assertEqual((second.status, second.status_valid, second.status_raw), ("Upcoming", True, "weird"))
 
     def test_saved_mapping_is_applied_first(self):
         parsed = ImportService.parse("s.csv", b"address,code,brand\n1 Main St,IBC-1,Acme\n", {"code": "external_id"})
@@ -189,7 +189,7 @@ class ImportRunTests(unittest.TestCase):
         self.assertEqual((first["venue_status"], first["venue_status_valid"]), ("Completed", True))
         lost = result["rows"][26]
         status = (lost["venue_status"], lost["venue_status_valid"], lost["venue_status_raw"])
-        self.assertEqual(status, ("Upcoming", False, "bogus"))
+        self.assertEqual(status, ("Upcoming", True, "bogus"))  # a self install
 
     def test_redelivered_event_does_not_rerun_the_import(self):
         job_id = self._job(b"address\n1 Main St\n")

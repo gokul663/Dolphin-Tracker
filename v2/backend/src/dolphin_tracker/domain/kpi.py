@@ -13,19 +13,34 @@ from pydantic import Field
 
 from dolphin_tracker.domain.base import ApiModel
 from dolphin_tracker.domain.parsing import clean_cell
-from dolphin_tracker.domain.statuses import LEGACY_STATUSES, PENDING_STATUSES, ScreenStatus, VisitState, visit_state
+from dolphin_tracker.domain.statuses import (
+    BUCKET_OF,
+    BUCKET_ORDER,
+    INSTALLED_STATUSES,
+    LEGACY_STATUSES,
+    PENDING_STATUSES,
+    ScreenStatus,
+    StatusBucket,
+    VisitState,
+    store_assignment,
+    visit_state,
+)
 
 STATUSES = tuple(status.value for status in ScreenStatus)
 FINISHED = frozenset({ScreenStatus.ARCHIVED, ScreenStatus.CANCELLED})
 KPI_ATTRIBUTES = (
     "uid", "status", "screens", "installer", "installer_name", "fields", "dma", "venue_type",
-    "committed_dolphin_screens", "committed_store_tvs", "addr", "city", "state", "zip",
+    "committed_dolphin_screens", "committed_store_tvs", "addr", "city", "state", "zip", "install_type",
     "screen_visits", "last_planned_at", "needs_attention",
 )
 
 
 def _zeroes() -> dict[str, int]:
     return dict.fromkeys(STATUSES, 0)
+
+
+def _bucket_zeroes() -> dict[str, int]:
+    return dict.fromkeys((bucket.value for bucket in BUCKET_ORDER), 0)
 
 
 def _visit_zeroes() -> dict[str, int]:
@@ -36,6 +51,13 @@ class Breakdown(ApiModel):
     total: int = 0
     complete: int = 0
     pending: int = 0
+
+
+class InstallerProgress(ApiModel):
+    """One technician's screens: done = Completed, upcoming = Upcoming or In Progress."""
+
+    done: int = 0
+    upcoming: int = 0
 
 
 class Kpi(ApiModel):
@@ -51,9 +73,17 @@ class Kpi(ApiModel):
     screens_by_status: dict[str, int] = Field(default_factory=_zeroes)
     committed_dolphin_screens: int = 0  # sum of the sheet's committed values
     committed_store_tvs: int = 0
+    committed_stores: int = 0  # stores with a committed screen or TV count
+    # On the wall (Completed = online, Offline, Needs More Work): the header's "Completed", online and offline together.
+    installed_screens: int = 0
+    installed_stores: int = 0  # stores with at least one installed screen
     actual_dolphin_screens: int = 0  # screen rows with is_dolphin_screen
     actual_store_tvs: int = 0  # the other screen rows
     by_installer: dict[str, int] = Field(default_factory=dict)
+    by_bucket: dict[str, int] = Field(default_factory=_bucket_zeroes)  # stores by their status's group
+    screens_by_bucket: dict[str, int] = Field(default_factory=_bucket_zeroes)
+    by_technician: dict[str, InstallerProgress] = Field(default_factory=dict)  # screens, by the sheet's Technician
+    install_types: dict[str, int] = Field(default_factory=dict)  # stores by install type ("" = not set)
     by_dma: dict[str, Breakdown] = Field(default_factory=dict)
     by_venue_type: dict[str, Breakdown] = Field(default_factory=dict)
     address_status: Breakdown = Field(default_factory=Breakdown)
@@ -97,20 +127,40 @@ def kpi_summary(rows: Iterable[Mapping[str, Any]]) -> Kpi:
         if row.get("needs_attention"):
             kpi.needs_attention += 1
         kpi.by_status[status.value] += 1
+        kpi.by_bucket[BUCKET_OF[status].value] += 1
+        technician, install_type = store_assignment(
+            clean_cell(row.get("installer_name") or ""), row.get("install_type") or ""
+        )
+        kpi.install_types[install_type] = kpi.install_types.get(install_type, 0) + 1
         screens = row.get("screens") or [{"status": status.value, "is_dolphin_screen": True}]
         screen_ids = [screen["id"] for screen in row.get("screens") or [] if screen.get("id")]
         visit = visit_state(screen_ids, row.get("screen_visits") or {}, row.get("last_planned_at") or "")
         kpi.by_visit[visit.value] += 1
+        if any(_status(screen.get("status")) in INSTALLED_STATUSES for screen in screens):
+            kpi.installed_stores += 1
+        if row.get("committed_dolphin_screens") is not None or row.get("committed_store_tvs") is not None:
+            kpi.committed_stores += 1
         for screen in screens:
             kpi.screens_total += 1
-            kpi.screens_by_status[_status(screen.get("status")).value] += 1
+            if _status(screen.get("status")) in INSTALLED_STATUSES:
+                kpi.installed_screens += 1
+            screen_status = _status(screen.get("status"))
+            kpi.screens_by_status[screen_status.value] += 1
+            bucket = BUCKET_OF[screen_status]
+            kpi.screens_by_bucket[bucket.value] += 1
+            if technician:
+                progress = kpi.by_technician.setdefault(technician, InstallerProgress())
+                if bucket == StatusBucket.COMPLETED:
+                    progress.done += 1
+                elif bucket in (StatusBucket.UPCOMING, StatusBucket.IN_PROGRESS):
+                    progress.upcoming += 1
             if screen.get("is_dolphin_screen", True):
                 kpi.actual_dolphin_screens += 1
             else:
                 kpi.actual_store_tvs += 1
         kpi.committed_dolphin_screens += row.get("committed_dolphin_screens") or 0
         kpi.committed_store_tvs += row.get("committed_store_tvs") or 0
-        installer = row.get("installer_name") or row.get("installer") or ""
+        installer = technician or row.get("installer") or ""
         if installer:
             kpi.by_installer[installer] = kpi.by_installer.get(installer, 0) + 1
         # First-class since the store model v2; items and v1 rows written before it carry them in `fields`.

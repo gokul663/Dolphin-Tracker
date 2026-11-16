@@ -9,17 +9,12 @@ import { cn } from "@/lib/utils";
 
 const fmt = (lat: number | null, lng: number | null) => (lat === null || lng === null ? "" : `${lat.toFixed(5)}, ${lng.toFixed(5)}`);
 
-/** The device report's values for this store next to the sheet's, with Overwrite per field or all at once, and the
- *  "not in Dolphin data" alert with Ignore (until the next report day). */
-export function StoreDeviceSection({ project, stop }: { project: Project; stop: Stop }) {
-  const overwrite = useOverwriteFromDevice(project.id);
-  const ignore = useIgnoreDeviceAlert(project.id);
-  const device = stop.device;
-  const missing = stop.needs_attention.includes("not_reporting");
-  const day = project.device_sync?.snapshot_date ?? device?.date ?? "";
-  const lost = stop.screens.filter((screen) => screen.status === "Completed" && screen.venue_id && !screen.device);
+type Row = { field: OverwriteField | null; label: string; sheet: string; report: string };
 
-  const rows: { field: OverwriteField | null; label: string; sheet: string; report: string }[] = device
+/** The sheet's values next to the Dolphin data's, one row per field (the CMS name has no sheet value). */
+export function deviceRows(stop: Stop): Row[] {
+  const device = stop.device;
+  return device
     ? [
         { field: "store_name", label: "Store name", sheet: stop.store_name, report: device.store_name },
         { field: null, label: "CMS name", sheet: "", report: device.venue_name },
@@ -30,10 +25,42 @@ export function StoreDeviceSection({ project, stop }: { project: Project; stop: 
         { field: "location", label: "Map location", sheet: fmt(stop.lat, stop.lng), report: fmt(device.lat, device.lng) },
       ]
     : [];
-  const differing = rows.filter((row) => row.field && row.report && row.report !== row.sheet).map((row) => row.field as OverwriteField);
+}
+
+/** The fields where the Dolphin data still differs from the sheet (Overwrite would copy them in). */
+export const deviceDifferences = (stop: Stop): OverwriteField[] =>
+  deviceRows(stop).filter((row) => row.field && row.report && row.report !== row.sheet).map((row) => row.field as OverwriteField);
+
+/** The device report's values for this store next to the sheet's, with Overwrite per field or all at once, and the
+ *  "not in Dolphin data" alert with Ignore (until the next report day). */
+export function StoreDeviceSection({
+  project,
+  stop,
+  pending = [],
+  onOverwrite,
+}: {
+  project: Project;
+  stop: Stop;
+  /** Fields already overwritten in the store window's draft (saved with its Save details). */
+  pending?: OverwriteField[];
+  /** The store window takes Overwrite into its draft; without it (elsewhere) Overwrite saves at once. */
+  onOverwrite?: (fields: OverwriteField[]) => void;
+}) {
+  const overwrite = useOverwriteFromDevice(project.id);
+  const ignore = useIgnoreDeviceAlert(project.id);
+  const device = stop.device;
+  const missing = stop.needs_attention.includes("not_reporting");
+  const day = project.device_sync?.snapshot_date ?? device?.date ?? "";
+  const lost = stop.screens.filter((screen) => screen.status === "Completed" && screen.venue_id && !screen.device);
+
+  const rows = deviceRows(stop);
+  const differing = deviceDifferences(stop);
+  const open = differing.filter((field) => !pending.includes(field)); // still to take
 
   const run = (fields: OverwriteField[]) =>
-    overwrite.mutate(
+    onOverwrite
+      ? onOverwrite(fields)
+      : overwrite.mutate(
       { uid: stop.uid, fields },
       {
         onSuccess: () => toast.success("Saved the Dolphin data value"),
@@ -42,14 +69,16 @@ export function StoreDeviceSection({ project, stop }: { project: Project; stop: 
     );
 
   if (!device && !missing) return null;
+  // Nothing left to overwrite and no alert: the store window's header says it is synced, so nothing here.
+  if (device && !missing && differing.length === 0) return null;
   return (
     <section aria-label="Dolphin data" className={cn("space-y-2 rounded-lg border p-3", DEVICE_TONE.panel)}>
       <div className="flex flex-wrap items-center gap-2">
         <h3 className="font-mono text-[11px] uppercase tracking-wider text-cyan-900">Dolphin data</h3>
         {day && <DeviceBadge date={day} />}
-        {differing.length > 0 && (
-          <Button size="xs" variant="outline" className="ml-auto" disabled={overwrite.isPending} onClick={() => run(differing)}>
-            {overwrite.isPending ? <Loader2 className="animate-spin" /> : <Replace />} Overwrite all ({differing.length})
+        {open.length > 0 && (
+          <Button size="xs" variant="outline" className="ml-auto" disabled={overwrite.isPending} onClick={() => run(open)}>
+            {overwrite.isPending ? <Loader2 className="animate-spin" /> : <Replace />} Overwrite all ({open.length})
           </Button>
         )}
       </div>
@@ -89,11 +118,15 @@ export function StoreDeviceSection({ project, stop }: { project: Project; stop: 
                   <td className={cn("py-1 pr-2", differs && "text-slate-400 line-through")}>{row.sheet || (row.field ? "—" : "")}</td>
                   <td className={cn("py-1 pr-2 font-medium", DEVICE_TONE.text)}>{row.report || <span className="font-normal text-slate-400">no value</span>}</td>
                   <td className="py-1 text-right">
-                    {differs && (
+                    {differs && pending.includes(row.field as OverwriteField) ? (
+                      <span className="whitespace-nowrap text-xs font-medium text-amber-700" title="Taken into the store's changes: Save details writes it, Discard drops it">
+                        Unsaved
+                      </span>
+                    ) : differs ? (
                       <Button size="xs" variant="ghost" disabled={overwrite.isPending} onClick={() => run([row.field as OverwriteField])}>
                         Overwrite
                       </Button>
-                    )}
+                    ) : null}
                   </td>
                 </tr>
               );

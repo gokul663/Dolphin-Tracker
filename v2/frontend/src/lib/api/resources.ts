@@ -47,6 +47,7 @@ import type {
   Visit,
   VisitInput, OverwriteField, ReviewAdd, OverwriteResult, PaList, ReviewItem, ReviewPage, SyncResult, DayInsert, DayLockSet, InsertOptions, InsertQuery, StorePage, PlaceHit } from "@/lib/api/types";
 import type { StorePageParams } from "@/lib/api/keys";
+import type { StatusBucket } from "@/lib/status";
 
 /** The store list/pins/export/facet query (STORE-MODEL §5). Repeated values OR together; filters AND. */
 export interface StoreFilters {
@@ -65,6 +66,16 @@ export interface StoreFilters {
   route?: string[];
   /** "Visited" / "Partly visited" / "Not visited", counted since the store's latest plan. */
   visit?: string[];
+  /** The store's status group (Completed, Upcoming, In Progress, Offline, Cancelled). */
+  bucket?: StatusBucket[];
+  /** Technician / Self install / Rep install. */
+  install_type?: string[];
+  /** The store's technician; "" selects stores without one. */
+  technician?: string[];
+  /** "Needs mount" / "No mount needed". */
+  mount?: string[];
+  /** "Fulfilled" / "Not fulfilled" / "No commitment": Completed screens against the committed counts. */
+  fulfilled?: string[];
   /** Only stores added without a name or a verified address (not fixed yet). */
   needs_attention?: boolean;
   q?: string;
@@ -87,6 +98,11 @@ function storeQuery(filters: StoreFilters) {
     screen_size: filters.screen_size,
     route: filters.route,
     visit: filters.visit,
+    bucket: filters.bucket,
+    install_type: filters.install_type,
+    technician: filters.technician,
+    mount: filters.mount,
+    fulfilled: filters.fulfilled,
     needs_attention: filters.needs_attention || undefined,
     q: filters.q || undefined,
     sort: filters.sort,

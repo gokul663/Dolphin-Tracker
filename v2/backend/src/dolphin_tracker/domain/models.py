@@ -9,12 +9,13 @@ from typing import Any, Generic, Self, TypeVar
 from pydantic import ConfigDict, Field, field_validator, model_validator
 
 from dolphin_tracker.domain.base import ApiModel
-from dolphin_tracker.domain.device import DeviceSyncState, ScreenDevice, StoreDevice, split_codes
+from dolphin_tracker.domain.device import DeviceSyncState, ScreenDevice, StoreDevice, split_codes, venue_code_key
 from dolphin_tracker.domain.kpi import Kpi
 from dolphin_tracker.domain.statuses import (  # re-exported: callers import statuses from models
     LEGACY_STATUSES,
     ScreenStatus,
     derive_store_status,
+    store_assignment,
 )
 from dolphin_tracker.domain.statuses import (
     PENDING_STATUSES as PENDING_STATUSES,
@@ -56,6 +57,7 @@ class Screen(ApiModel):
     is_dolphin_screen: bool = True
     has_mount: bool = False
     has_ceiling_mount: bool = False  # False: wall mount, the default
+    needs_mount: bool = False  # a mount still has to be brought and fitted (independent of has_mount)
     status: ScreenStatus = ScreenStatus.UPCOMING
     # When `status` last changed (a person or the device sync); "" = unknown (set by a sheet or before this
     # existed). A screen Completed after the device report's day is not expected in that report yet.
@@ -66,6 +68,15 @@ class Screen(ApiModel):
     @classmethod
     def _legacy_status(cls, value: Any) -> Any:
         return LEGACY_STATUSES.get(value, value) if isinstance(value, str) else value
+
+    @model_validator(mode="after")
+    def _dolphin_screen_size(self) -> Self:
+        if self.is_dolphin_screen:
+            self.screen_size = DOLPHIN_SCREEN_SIZE  # every Dolphin screen is the 24-inch one; sizes are for store TVs
+        return self
+
+
+DOLPHIN_SCREEN_SIZE = '24"'
 
 
 class RoutingStatus(StrEnum):
@@ -158,8 +169,13 @@ class StoreDetails(ApiModel):
     image_url: str = Field(default="", max_length=5000)  # raw; may hold several URLs
     cms_details_added: bool = False
     outlet_status: str = Field(default="", max_length=20)  # "", "New" or "Existing"
+    install_type: str = Field(default="", max_length=20)  # "", "Technician", "Self install" or "Rep install"
     committed_dolphin_screens: int | None = Field(default=None, ge=0)
     committed_store_tvs: int | None = Field(default=None, ge=0)
+    # Mounts to bring, typed in by hand (None = not known yet).
+    wall_mounts_needed: int | None = Field(default=None, ge=0)
+    ceiling_mounts_needed: int | None = Field(default=None, ge=0)
+    tv_mounts_needed: int | None = Field(default=None, ge=0)
     preferred_area: str = Field(default="", max_length=500)
     ceiling_type: str = Field(default="", max_length=200)
     ceiling_height: str = Field(default="", max_length=100)
@@ -235,8 +251,49 @@ class Stop(StoreDetails):
     def _derive_status(self) -> Self:
         if not self.screens:
             self.screens = [Screen(status=self.status)]
+        self.screens = merge_same_code(self.screens)
         self.status = derive_store_status(self.screens)
+        self.installer_name, self.install_type = store_assignment(self.installer_name, self.install_type)
         return self
+
+
+def merge_same_code(screens: list[Screen]) -> list[Screen]:
+    """One row per DD code. `DD-H5036X` and `DD_H5036X` are the same screen, so rows that share a code (a sheet row and
+    the row the Dolphin data added for it, say) become one, where the first of them stood: each value is the first
+    row's when it has one, else the next's (stick #, size); mount flags are kept if any row has them; the status is
+    the first that is not Upcoming; the Dolphin data comes from whichever row has it. Rows without a code, or with
+    several codes in one entry, are left alone."""
+    groups: dict[str, list[Screen]] = {}
+    for screen in screens:
+        key = venue_code_key(screen.venue_id)
+        if key and len(split_codes(screen.venue_id)) == 1:
+            groups.setdefault(key, []).append(screen)
+    if all(len(group) == 1 for group in groups.values()):
+        return screens
+    merged: list[Screen] = []
+    seen: set[str] = set()
+    for screen in screens:
+        key = venue_code_key(screen.venue_id)
+        group = groups.get(key) if key and len(split_codes(screen.venue_id)) == 1 else None
+        if not group or len(group) == 1:
+            merged.append(screen)
+            continue
+        if key in seen:
+            continue
+        seen.add(key)
+        base, rest = group[0], group[1:]
+        progressed = next((row for row in group if row.status != ScreenStatus.UPCOMING), base)
+        merged.append(base.model_copy(update={
+            "stick_number": next((row.stick_number for row in group if row.stick_number.strip()), ""),
+            "screen_size": next((row.screen_size for row in group if row.screen_size.strip()), ""),
+            "has_mount": any(row.has_mount for row in group),
+            "has_ceiling_mount": any(row.has_ceiling_mount for row in group),
+            "needs_mount": any(row.needs_mount for row in group),
+            "status": progressed.status,
+            "status_changed_at": progressed.status_changed_at,
+            "device": base.device or next((row.device for row in rest if row.device), None),
+        }))
+    return merged
 
 
 # Disjoint write groups on a stop item (AGENT-HANDOFF §2 rule 5). A single write never mixes ROUTING and PROGRESS.
@@ -247,7 +304,9 @@ PROGRESS_FIELDS = frozenset({"screens", "status", "comment", "additional_task", 
 PLAN_FIELDS = frozenset({"route_plan_id", "last_planned_at"})
 VISIT_FIELDS = frozenset({"screen_visits", "last_visit_at"})
 # Written only by the device sync: the screens it re-statuses, their summary, the report overlay and the alert.
-DEVICE_FIELDS = frozenset({"screens", "status", "device", "needs_attention", "device_alert_ignored"})
+DEVICE_FIELDS = frozenset(
+    {"screens", "status", "device", "needs_attention", "device_alert_ignored", "dma", "venue_type"}
+)
 
 
 class ScreenInput(ApiModel):
@@ -260,6 +319,7 @@ class ScreenInput(ApiModel):
     is_dolphin_screen: bool = True
     has_mount: bool = False
     has_ceiling_mount: bool = False
+    needs_mount: bool = False
     status: ScreenStatus = ScreenStatus.UPCOMING
 
     def to_screen(self) -> Screen:

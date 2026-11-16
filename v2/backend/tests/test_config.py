@@ -29,17 +29,17 @@ class RegionSettingTests(unittest.TestCase):
 
 class MongoUriTests(unittest.TestCase):
     def test_empty_when_not_configured(self):
-        self.assertEqual(resolve_mongo_uri(Settings(_env_file=None, mongo_uri="", mongo_uri_secret="")), "")
+        self.assertEqual(resolve_mongo_uri(Settings(_env_file=None, mongo_uri="", mongo_uri_param="")), "")
 
     def test_direct_value_wins(self):
-        settings = Settings(_env_file=None, mongo_uri="mongodb://local", mongo_uri_secret="/dt/test/ignored")
+        settings = Settings(_env_file=None, mongo_uri="mongodb://local", mongo_uri_param="/dt/test/ignored")
         self.assertEqual(resolve_mongo_uri(settings), "mongodb://local")
 
     @mock_aws
-    def test_reads_the_secret_when_only_a_name_is_set(self):
-        boto3.client("secretsmanager", region_name="us-east-1").create_secret(
-            Name="/dt/test/mongodb-uri", SecretString="mongodb://from-secret\n"
+    def test_reads_the_ssm_parameter_when_only_a_name_is_set(self):
+        boto3.client("ssm", region_name="us-east-1").put_parameter(
+            Name="/dt/test/mongodb-uri", Value="mongodb://from-ssm\n", Type="SecureString"
         )
         name = "/dt/test/mongodb-uri"
-        settings = Settings(_env_file=None, aws_region="us-east-1", mongo_uri="", mongo_uri_secret=name)
-        self.assertEqual(resolve_mongo_uri(settings), "mongodb://from-secret")
+        settings = Settings(_env_file=None, aws_region="us-east-1", mongo_uri="", mongo_uri_param=name)
+        self.assertEqual(resolve_mongo_uri(settings), "mongodb://from-ssm")

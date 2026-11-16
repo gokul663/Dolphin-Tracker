@@ -40,7 +40,7 @@ class EnvConfig:
         return f"/dolphin-tracker/{self.name}/google-maps-server-key"
 
     @property
-    def mongo_uri_secret(self) -> str:
+    def ssm_mongo_uri(self) -> str:
         return f"/dolphin-tracker/{self.name}/mongodb-uri"
 
 

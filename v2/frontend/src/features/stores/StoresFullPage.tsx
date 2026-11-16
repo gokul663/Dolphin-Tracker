@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/card";
 import { MapView } from "@/components/map/MapView";
 import { useProject } from "@/features/projects/api";
 import { useFilterOptions, usePins, useStoresByState } from "@/features/stores/api";
+import { BucketChips } from "@/features/stores/BucketChips";
 import { FilterBar } from "@/features/stores/FilterBar";
 import { toStoreFilters } from "@/features/stores/filters";
 import { StoresToolbar } from "@/features/stores/StoresToolbar";
@@ -69,7 +70,8 @@ export function StoresFullPage({ view }: { view: "map" | "states" }) {
         </div>
         <UnitToggle value={ui.unit} onChange={ui.setUnit} />
       </div>
-      <StoresToolbar project={project.data} filters={filters} minimal>
+      <BucketChips options={options.data?.bucket} selected={ui.facets.bucket} onToggle={(bucket) => ui.toggleFacet("bucket", bucket)} />
+      <StoresToolbar project={project.data} filters={filters}>
         <FilterBar options={options.data} facets={ui.facets} onToggle={ui.toggleFacet} />
       </StoresToolbar>
       {view === "map" ? (

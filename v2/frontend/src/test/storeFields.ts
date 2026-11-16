@@ -222,6 +222,19 @@ export const STORE_FIELDS_FOR_TESTS: StoreFieldSpec[] = [
     ]
   },
   {
+    "name": "install_type",
+    "label": "Install type",
+    "group": "Installation",
+    "kind": "select",
+    "editable": true,
+    "required": false,
+    "options": [
+      "Technician",
+      "Self install",
+      "Rep install"
+    ]
+  },
+  {
     "name": "preferred_area",
     "label": "Preferred area in store",
     "group": "Site notes",
@@ -341,6 +354,33 @@ export const STORE_FIELDS_FOR_TESTS: StoreFieldSpec[] = [
   {
     "name": "committed_store_tvs",
     "label": "Store TVs (committed)",
+    "group": "Screens",
+    "kind": "int",
+    "editable": true,
+    "required": false,
+    "options": []
+  },
+  {
+    "name": "wall_mounts_needed",
+    "label": "Wall mounts needed",
+    "group": "Screens",
+    "kind": "int",
+    "editable": true,
+    "required": false,
+    "options": []
+  },
+  {
+    "name": "ceiling_mounts_needed",
+    "label": "Ceiling mounts needed",
+    "group": "Screens",
+    "kind": "int",
+    "editable": true,
+    "required": false,
+    "options": []
+  },
+  {
+    "name": "tv_mounts_needed",
+    "label": "TV mounts needed",
     "group": "Screens",
     "kind": "int",
     "editable": true,

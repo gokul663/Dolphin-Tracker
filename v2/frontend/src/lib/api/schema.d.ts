@@ -1602,6 +1602,22 @@ export interface components {
             /** Name */
             name: string;
         };
+        /**
+         * InstallerProgress
+         * @description One technician's screens: done = Completed, upcoming = Upcoming or In Progress.
+         */
+        InstallerProgress: {
+            /**
+             * Done
+             * @default 0
+             */
+            done: number;
+            /**
+             * Upcoming
+             * @default 0
+             */
+            upcoming: number;
+        };
         /** InstallerRename */
         InstallerRename: {
             /** Old Name */
@@ -1765,6 +1781,21 @@ export interface components {
              */
             committed_store_tvs: number;
             /**
+             * Committed Stores
+             * @default 0
+             */
+            committed_stores: number;
+            /**
+             * Installed Screens
+             * @default 0
+             */
+            installed_screens: number;
+            /**
+             * Installed Stores
+             * @default 0
+             */
+            installed_stores: number;
+            /**
              * Actual Dolphin Screens
              * @default 0
              */
@@ -1776,6 +1807,22 @@ export interface components {
             actual_store_tvs: number;
             /** By Installer */
             by_installer: {
+                [key: string]: number;
+            };
+            /** By Bucket */
+            by_bucket: {
+                [key: string]: number;
+            };
+            /** Screens By Bucket */
+            screens_by_bucket: {
+                [key: string]: number;
+            };
+            /** By Technician */
+            by_technician: {
+                [key: string]: components["schemas"]["InstallerProgress"];
+            };
+            /** Install Types */
+            install_types: {
                 [key: string]: number;
             };
             /** By Dma */
@@ -2588,6 +2635,16 @@ export interface components {
              * @default
              */
             external_id: string;
+            /**
+             * Dma
+             * @default
+             */
+            dma: string;
+            /**
+             * Venue Type
+             * @default
+             */
+            venue_type: string;
             /** Key */
             key: string;
             /**
@@ -2775,6 +2832,11 @@ export interface components {
              * @default false
              */
             has_ceiling_mount: boolean;
+            /**
+             * Needs Mount
+             * @default false
+             */
+            needs_mount: boolean;
             /** @default Upcoming */
             status: components["schemas"]["ScreenStatus"];
             /**
@@ -2854,6 +2916,11 @@ export interface components {
              * @default false
              */
             has_ceiling_mount?: boolean;
+            /**
+             * Needs Mount
+             * @default false
+             */
+            needs_mount?: boolean;
             /** @default Upcoming */
             status?: components["schemas"]["ScreenStatus"];
         };
@@ -2930,6 +2997,12 @@ export interface components {
             /** Count */
             count: number;
         };
+        /**
+         * StatusBucket
+         * @description The five groups the UI shows (KPI bubbles, filter chips, map colours). Stored statuses keep all nine.
+         * @enum {string}
+         */
+        StatusBucket: "Completed" | "Upcoming" | "In Progress" | "Offline" | "Cancelled";
         /**
          * Stop
          * @description Planning data, store details, screens and field progress for one store, stored as one item.
@@ -3033,10 +3106,21 @@ export interface components {
              * @default
              */
             outlet_status: string;
+            /**
+             * Install Type
+             * @default
+             */
+            install_type: string;
             /** Committed Dolphin Screens */
             committed_dolphin_screens: number | null;
             /** Committed Store Tvs */
             committed_store_tvs: number | null;
+            /** Wall Mounts Needed */
+            wall_mounts_needed: number | null;
+            /** Ceiling Mounts Needed */
+            ceiling_mounts_needed: number | null;
+            /** Tv Mounts Needed */
+            tv_mounts_needed: number | null;
             /**
              * Preferred Area
              * @default
@@ -3297,10 +3381,21 @@ export interface components {
              * @default
              */
             outlet_status?: string;
+            /**
+             * Install Type
+             * @default
+             */
+            install_type?: string;
             /** Committed Dolphin Screens */
             committed_dolphin_screens?: number | null;
             /** Committed Store Tvs */
             committed_store_tvs?: number | null;
+            /** Wall Mounts Needed */
+            wall_mounts_needed?: number | null;
+            /** Ceiling Mounts Needed */
+            ceiling_mounts_needed?: number | null;
+            /** Tv Mounts Needed */
+            tv_mounts_needed?: number | null;
             /**
              * Preferred Area
              * @default
@@ -3443,10 +3538,18 @@ export interface components {
             cms_details_added?: boolean | null;
             /** Outlet Status */
             outlet_status?: string | null;
+            /** Install Type */
+            install_type?: string | null;
             /** Committed Dolphin Screens */
             committed_dolphin_screens?: number | null;
             /** Committed Store Tvs */
             committed_store_tvs?: number | null;
+            /** Wall Mounts Needed */
+            wall_mounts_needed?: number | null;
+            /** Ceiling Mounts Needed */
+            ceiling_mounts_needed?: number | null;
+            /** Tv Mounts Needed */
+            tv_mounts_needed?: number | null;
             /** Preferred Area */
             preferred_area?: string | null;
             /** Ceiling Type */
@@ -3522,6 +3625,16 @@ export interface components {
             /** Lng */
             lng: number | null;
             /**
+             * Dma
+             * @default
+             */
+            dma: string;
+            /**
+             * Venue Type
+             * @default
+             */
+            venue_type: string;
+            /**
              * Date
              * @default
              */
@@ -3580,6 +3693,16 @@ export interface components {
             route: components["schemas"]["FilterOption"][];
             /** Visit */
             visit: components["schemas"]["FilterOption"][];
+            /** Bucket */
+            bucket: components["schemas"]["FilterOption"][];
+            /** Install Type */
+            install_type: components["schemas"]["FilterOption"][];
+            /** Technician */
+            technician: components["schemas"]["FilterOption"][];
+            /** Mount */
+            mount: components["schemas"]["FilterOption"][];
+            /** Fulfilled */
+            fulfilled: components["schemas"]["FilterOption"][];
         };
         /**
          * StorePage
@@ -4378,6 +4501,16 @@ export interface operations {
                 route?: string[] | null;
                 /** @description Repeatable; Visited, Partly visited, Not visited */
                 visit?: string[] | null;
+                /** @description Repeatable; the store's status group */
+                bucket?: components["schemas"]["StatusBucket"][] | null;
+                /** @description Repeatable; Technician, Self install, … */
+                install_type?: string[] | null;
+                /** @description Repeatable; a technician's name, "" = none */
+                technician?: string[] | null;
+                /** @description Repeatable; "Needs mount" or "No mount needed" */
+                mount?: string[] | null;
+                /** @description Repeatable; "Fulfilled", "Not fulfilled" or "No commitment" */
+                fulfilled?: string[] | null;
                 q?: string;
                 /** @description Only stores added without a name or a verified address */
                 needs_attention?: boolean;
@@ -4437,6 +4570,16 @@ export interface operations {
                 route?: string[] | null;
                 /** @description Repeatable; Visited, Partly visited, Not visited */
                 visit?: string[] | null;
+                /** @description Repeatable; the store's status group */
+                bucket?: components["schemas"]["StatusBucket"][] | null;
+                /** @description Repeatable; Technician, Self install, … */
+                install_type?: string[] | null;
+                /** @description Repeatable; a technician's name, "" = none */
+                technician?: string[] | null;
+                /** @description Repeatable; "Needs mount" or "No mount needed" */
+                mount?: string[] | null;
+                /** @description Repeatable; "Fulfilled", "Not fulfilled" or "No commitment" */
+                fulfilled?: string[] | null;
                 q?: string;
                 /** @description Only stores added without a name or a verified address */
                 needs_attention?: boolean;
@@ -4496,6 +4639,16 @@ export interface operations {
                 route?: string[] | null;
                 /** @description Repeatable; Visited, Partly visited, Not visited */
                 visit?: string[] | null;
+                /** @description Repeatable; the store's status group */
+                bucket?: components["schemas"]["StatusBucket"][] | null;
+                /** @description Repeatable; Technician, Self install, … */
+                install_type?: string[] | null;
+                /** @description Repeatable; a technician's name, "" = none */
+                technician?: string[] | null;
+                /** @description Repeatable; "Needs mount" or "No mount needed" */
+                mount?: string[] | null;
+                /** @description Repeatable; "Fulfilled", "Not fulfilled" or "No commitment" */
+                fulfilled?: string[] | null;
                 q?: string;
                 /** @description Only stores added without a name or a verified address */
                 needs_attention?: boolean;
@@ -4558,6 +4711,16 @@ export interface operations {
                 route?: string[] | null;
                 /** @description Repeatable; Visited, Partly visited, Not visited */
                 visit?: string[] | null;
+                /** @description Repeatable; the store's status group */
+                bucket?: components["schemas"]["StatusBucket"][] | null;
+                /** @description Repeatable; Technician, Self install, … */
+                install_type?: string[] | null;
+                /** @description Repeatable; a technician's name, "" = none */
+                technician?: string[] | null;
+                /** @description Repeatable; "Needs mount" or "No mount needed" */
+                mount?: string[] | null;
+                /** @description Repeatable; "Fulfilled", "Not fulfilled" or "No commitment" */
+                fulfilled?: string[] | null;
                 q?: string;
                 /** @description Only stores added without a name or a verified address */
                 needs_attention?: boolean;
@@ -4650,6 +4813,16 @@ export interface operations {
                 route?: string[] | null;
                 /** @description Repeatable; Visited, Partly visited, Not visited */
                 visit?: string[] | null;
+                /** @description Repeatable; the store's status group */
+                bucket?: components["schemas"]["StatusBucket"][] | null;
+                /** @description Repeatable; Technician, Self install, … */
+                install_type?: string[] | null;
+                /** @description Repeatable; a technician's name, "" = none */
+                technician?: string[] | null;
+                /** @description Repeatable; "Needs mount" or "No mount needed" */
+                mount?: string[] | null;
+                /** @description Repeatable; "Fulfilled", "Not fulfilled" or "No commitment" */
+                fulfilled?: string[] | null;
                 q?: string;
                 /** @description Only stores added without a name or a verified address */
                 needs_attention?: boolean;

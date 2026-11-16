@@ -13,6 +13,17 @@ from pydantic import Field
 from dolphin_tracker.domain.base import ApiModel
 
 
+def venue_type_label(category: object) -> str:
+    """The CMS's OOH category as a venue type: its kind of place, without the spot inside it.
+    `retail.convenience_store` → "Convenience Store", `retail.gas_stations.shop` → "Gas Stations",
+    `retail` → "Retail"."""
+    parts = [part for part in str(category or "").strip().lower().split(".") if part]
+    if not parts:
+        return ""
+    kind = parts[1] if len(parts) > 1 else parts[0]
+    return " ".join(word.capitalize() for word in kind.split("_") if word)
+
+
 def venue_code_key(value: object) -> str:
     """A DD code as matched across sources: `DD_ABC123`, `dd-abc123` and ` DD-ABC123 ` are the same venue."""
     return re.sub(r"\s+", "", str(value or "")).upper().replace("-", "_")
@@ -88,6 +99,8 @@ class DeviceRecord(ApiModel):
     lng: float | None = None
     pa_name: str = ""
     external_id: str = ""  # the CMS's "PK External ID" (e.g. an IBC#), when it has one
+    dma: str = ""  # the CMS's "DMA" name, e.g. "Atlanta"
+    venue_type: str = ""  # the CMS's "OOH Category" as a label: retail.convenience_store → "Convenience Store"
 
     @classmethod
     def from_report(cls, doc: dict[str, Any]) -> DeviceRecord:
@@ -119,6 +132,8 @@ class DeviceRecord(ApiModel):
             lng=lng,
             pa_name=_text(doc.get("PA Name")),
             external_id=_text(doc.get("PK External ID")),
+            dma=_text(doc.get("DMA")),
+            venue_type=venue_type_label(doc.get("OOH Category")),
         )
 
 
@@ -155,6 +170,8 @@ class StoreDevice(ApiModel):
     zip: str = ""
     lat: float | None = None
     lng: float | None = None
+    dma: str = ""
+    venue_type: str = ""
     date: str = ""
 
 

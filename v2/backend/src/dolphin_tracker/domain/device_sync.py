@@ -7,6 +7,8 @@
   over the sheet values. Nothing overwrites the sheet values except an explicit Overwrite.
 - A Completed screen with a DD code the report lacks flags the store "not in Dolphin data", unless it became
   Completed after the report was loaded, or someone ignored the alert for this report day.
+- A store with no DMA takes the report's (from any matched screen); a DMA already set is never replaced. The venue
+  type works the same way, from the report's OOH category.
 - Report records whose DD code no screen has are listed for review (Archived ones are not).
 """
 from __future__ import annotations
@@ -61,7 +63,8 @@ def screen_device(record: DeviceRecord) -> ScreenDevice:
 def store_device(record: DeviceRecord) -> StoreDevice:
     return StoreDevice(
         store_name=record.store_name, venue_name=record.venue_name, address=record.address, addr=record.addr,
-        city=record.city, state=record.state, zip=record.zip, lat=record.lat, lng=record.lng, date=record.date,
+        city=record.city, state=record.state, zip=record.zip, lat=record.lat, lng=record.lng, dma=record.dma,
+        venue_type=record.venue_type, date=record.date,
     )
 
 
@@ -112,6 +115,14 @@ def sync_stop(stop: Stop, codes: dict[str, DeviceRecord], snapshot: DeviceSnapsh
         changes["device"] = device.model_dump(mode="json") if device else None
     if reasons != list(stop.needs_attention):
         changes["needs_attention"] = [str(reason) for reason in reasons]
+    dma = next((codes[key].dma for screen in stop.screens
+                if (key := venue_code_key(screen.venue_id)) in codes and codes[key].dma), "")
+    if dma and not stop.dma.strip():
+        changes["dma"] = dma  # fills a blank DMA only: a value from the sheet or a person always wins
+    venue_type = next((codes[key].venue_type for screen in stop.screens
+                       if (key := venue_code_key(screen.venue_id)) in codes and codes[key].venue_type), "")
+    if venue_type and not stop.venue_type.strip():
+        changes["venue_type"] = venue_type  # the same: only a blank venue type is filled
     return changes
 
 

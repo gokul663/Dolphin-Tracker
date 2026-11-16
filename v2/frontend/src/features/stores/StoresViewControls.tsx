@@ -7,7 +7,7 @@ import { useStoresUi, viewToParams } from "@/stores/ui";
 export function UnitToggle({ value, onChange }: { value: MapUnit; onChange: (unit: MapUnit) => void }) {
   return (
     <div className="flex shrink-0 items-center gap-2" role="radiogroup" aria-label="Count by">
-      <span className="font-mono text-[10px] uppercase tracking-wider text-slate-500">Count</span>
+      <span className="font-mono text-xs uppercase tracking-wider text-slate-500">Count</span>
       <div className="flex rounded-lg border bg-white p-0.5">
         {(
           [

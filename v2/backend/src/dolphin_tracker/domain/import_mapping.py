@@ -16,7 +16,7 @@ from typing import Any
 from dolphin_tracker.domain.addresses import normalized_address_key, parse_us_formatted_address, state_code
 from dolphin_tracker.domain.device import split_codes
 from dolphin_tracker.domain.parsing import ADDRESS_ALIASES, clean_cell
-from dolphin_tracker.domain.statuses import ScreenStatus, normalize_screen_status
+from dolphin_tracker.domain.statuses import ScreenStatus, install_type_from_sheet, normalize_screen_status
 from dolphin_tracker.domain.validation import (
     FIELDS_BY_NAME,
     Kind,
@@ -53,7 +53,11 @@ HEADER_MAP: dict[str, str] = {
     "date": "source_date",
     "status": STATUS,
     "shipment_device_status": STATUS_FALLBACK,
-    "technician": "installer_name",
+    **dict.fromkeys(
+        ("technician", "technician_name", "installer_name", "installed_by", "completed_by", "tech", "tech_name"),
+        "installer_name",
+    ),
+    **dict.fromkeys(("install_type", "installation_type", "install_method"), "install_type"),
     **dict.fromkeys(("no_of_sticks", "number_of_sticks"), SCREEN_COUNT),
     **dict.fromkeys(("stick_number", "stick_numbers"), STICK_NUMBERS),
     **dict.fromkeys(("venue_id", "venue_ids", "dd_code"), VENUE_IDS),
@@ -67,6 +71,9 @@ HEADER_MAP: dict[str, str] = {
     "preferred_language": "preferred_language",
     "how_many_screens_does_store_want": "committed_dolphin_screens",
     "how_many_tvs_are_in_the_store": "committed_store_tvs",
+    **dict.fromkeys(("wall_mounts", "wall_mounts_needed", "wall_mount_count"), "wall_mounts_needed"),
+    **dict.fromkeys(("ceiling_mounts", "ceiling_mounts_needed", "ceiling_mount_count"), "ceiling_mounts_needed"),
+    **dict.fromkeys(("tv_mounts", "tv_mounts_needed", "tv_mount_count"), "tv_mounts_needed"),
     "preferred_area_in_store": "preferred_area",
     "spot_visible_from_most_of_store": "spot_visible",
     "power_outlet_within_6_ft_of_install_spot": "power_within_6ft",
@@ -269,6 +276,9 @@ def map_row(index: int, record: Mapping[str, str], mapping: Mapping[str, str]) -
     row.status, row.status_valid = normalize_screen_status(raw_status)
     row.status_raw = raw_status
     row.screens = build_screens(by_target, row.status)
+    inferred = install_type_from_sheet(raw_status)
+    if inferred and not row.status_valid:
+        row.status_valid = True  # not a work status: the sheet's way of marking a self install (still Upcoming)
     if problem := packed_code_problem(by_target):
         row.problems["venue_id"] = problem
 
@@ -276,6 +286,8 @@ def map_row(index: int, record: Mapping[str, str], mapping: Mapping[str, str]) -
         if name in CORE_TARGETS or name in SHEET_ONLY_TARGETS or not raw:  # blank cells keep the defaults
             continue
         row.details[name] = _date(raw) if name == "source_date" else _typed(name, raw, row)
+    if not row.details.get("install_type") and inferred:
+        row.details["install_type"] = inferred  # an explicit install type column wins over the status cell
     for name in ("external_id", "store_name"):
         if not getattr(row, name):
             row.problems[name] = f"{FIELDS_BY_NAME[name].label} is required"

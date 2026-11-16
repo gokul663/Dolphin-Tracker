@@ -14,7 +14,6 @@ from aws_cdk import aws_events_targets as targets
 from aws_cdk import aws_lambda as lambda_
 from aws_cdk import aws_logs as logs
 from aws_cdk import aws_s3 as s3
-from aws_cdk import aws_secretsmanager as secretsmanager
 from aws_cdk import aws_ssm as ssm
 from constructs import Construct
 
@@ -69,7 +68,9 @@ class ApiStack(cdk.Stack):
             self, "GoogleServerKey", parameter_name=cfg.ssm_google_server_key
         )
 
-        mongo_uri = secretsmanager.Secret.from_secret_name_v2(self, "MongoUri", cfg.mongo_uri_secret)
+        mongo_uri = ssm.StringParameter.from_secure_string_parameter_attributes(
+            self, "MongoUri", parameter_name=cfg.ssm_mongo_uri
+        )  # SecureString, like the Google key; only the device-data Lambda may read it
 
         code = _code()
         placeholder = not PACKAGE_DIR.is_dir()
@@ -97,7 +98,7 @@ class ApiStack(cdk.Stack):
             code=code,
             memory_size=512,
             timeout=Duration.seconds(25),  # under the API's 29 s, so a slow Mongo fails the call cleanly
-            environment={**common_env, "DT_MONGO_URI_SECRET": cfg.mongo_uri_secret},
+            environment={**common_env, "DT_MONGO_URI_PARAM": cfg.ssm_mongo_uri},
             description="Reads the CMS device report (MongoDB, read-only)",
         )
         mongo_uri.grant_read(self.device_data_fn)

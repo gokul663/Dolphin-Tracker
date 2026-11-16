@@ -109,19 +109,20 @@ class ListTests(StoresApiTestCase):
         self.assertEqual(self.uids(dma="ATL"), ["b", "a"])
         self.assertEqual(self.uids(venue_type="Bar"), ["a"])
         self.assertEqual(self.uids(dd_code="V3"), ["b"])  # any screen's venue id
-        self.assertEqual(self.uids(screen_size="24in"), ["a"])
+        self.assertEqual(self.uids(screen_size="32in"), ["b"])  # a store TV's size (Dolphin screens are all 24")
         self.assertEqual(self.uids(dma="ATL", status="Upcoming"), ["b"])  # filters AND together
         self.assertEqual(self.get(status="Nope").status_code, 422)
 
     def test_search(self):
+        # IBC#, store name and address only; DMA, DD code and the rest have filters of their own.
         self.assertEqual(self.uids(q="atlanta"), ["a"])  # city
-        self.assertEqual(self.uids(q="MCN"), ["c"])  # dma
-        self.assertEqual(self.uids(q="owner"), ["b"])  # comment
         self.assertEqual(self.uids(q="31201"), ["c"])  # zip
         self.assertEqual(self.uids(q="s10"), ["c"])  # display id
         self.assertEqual(self.uids(q="ibc-2"), ["b"])  # IBC#
-        self.assertEqual(self.uids(q="v3"), ["b"])  # a screen's venue id
-        self.assertEqual(self.uids(q="gold"), ["a"])  # extra fields
+        self.assertEqual(self.uids(q="MCN"), [])  # dma: the DMA filter
+        self.assertEqual(self.uids(q="owner"), [])  # comment
+        self.assertEqual(self.uids(q="v3"), [])  # a screen's DD code: the DD code filter
+        self.assertEqual(self.uids(q="gold"), [])  # extra fields
 
     def test_numbered_pages_carry_the_total_and_their_offset(self):
         first = self.get(limit=2).json()
@@ -214,7 +215,7 @@ class FilterOptionTests(StoresApiTestCase):
         self.assertEqual(options["dma"], [("ATL", 2), ("MCN", 1)])
         self.assertEqual(options["venue_type"], [("Bar", 1)])
         self.assertEqual(options["dd_code"], [("V1", 1), ("V2", 1), ("V3", 1)])
-        self.assertEqual(options["screen_size"], [("24in", 1), ("32in", 1)])
+        self.assertEqual(options["screen_size"], [('24"', 4), ("32in", 1)])  # every Dolphin screen is 24"
 
     def test_each_filter_is_counted_under_the_others(self):
         options = self.options(state="GA", status="Completed")
@@ -223,8 +224,8 @@ class FilterOptionTests(StoresApiTestCase):
         self.assertEqual(options["state"], [("GA", 1)])  # Completed stores only
 
     def test_a_filter_with_no_values_is_empty(self):
-        options = self.options(installer="")  # only d: no DMA, no screens with ids or sizes
-        self.assertEqual((options["dma"], options["dd_code"], options["screen_size"]), ([], [], []))
+        options = self.options(installer="")  # only d: no DMA, no screens with ids; its Dolphin screen is 24"
+        self.assertEqual((options["dma"], options["dd_code"], options["screen_size"]), ([], [], [('24"', 1)]))
         self.assertEqual(options["installer"], [("Ann", 2), ("Bo", 1), ("", 1)])
 
 
@@ -269,7 +270,7 @@ class ExportTests(StoresApiTestCase):
         self.assertEqual((a["IBC#"], a["PA"], a["Status"], a["Screens"]), ("IBC-1", "North", "Completed", "1"))
         self.assertEqual(a["Comment"], "'=HYPERLINK(\"x\")")  # formula neutralised
         self.assertEqual((a["Spot visible from most of store"], a["Power outlet within 6 ft"]), ("yes", ""))
-        self.assertEqual(a["Screen rows"], "— / V1 / 24in / Dolphin screen / wall mount (none yet) / Completed")
+        self.assertEqual(a["Screen rows"], '— / V1 / 24" / Dolphin screen / wall mount (none yet) / Completed')
         self.assertEqual((a["Dolphin screens (committed)"], a["Dolphin screens (actual)"]), ("2", "1"))
         self.assertEqual(a["Tier"], "Gold")
 

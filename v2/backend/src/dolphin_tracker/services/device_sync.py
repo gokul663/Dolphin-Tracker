@@ -278,6 +278,8 @@ class DeviceSyncService:
             city=item.city,
             state=item.state,
             zip=item.zip,
+            dma=item.dma,
+            venue_type=item.venue_type,
             lat=item.lat if located else None,
             lng=item.lng if located else None,
             geocoded=item.address if located else "",

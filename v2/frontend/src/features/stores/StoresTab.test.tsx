@@ -6,7 +6,7 @@ import { Route, Routes } from "react-router";
 import { ProjectPage } from "@/features/projects/ProjectPage";
 import { StoresTab } from "@/features/stores/StoresTab";
 import { jsonError, mockApi, renderWithProviders } from "@/test/render";
-import { makeStop, makeSummary } from "@/test/fixtures";
+import { makeScreen, makeStop, makeSummary } from "@/test/fixtures";
 import { useStoresUi } from "@/stores/ui";
 import { keys } from "@/lib/api/keys";
 import { deriveStatus, type ScreenInput, type Stop } from "@/lib/api/types";
@@ -24,6 +24,7 @@ const STOPS: Stop[] = [
 const FILTER_OPTIONS = {
   status: [{ value: "Upcoming", count: 1 }, { value: "Completed", count: 1 }],
   installer: [{ value: "Ann", count: 1 }, { value: "Bo", count: 1 }],
+  technician: [{ value: "Sai", count: 1 }, { value: "", count: 1 }],
   pa: [{ value: "North", count: 1 }, { value: "South", count: 1 }],
   state: [{ value: "GA", count: 2 }],
   city: [{ value: "Atlanta", count: 1 }, { value: "Decatur", count: 1 }],
@@ -31,6 +32,7 @@ const FILTER_OPTIONS = {
   venue_type: [],
   dd_code: [],
   screen_size: [],
+  bucket: [{ value: "Completed", count: 1 }, { value: "Upcoming", count: 1 }],
 };
 
 /** A tiny stateful fake: successful PATCHes change what later GETs return, like the real API. */
@@ -152,7 +154,9 @@ describe("StoresTab", () => {
     await userEvent.click(within(pager).getByRole("button", { name: "Last page" }));
     expect(await within(pager).findByText("41–60 of 60")).toBeTruthy();
     expect((within(pager).getByRole("button", { name: "Next page" }) as HTMLButtonElement).disabled).toBe(true);
-    await userEvent.selectOptions(within(pager).getByRole("combobox", { name: "Rows per page" }), "50");
+    await userEvent.click(within(pager).getByRole("combobox", { name: "Rows per page" }));
+    expect((await screen.findAllByRole("option")).map((option) => option.textContent)).toEqual(["15 / page", "20 / page", "30 / page", "50 / page"]);
+    await userEvent.click(screen.getByRole("option", { name: "50 / page" }));
     expect(await within(pager).findByText("1–50 of 60")).toBeTruthy(); // a new page size starts again at page 1
     const last = calls.filter((call) => call.url.pathname === "/api/projects/p1/stores").at(-1)!;
     expect([last.url.searchParams.get("offset"), last.url.searchParams.get("limit")]).toEqual(["0", "50"]);
@@ -171,15 +175,18 @@ describe("StoresTab", () => {
     await waitFor(() => expect(byState().searchParams.get("unit")).toBe("stores"));
     expect(byState().searchParams.get("limit")).toBe("60"); // every state, not just the top ten
     const legend = screen.getByRole("group", { name: "Map legend" });
-    const before = within(legend).getAllByRole("button").map((button) => button.textContent);
+    // The Locations / Screens switch and the Full page link sit in the map's own header bar, beside the legend.
+    expect(legend.parentElement?.contains(screen.getByRole("radio", { name: "Screens" }))).toBe(true);
+    expect(legend.parentElement?.contains(screen.getByRole("link", { name: /Open map in a new tab/ }))).toBe(true);
+    const before = within(legend).getAllByRole("listitem").map((item) => item.textContent);
     await userEvent.click(screen.getByRole("radio", { name: "Screens" }));
     expect(screen.getByRole("radio", { name: "Screens" }).getAttribute("aria-checked")).toBe("true");
     await waitFor(() => expect(byState().searchParams.get("unit")).toBe("screens"));
-    expect(await screen.findByRole("region", { name: "Top states by upcoming screens" })).toBeTruthy();
+    expect(await screen.findByRole("region", { name: "Top states by screens" })).toBeTruthy();
     const totals = screen.getByText((_, element) => element?.getAttribute("aria-live") === "polite" && /^\d+ screens · \d+ records/.test(element.textContent ?? ""));
     expect(totals).toBeTruthy();
-    expect(before).toEqual(["Upcoming 1", "Completed 1"]); // stores
-    expect(within(legend).getAllByRole("button").map((button) => button.textContent)).toEqual(["Upcoming 1", "Completed 2"]); // screens
+    expect(before).toEqual(["Completed 1", "Upcoming 1"]); // stores, by status group
+    expect(within(legend).getAllByRole("listitem").map((item) => item.textContent)).toEqual(["Completed 2", "Upcoming 1"]); // screens
   });
 
   it("refetches the list when a routing build finishes while Stores is open", async () => {
@@ -210,6 +217,25 @@ describe("StoresTab", () => {
     expect(rows.find((row) => row.getAttribute("data-uid") === "u2")?.className).toContain("bg-emerald-50");
   });
 
+  it("a store whose installed screens and TVs reach the committed count gets a check, not a green row", async () => {
+    const done = makeStop({
+      uid: "u9", external_id: "IBC-9", store_name: "Done Mart", committed_dolphin_screens: 1, committed_store_tvs: 1,
+      screens: [makeScreen({ id: "a", status: "Completed" }), makeScreen({ id: "b", status: "Completed", is_dolphin_screen: false })],
+      status: "Completed",
+    });
+    renderTab({ "GET /api/projects/p1/stores": () => ({ items: [done, STOPS[0]], next_cursor: null, total: 2, offset: 0 }) });
+    expect(await screen.findByText("Done Mart")).toBeTruthy();
+    const rows = screen.getAllByRole("row").filter((row) => row.getAttribute("data-uid"));
+    expect(rows.find((row) => row.getAttribute("data-uid") === "u9")?.className).not.toContain("bg-green");
+    expect(within(rows.find((row) => row.getAttribute("data-uid") === "u9")!).getByLabelText("fulfilled")).toBeTruthy();
+    // One total per column; the Dolphin screens and store TVs apart on hover.
+    expect(screen.getByLabelText("Screens committed: 2 (1 Dolphin screen · 1 store TV)")).toBeTruthy();
+    const installed = screen.getByLabelText("Screens installed: 2 (1 Dolphin screen · 1 store TV)");
+    await userEvent.hover(installed);
+    expect((await screen.findAllByText("1 store TV")).length).toBeGreaterThan(0);
+    expect(screen.getByLabelText("Table legend").textContent).toContain("store TVs");
+  });
+
   it("a single-PA project leaves out the PA column", async () => {
     renderTab({ "GET /api/projects/p1/stores": () => ({ items: [STOPS[0]], next_cursor: null, total: 1, offset: 0 }) });
     expect(await screen.findByText("Alpha Mart")).toBeTruthy();
@@ -220,14 +246,21 @@ describe("StoresTab", () => {
   it("shows the v2 columns and maps filters, search and sort onto the API", async () => {
     const { calls } = renderTab();
     expect(await screen.findByText("Alpha Mart")).toBeTruthy();
-    for (const name of [/IBC#/, /City, state/, /Status/, /Screens/, /Route \/ visits/, /PA/, /DMA/, /Committed Dolphin/]) {
+    for (const name of [/IBC#/, /City, state/, /Status/, /^Screens$/, /Route \/ visits/, /PA/, /DMA/, /^Screens committed/, /^Screens installed/, /^Installer/]) {
       expect(screen.getByRole("columnheader", { name })).toBeTruthy();
     }
+    const headers = screen.getAllByRole("columnheader").map((header) => header.textContent ?? "");
+    const at = (name: string) => headers.findIndex((text) => text.startsWith(name));
+    expect(at("DMA")).toBe(at("City, state") + 1); // DMA right after City, before Status
+    expect(at("Status")).toBe(at("DMA") + 1);
+    expect(screen.getByLabelText("Project PA").textContent).toBe("PA · North"); // the project's PA, under its name
+    expect(headers.filter((text) => text.startsWith("Install"))).toEqual(["Installer"]); // no separate Install column
+    expect(headers.some((text) => text.startsWith("Technician"))).toBe(false);
     expect(screen.getByLabelText("Status of IBC-2").textContent).toBe("Completed"); // derived status, read-only
     expect(screen.getByLabelText(/^1 screens: 1 Upcoming/)).toBeTruthy();
-    expect(screen.getByText("North")).toBeTruthy(); // PA falls back to the project's
+    expect(within(screen.getByRole("grid", { name: "Stores" })).getByText("North")).toBeTruthy(); // PA falls back to the project's
     expect(screen.getByText("South")).toBeTruthy();
-    expect(screen.getByText("2 / —")).toBeTruthy(); // committed Dolphin / store TVs
+    expect(screen.getByLabelText("Screens committed: 2 (2 Dolphin screens · ? store TVs)")).toBeTruthy(); // total, parts on hover
     expect(screen.getByText(/no Google Maps browser key/)).toBeTruthy(); // map degrades, table works
 
     await userEvent.click(within(screen.getByRole("group", { name: "Filters" })).getByRole("button", { name: "Status" }));
@@ -236,12 +269,11 @@ describe("StoresTab", () => {
     await waitFor(() => expect(lastList(calls)?.searchParams.getAll("status")).toEqual(["Completed"]));
     await userEvent.type(screen.getByLabelText("Search stores"), "oak");
     await waitFor(() => expect(lastList(calls)?.searchParams.get("q")).toBe("oak"), { timeout: 2000 });
-    const pins = [...calls].reverse().find((call) => call.url.pathname.endsWith("/pins"))?.url;
-    expect(pins?.searchParams.get("q")).toBe("oak");
+    await waitFor(() => expect([...calls].reverse().find((call) => call.url.pathname.endsWith("/pins"))?.url.searchParams.get("q")).toBe("oak"));
 
     await userEvent.click(within(screen.getByRole("columnheader", { name: /Store name/ })).getByRole("button"));
     await waitFor(() => expect(lastList(calls)?.searchParams.get("dir")).toBe("desc"));
-    await userEvent.click(within(screen.getByRole("columnheader", { name: /Screens/ })).getByRole("button"));
+    await userEvent.click(within(screen.getByRole("columnheader", { name: /^Screens$/ })).getByRole("button"));
     await waitFor(() => expect(lastList(calls)?.searchParams.get("sort")).toBe("screens"));
 
     const csv = screen.getByRole("link", { name: /CSV/ }).getAttribute("href") ?? "";
@@ -249,63 +281,213 @@ describe("StoresTab", () => {
     expect(new URL(csv).searchParams.getAll("status")).toEqual(["Completed"]);
   });
 
-  it("edits a store name inline and sends only that field", async () => {
-    const { calls } = renderTab();
-    await userEvent.click(await screen.findByRole("button", { name: "Edit store name of IBC-1" }));
-    const input = screen.getByLabelText("store name of IBC-1");
-    await userEvent.clear(input);
-    await userEvent.keyboard("{Enter}");
-    expect(await screen.findByText("Store name is required")).toBeTruthy();
-    expect(calls.some((call) => call.method === "PATCH")).toBe(false);
-    await userEvent.type(input, "Alpha Market{Enter}");
-    await waitFor(() => expect(calls.find((call) => call.method === "PATCH")?.body).toEqual({ store_name: "Alpha Market" }));
-    expect(await screen.findByText("Alpha Market")).toBeTruthy();
+  it("the Installer column shows the technician's name, or a Self / Rep pill", async () => {
+    const self = makeStop({ uid: "u7", external_id: "IBC-7", store_name: "Self Mart", install_type: "Self install", installer_name: "" });
+    const rep = makeStop({ uid: "u8", external_id: "IBC-8", store_name: "Rep Mart", install_type: "Rep install", installer_name: "" });
+    const named = makeStop({ uid: "u9", external_id: "IBC-9", store_name: "Sai Mart", install_type: "Technician", installer_name: "Sai" });
+    renderTab({ "GET /api/projects/p1/stores": () => ({ items: [self, rep, named], next_cursor: null, total: 3, offset: 0 }) });
+    const row = async (uid: string) => {
+      await screen.findByText("Sai Mart");
+      return screen.getAllByRole("row").find((element) => element.getAttribute("data-uid") === uid)!;
+    };
+    expect(within(await row("u7")).getByTitle("Self install").textContent).toBe("Self");
+    expect(within(await row("u8")).getByTitle("Rep install").textContent).toBe("Rep");
+    expect(within(await row("u9")).getByText("Sai")).toBeTruthy();
   });
 
-  it("store modal: WiFi first, collapsible sections, read-only IBC# and PA, validation, tri-states, password, pictures", async () => {
+  it("the store name is not edited in the table: clicking it opens the store", async () => {
+    const { calls } = renderTab();
+    await userEvent.click(await screen.findByText("Alpha Mart"));
+    expect(await screen.findByRole("dialog")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Edit store name/ })).toBeNull();
+    expect(calls.some((call) => call.method === "PATCH")).toBe(false);
+  });
+
+  it("a picture opens full size inside the store window; Esc closes the picture, not the store", async () => {
+    renderTab({ "GET /api/projects/p1/stores/u1": () => ({ ...STOPS[0], image_url: "https://img.test/a.jpg https://img.test/b.jpg" }) });
+    const drawer = await openDrawer();
+    const pictures = within(drawer).getByRole("region", { name: "Pictures" });
+    await waitFor(() => expect(within(pictures).getAllByRole("button", { name: "Show picture full size" })).toHaveLength(2));
+    await userEvent.click(within(pictures).getAllByRole("button", { name: "Show picture full size" })[1]!);
+    const viewer = within(drawer).getByRole("dialog", { name: "Store picture" }); // inside the store window
+    expect(within(viewer).getByText("2 / 2")).toBeTruthy();
+    await userEvent.click(within(viewer).getByRole("button", { name: "Next picture" }));
+    expect(within(viewer).getByText("1 / 2")).toBeTruthy();
+    await userEvent.keyboard("{Escape}");
+    expect(within(drawer).queryByRole("dialog", { name: "Store picture" })).toBeNull();
+    expect(screen.getByRole("dialog")).toBeTruthy(); // the store stays open
+  });
+
+  it("search suggests the closest stores as you type; picking one opens it", async () => {
+    const { calls } = renderTab();
+    await screen.findByText("Alpha Mart");
+    await userEvent.type(screen.getByRole("combobox", { name: "Search stores" }), "alp");
+    const list = await screen.findByRole("listbox", { name: "Closest stores" });
+    const asked = [...calls].reverse().find((call) => call.url.pathname === "/api/projects/p1/stores" && call.url.searchParams.get("limit") === "5");
+    expect(asked?.url.searchParams.get("q")).toBe("alp");
+    await userEvent.click(within(list).getAllByRole("option")[0]!);
+    expect(await screen.findByRole("dialog")).toBeTruthy();
+  });
+
+  it("PA is not offered as a filter when the project has a single PA", async () => {
+    renderTab({ "GET /api/projects/p1/stores/filters": () => ({ ...FILTER_OPTIONS, pa: [{ value: "North", count: 2 }] }) });
+    await screen.findByText("Alpha Mart");
+    const bar = screen.getByRole("group", { name: "Filters" });
+    await waitFor(() => expect(within(bar).queryByRole("button", { name: "PA" })).toBeNull());
+    expect(within(bar).getByRole("button", { name: "State" })).toBeTruthy();
+  });
+
+  it("the store window shows the store on a small map under its pictures", async () => {
+    renderTab();
+    const drawer = await openDrawer();
+    const location = within(drawer).getByRole("region", { name: "Location" });
+    expect(within(location).getByRole("link", { name: "Open in Google Maps" }).getAttribute("href")).toContain("query=33.75,-84.39");
+  });
+
+  it("the store window's header shows its standing: Dolphin data sync and anything to fix", async () => {
+    const device = { store_name: "Alpha Mart", venue_name: "CMS_A", address: "", addr: "1 Main St", city: "Atlanta", state: "GA",
+      zip: "30303", lat: 33.75, lng: -84.39, dma: "", date: "2026-11-15" };
+    renderTab({
+      "GET /api/projects/p1/stores/u1": () => ({
+        ...STOPS[0], device, geocoded: "", needs_attention: ["address"],
+        screens: [makeScreen({ id: "u1-s1", venue_id: "DD-AAA111. DD-BBB222" })],
+      }),
+    });
+    const drawer = await openDrawer();
+    const alerts = within(drawer).getByLabelText("Store alerts");
+    expect(alerts.textContent).toContain("Synced with Dolphin data");
+    expect(alerts.textContent).toContain("Address not verified");
+    expect(alerts.textContent).toContain("DD code holds several codes");
+  });
+
+  it("a store whose Dolphin data differs, or that is not in it, says so in the header", async () => {
+    renderTab({ "GET /api/projects/p1/stores/u1": () => ({ ...STOPS[0], needs_attention: ["not_reporting"] }) });
+    const drawer = await openDrawer();
+    expect(within(drawer).getByLabelText("Store alerts").textContent).toContain("Not in Dolphin data");
+  });
+
+  it("Stick # shows the Dolphin data's serial number when it has one, else the sheet's", async () => {
+    const device = { status: "Online", last_seen: "", offline_days: null, serial_number: "DD-002-09999", venue_name: "CMS_A", date: "2026-11-15" };
+    renderTab({
+      "GET /api/projects/p1/stores/u1": () => ({
+        ...STOPS[0],
+        screens: [
+          makeScreen({ id: "u1-s1", venue_id: "DD-AAA111", stick_number: "DD-002-01111", device }),
+          makeScreen({ id: "u1-s2", venue_id: "DD-BBB222", stick_number: "DD-002-02222" }),
+        ],
+      }),
+    });
+    const drawer = await openDrawer();
+    const list = within(drawer).getByRole("region", { name: "Screen list" });
+    const fromDolphin = within(list).getByLabelText("Stick number (Dolphin data)");
+    expect(fromDolphin.textContent).toBe("DD-002-09999");
+    expect(fromDolphin.getAttribute("title")).toContain("sheet: DD-002-01111");
+    expect(within(list).getByLabelText("Stick number").textContent).toBe("DD-002-02222");
+  });
+
+  it("Overwrite from the Dolphin data waits for Save details, then goes with the rest", async () => {
+    const device = { store_name: "Sunoco Alpha", venue_name: "CMS_A", address: "2 Oak Ave, Atlanta, GA 30303", addr: "2 Oak Ave",
+      city: "Atlanta", state: "GA", zip: "30303", lat: 33.8, lng: -84.4, dma: "", venue_type: "", date: "2026-11-15" };
+    const { calls } = renderTab({ "GET /api/projects/p1/stores/u1": () => ({ ...STOPS[0], device }) });
+    const drawer = await openDrawer();
+    const section = within(drawer).getByRole("region", { name: "Dolphin data" });
+    await userEvent.click(within(section).getByRole("button", { name: /Overwrite all \(3\)/ })); // name, address, location
+    expect(calls.some((call) => call.method === "POST" || call.method === "PATCH")).toBe(false); // nothing saved yet
+    expect(within(section).getAllByText("Unsaved")).toHaveLength(3);
+    expect(within(drawer).getByText("Unsaved changes")).toBeTruthy();
+    expect(within(drawer).getByLabelText("Store name").textContent).toBe("Sunoco Alpha"); // the draft shows it
+
+    await userEvent.click(within(drawer).getByRole("button", { name: /Save details|Verify address and save/ }));
+    await waitFor(() => expect(calls.find((call) => call.method === "PATCH")?.body).toEqual({
+      store_name: "Sunoco Alpha", addr: "2 Oak Ave",
+      place: { lat: 33.8, lng: -84.4, formatted: "2 Oak Ave, Atlanta, GA 30303" }, // the Dolphin pin, not a Google lookup
+    }));
+    expect(calls.some((call) => call.url.pathname.endsWith("/device-overwrite"))).toBe(false);
+  });
+
+  it("an unverified address offers Verify address, which saves Google's pin", async () => {
+    const { calls } = renderTab({
+      "GET /api/projects/p1/stores/u1": () => ({ ...STOPS[0], geocoded: "", needs_attention: ["address"] }),
+      "GET /api/places/validate": () => ({
+        ok: true, status: "OK", formatted: "1 Main St, Atlanta, GA 30303, USA", lat: 33.76, lng: -84.39,
+        addr: "1 Main St", city: "Atlanta", state: "GA", zip: "30303", partial: false, suggestions: [], error: "",
+      }),
+    });
+    const drawer = await openDrawer();
+    expect(within(drawer).getByText(/not verified with Google/)).toBeTruthy();
+    expect(within(drawer).queryByText(/re-optimise/)).toBeNull(); // not in a route: nothing to re-optimise
+    await userEvent.click(within(drawer).getByRole("button", { name: "Verify address" }));
+    await waitFor(() => expect(calls.find((call) => call.method === "PATCH")?.body).toEqual({
+      place: { lat: 33.76, lng: -84.39, formatted: "1 Main St, Atlanta, GA 30303, USA" },
+    }));
+  });
+
+
+  it("store modal: address and screens left, details right, collapsible sections, read-only IBC# and PA, validation, tri-states, password, pictures", async () => {
     const { calls } = renderTab();
     const drawer = await openDrawer();
     const sections = within(drawer).getAllByRole("region", { hidden: true }).map((region) => region.getAttribute("aria-label"));
     expect(sections).toEqual([
-      "WiFi", "Identity & address", "Contacts", "Installation", "Site notes", "Site checklist", "Screen counts", "Screens",
-      "Screen rows", "Servicing history", "Progress", "Other imported data", "Pictures",
+      // Top: committed and installed (screens and TVs apart), mounts to bring, and who is assigned.
+      "Committed", "Installed", "Mounts needed", "Assignment",
+      // Left: what gets edited on site, the screens right under the address.
+      "Identity & address", "Screens", "Screen list", "Pictures", "Location", "Progress",
+      // Right: the other details.
+      "WiFi", "Contacts", "Installation", "Site notes", "Site checklist", "Other imported data",
+      "Servicing history",
     ]);
-    const toggle = (name: string) => within(drawer).getByRole("button", { name: new RegExp(`^${name}`) });
-    expect(toggle("WiFi").getAttribute("aria-expanded")).toBe("true");
-    expect(toggle("Contacts").getAttribute("aria-expanded")).toBe("false");
-    expect(within(drawer).queryByRole("textbox", { name: "Store owner email" })).toBeNull(); // collapsed
-    await userEvent.click(toggle("Contacts"));
-    await userEvent.click(toggle("Site checklist"));
+    const details = within(drawer).getByRole("complementary", { name: "Store details" });
+    // Right-hand details are line items, every field shown without expanding anything.
+    expect(within(details).queryAllByRole("button", { expanded: false })).toEqual([]);
+    expect(within(within(details).getByRole("region", { name: "Contacts" })).getByLabelText("Store owner email").textContent).toBe("—");
+    expect(within(details).queryByRole("textbox", { name: "Store owner email" })).toBeNull(); // not editing yet
     expect(within(drawer).getByLabelText("IBC#").textContent).toBe("IBC-1");
+    // Address and screens read as text until their Edit is pressed.
+    expect(within(drawer).queryByLabelText("Address *")).toBeNull();
+    expect(within(drawer).getByLabelText("Address").textContent).toBe("1 Main St, Atlanta, GA 30303");
+    expect(within(drawer).queryByRole("region", { name: "Screen rows" })).toBeNull();
+    const screenTable = within(within(drawer).getByRole("region", { name: "Screen list" })).getByRole("table", { name: "Screens" });
+    expect(within(screenTable).getByLabelText("Has mount, screen 1").textContent).toBe("No"); // a value, not "No mount"
+    expect(within(screenTable).getByText('24"')).toBeTruthy(); // a Dolphin screen is 24 inch
     expect(within(drawer).getByLabelText("PA").textContent).toContain("North"); // project fallback
     expect(within(drawer).queryByRole("textbox", { name: "IBC#" })).toBeNull();
 
-    await userEvent.type(within(drawer).getByLabelText("Store owner email"), "nope");
-    await userEvent.click(within(drawer).getByRole("checkbox", { name: "Spot visible from most of store: Unknown" }));
-    expect(within(drawer).getByRole("checkbox", { name: "Spot visible from most of store: Yes" })).toBeTruthy();
+    // Edit opens a section's fields; the one Save at the bottom validates everything before writing anything.
+    expect(within(details).queryByRole("button", { name: /^Save / })).toBeNull(); // no per-section saves
+    await userEvent.click(within(details).getByRole("button", { name: "Edit Contacts" }));
+    await userEvent.type(within(details).getByRole("textbox", { name: "Store owner email" }), "nope");
     await userEvent.click(within(drawer).getByRole("button", { name: "Save details" }));
     expect(await within(drawer).findByText("Store owner email: enter a valid email")).toBeTruthy();
     expect(calls.some((call) => call.method === "PATCH")).toBe(false);
+    expect(within(details).getByRole("button", { name: "View Contacts" }).hasAttribute("disabled")).toBe(true); // fix it first
+    await userEvent.clear(within(details).getByRole("textbox", { name: "Store owner email" }));
+    await userEvent.click(within(details).getByRole("button", { name: "View Contacts" })); // back to lines, nothing undone
+    expect(within(details).queryByRole("textbox", { name: "Store owner email" })).toBeNull();
 
-    await userEvent.clear(within(drawer).getByLabelText("Store owner email"));
+    await userEvent.click(within(details).getByRole("button", { name: "Edit WiFi" }));
     const password = within(drawer).getByLabelText("Store SSID password") as HTMLInputElement;
     expect(password.type).toBe("password");
     await userEvent.click(within(drawer).getByRole("button", { name: "Show password" }));
     expect(password.type).toBe("text");
+
+    await userEvent.click(within(details).getByRole("button", { name: "Edit Site checklist" }));
+    await userEvent.click(within(drawer).getByRole("checkbox", { name: "Spot visible from most of store: Unknown" }));
+    expect(within(drawer).getByRole("checkbox", { name: "Spot visible from most of store: Yes" })).toBeTruthy();
+    await userEvent.click(within(drawer).getByRole("button", { name: "Edit Pictures" })); // on the left now
     await userEvent.type(within(drawer).getByLabelText("Pictures (image URL)"), "https://img.test/a.jpg https://img.test/b.jpg");
     await waitFor(() => expect(within(drawer).getAllByRole("img", { name: "Store picture" })).toHaveLength(2)); // previews
-    expect(within(within(drawer).getByLabelText("Pictures (image URL) links")).getAllByRole("link")).toHaveLength(2);
+    // One Save sends every changed field together.
     await userEvent.click(within(drawer).getByRole("button", { name: "Save details" }));
     await waitFor(() =>
-      expect(calls.find((call) => call.method === "PATCH")?.body).toEqual({
-        spot_visible: true, image_url: "https://img.test/a.jpg https://img.test/b.jpg",
-      }),
+      expect(calls.find((call) => call.method === "PATCH")?.body).toEqual({ image_url: "https://img.test/a.jpg https://img.test/b.jpg", spot_visible: true }),
     );
+    expect(calls.filter((call) => call.method === "PATCH")).toHaveLength(1);
   });
 
   it("drawer: screens editor adds, edits and deletes rows and saves them as a full replace", async () => {
     const { calls } = renderTab();
     const drawer = await openDrawer();
+    await userEvent.click(within(drawer).getByRole("button", { name: "Edit Screens" }));
     const rows = within(drawer).getByRole("region", { name: "Screen rows" });
     expect(within(rows).getByTestId("derived-status").textContent).toBe("Upcoming");
     expect(within(rows).getByRole("button", { name: "Delete screen 1" }).hasAttribute("disabled")).toBe(true); // ≥ 1 row
@@ -326,7 +508,7 @@ describe("StoresTab", () => {
     await userEvent.click(within(confirm).getByRole("button", { name: "Delete screen" }));
     expect(within(rows).queryByRole("listitem", { name: "Screen 3" })).toBeNull();
 
-    await userEvent.click(within(rows).getByRole("button", { name: "Save screens" }));
+    await userEvent.click(within(drawer).getByRole("button", { name: "Save details" }));
     await waitFor(() => expect(calls.find((call) => call.method === "PUT")).toBeTruthy());
     const body = calls.find((call) => call.method === "PUT")?.body as { screens: ScreenInput[] };
     expect(body.screens).toEqual([
@@ -340,10 +522,11 @@ describe("StoresTab", () => {
     let release: (value: Response) => void = () => {};
     renderTab({ "PUT /api/projects/p1/stores/u1/screens": () => new Promise<Response>((resolve) => (release = resolve)) });
     const drawer = await openDrawer();
+    await userEvent.click(within(drawer).getByRole("button", { name: "Edit Screens" }));
     const rows = within(drawer).getByRole("region", { name: "Screen rows" });
     await userEvent.click(within(rows).getByRole("combobox", { name: "Status of screen 1" }));
     await userEvent.click(await screen.findByRole("option", { name: "Delivered" }));
-    await userEvent.click(within(rows).getByRole("button", { name: "Save screens" }));
+    await userEvent.click(within(drawer).getByRole("button", { name: "Save details" }));
     await waitFor(() => expect(screen.getByLabelText("Status of IBC-1").textContent).toBe("Delivered")); // optimistic
     await act(async () => release(jsonError(500, "boom")));
     await waitFor(() => expect(screen.getByLabelText("Status of IBC-1").textContent).toBe("Upcoming"));
@@ -359,6 +542,7 @@ describe("StoresTab", () => {
       }),
     });
     const drawer = await openDrawer();
+    await userEvent.click(within(drawer).getByRole("button", { name: "Edit Identity & address" }));
     const addr = await within(drawer).findByLabelText("Address *");
     await userEvent.clear(addr);
     await userEvent.type(addr, "1 Mian");
@@ -389,6 +573,7 @@ describe("StoresTab", () => {
       ],
     });
     const drawer = await openDrawer();
+    await userEvent.click(within(drawer).getByRole("button", { name: "Edit Identity & address" }));
     const addr = await within(drawer).findByLabelText("Address *");
     await userEvent.clear(addr);
     await userEvent.type(addr, "101 S Council Rd");
@@ -406,26 +591,52 @@ describe("StoresTab", () => {
     });
   });
 
-  it("saves progress from the drawer without touching details", async () => {
+  it("saves progress with the one Save, without touching details", async () => {
     const { calls } = renderTab();
     const drawer = await openDrawer();
     await userEvent.click(within(drawer).getByLabelText("Additional task done"));
     await userEvent.type(within(drawer).getByLabelText("Comment"), "Left a note");
-    await userEvent.click(within(drawer).getByLabelText("Completed by")); // blur the comment
-    await waitFor(() => expect(calls.filter((call) => call.url.pathname.endsWith("/progress")).length).toBe(2));
-    const bodies = calls.filter((call) => call.url.pathname.endsWith("/progress")).map((call) => call.body);
-    expect(bodies).toEqual([{ additional_task: true }, { comment: "Left a note" }]);
+    expect(calls.some((call) => call.url.pathname.endsWith("/progress"))).toBe(false); // nothing until Save
+    await userEvent.click(within(drawer).getByRole("button", { name: "Save details" }));
+    await waitFor(() => expect(calls.filter((call) => call.url.pathname.endsWith("/progress")).length).toBe(1));
+    expect(calls.find((call) => call.url.pathname.endsWith("/progress"))?.body).toEqual({ additional_task: true, comment: "Left a note" });
     expect(calls.some((call) => call.method === "PATCH" && call.url.pathname === "/api/projects/p1/stores/u1")).toBe(false);
   });
+
+  it("install type is a draft: the name comes back when switched back, and Save sends the self install", async () => {
+    const { calls } = renderTab();
+    const drawer = await openDrawer();
+    const assignment = within(drawer).getByRole("region", { name: "Assignment" });
+    const choose = async (name: string) => {
+      await userEvent.click(within(assignment).getByRole("combobox", { name: "Install type" }));
+      await userEvent.click(await screen.findByRole("option", { name }));
+    };
+    await userEvent.type(within(assignment).getByLabelText("Technician"), "Sai");
+    await choose("Self install");
+    expect(within(assignment).queryByLabelText("Technician")).toBeNull(); // the name box gives way to a pill
+    expect(within(assignment).getByLabelText("Technician: self install")).toBeTruthy();
+    await choose("Technician");
+    expect((within(assignment).getByLabelText("Technician") as HTMLInputElement).value).toBe("Sai"); // not lost
+    expect(calls.some((call) => call.method === "PATCH")).toBe(false);
+
+    await choose("Self install");
+    await userEvent.type(within(drawer).getByLabelText("Wall"), "2");
+    await userEvent.click(within(drawer).getByRole("button", { name: "Save details" }));
+    await waitFor(() => expect(calls.find((call) => call.method === "PATCH" && !call.url.pathname.endsWith("/progress"))?.body).toEqual({
+      install_type: "Self install", wall_mounts_needed: 2,
+    }));
+    expect(calls.some((call) => call.url.pathname.endsWith("/progress"))).toBe(false); // no technician was saved
+  });
+
 
   it("filter bar: STORE-MODEL §5 order, counts, greyed-out empties, and every filter reaches the list and map", async () => {
     const { calls } = renderTab();
     await screen.findByText("Alpha Mart");
     const bar = screen.getByRole("group", { name: "Filters" });
     expect(within(bar).getAllByRole("button").map((button) => button.textContent?.replace("no values", "").trim())).toEqual([
-      "Status", "Route", "Visits", "Installer", "PA", "State", "City", "DMA", "Venue type", "DD code", "Screen size",
+      "Status", "State", "PA", "City", "DMA", "Venue type", "DD code",
     ]);
-    for (const name of ["Venue type (no values)", "DD code (no values)", "Screen size (no values)"]) {
+    for (const name of ["Venue type (no values)", "DD code (no values)"]) {
       expect(within(bar).getByRole("button", { name }).hasAttribute("disabled")).toBe(true);
     }
     await userEvent.click(within(bar).getByRole("button", { name: "Status" }));
@@ -452,23 +663,34 @@ describe("StoresTab", () => {
     expect(within(bar).getByRole("button", { name: "City: Decatur" })).toBeTruthy();
   });
 
-  it("top states: a bar selects its state alone, a second click clears it, other filters are kept", async () => {
+  it("status chips on top filter the table, the map and the chart together", async () => {
     const { calls } = renderTab();
     await screen.findByText("Alpha Mart");
-    await userEvent.click(within(screen.getByRole("group", { name: "Filters" })).getByRole("button", { name: "DMA" }));
-    await userEvent.click(await screen.findByRole("menuitemcheckbox", { name: /ATL/ }));
-    await userEvent.keyboard("{Escape}");
-    const chart = await screen.findByRole("region", { name: "Top states by upcoming installs" });
-    const ga = within(chart).getByRole("button", { name: "GA 2" });
-    await userEvent.click(ga);
-    await waitFor(() => expect(lastList(calls)?.searchParams.getAll("state")).toEqual(["GA"]));
-    expect(lastList(calls)?.searchParams.getAll("dma")).toEqual(["ATL"]);
-    expect(within(chart).getByRole("button", { name: "GA 2" }).getAttribute("aria-pressed")).toBe("true");
-    const byState = [...calls].reverse().find((call) => call.url.pathname.endsWith("/by-state"))?.url;
-    expect(byState?.searchParams.getAll("state")).toEqual([]); // the chart never filters itself by state
-    expect(byState?.searchParams.get("pending")).toBe("true");
-    await userEvent.click(within(chart).getByRole("button", { name: "GA 2" }));
-    await waitFor(() => expect(lastList(calls)?.searchParams.getAll("state")).toEqual([]));
-    expect(lastList(calls)?.searchParams.getAll("dma")).toEqual(["ATL"]);
+    const chips = screen.getByRole("group", { name: "Status filter" });
+    expect(within(chips).getByRole("button", { name: /Offline/ }).hasAttribute("disabled")).toBe(true); // none
+    await userEvent.click(within(chips).getByRole("button", { name: /Completed/ }));
+    await waitFor(() => expect(lastList(calls)?.searchParams.getAll("bucket")).toEqual(["Completed"]));
+    const last = (suffix: string) => [...calls].reverse().find((call) => call.url.pathname.endsWith(suffix))?.url;
+    expect(last("/pins")?.searchParams.getAll("bucket")).toEqual(["Completed"]);
+    expect(last("/by-state")?.searchParams.getAll("bucket")).toEqual(["Completed"]);
+    expect(within(chips).getByRole("button", { name: /Completed/ }).getAttribute("aria-pressed")).toBe("true");
   });
+
+  it("top states here: every state in a scrolling panel, read only (filtering by state is on the full-page chart)", async () => {
+    const states = ["TX", "FL", "OK", "IL", "MO", "TN", "PA", "CA", "GA", "KS", "LA", "MI"];
+    const { calls } = renderTab({
+      "GET /api/projects/p1/stores/by-state": () => states.map((state, index) => ({ state, count: 100 - index })),
+    });
+    await screen.findByText("Alpha Mart");
+    const chart = await screen.findByRole("region", { name: "Top states by stores" });
+    const listed = within(within(chart).getByRole("list", { name: "States" })).getAllByRole("listitem").map((item) => item.textContent);
+    expect(listed).toHaveLength(12); // all of them
+    expect(chart.parentElement?.className).toContain("overflow-y-auto"); // the panel scrolls when they don't fit
+    expect(within(chart).queryByRole("button")).toBeNull(); // no state chips to click
+    expect(within(chart).getByRole("link", { name: /Open chart in a new tab/ })).toBeTruthy();
+    const byState = [...calls].reverse().find((call) => call.url.pathname.endsWith("/by-state"))?.url;
+    expect(byState?.searchParams.get("pending")).toBe("false"); // every status: the status chips decide
+  });
+
+
 });

@@ -17,7 +17,7 @@ COLLECTION = "dolphin-internal-report"
 FIELDS = (
     "Venue ID", "Date", "Status", "Last Seen (UTC)", "Offline Days", "Serial Number", "Venue Name", "Store Name",
     "Address", "City", "State", "State Code", "Zip Code", "Latitude", "Longitude", "PA Name", "PK External ID",
-    "ingested_at_utc",
+    "DMA", "OOH Category", "ingested_at_utc",
 )
 QUERY_MS = 20_000
 
@@ -46,7 +46,7 @@ class MongoDeviceData:
     def _collection(self):
         if self._client is None:
             if not self._uri:
-                raise DeviceDataUnavailable("No MongoDB connection string (DT_MONGO_URI / DT_MONGO_URI_SECRET)")
+                raise DeviceDataUnavailable("No MongoDB connection string (DT_MONGO_URI / DT_MONGO_URI_PARAM)")
             from pymongo import MongoClient  # local import: only this adapter needs pymongo
 
             self._client = MongoClient(
@@ -130,6 +130,6 @@ def make_device_data(settings: Settings) -> DeviceDataSource | None:
     """The Lambda in AWS, Mongo directly when a connection string is configured (local), else None (no sync)."""
     if settings.device_data_function_name:
         return LambdaDeviceData(settings.device_data_function_name, region=settings.aws_region)
-    if settings.mongo_uri or settings.mongo_uri_secret:
+    if settings.mongo_uri or settings.mongo_uri_param:
         return MongoDeviceData(resolve_mongo_uri(settings))
     return None

@@ -13,18 +13,20 @@ import {
   ChevronsRight,
   ChevronsUpDown,
   Loader2,
+  Monitor,
   Route,
+  Tv,
 } from "lucide-react";
 import { useRoutePlans } from "@/features/planner/api";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { visitState } from "@/features/visits/visitForm";
-import { EditableCell } from "@/features/stores/EditableCell";
-import { addressLine } from "@/features/stores/details";
-import { STORE_PAGE_SIZES, useUpdateStoreDetails } from "@/features/stores/api";
+import { addressLine, fulfillment } from "@/features/stores/details";
+import { STORE_PAGE_SIZES } from "@/features/stores/api";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { Project, Stop } from "@/lib/api/types";
 import { STATUS_META } from "@/lib/status";
 import { DEVICE_TONE } from "@/features/device/DeviceBits";
 import { cn } from "@/lib/utils";
-import { coreError } from "@/lib/validation/fields";
 
 const ROW_HEIGHT = 44;
 
@@ -58,6 +60,8 @@ const SORT_KEYS: Record<string, string> = {
   pa: "pa",
   dma: "dma",
   committed: "committed_dolphin_screens",
+  install_type: "install_type",
+  installer_name: "installer_name",
 };
 
 /** One dot per screen in its status colour: the row's mini status summary. */
@@ -79,6 +83,39 @@ function ScreenDots({ stop }: { stop: Stop }) {
 }
 
 const dash = <span className="text-slate-300">—</span>;
+
+/** How much of the spare width each column takes when the table is wider than its columns: the store name and DMA
+ *  the most, the short fixed ones (status, counts) little. Header and rows use the same, so they stay aligned. */
+const GROW: Record<string, number> = { store_name: 4, dma: 1, place: 2, installer_name: 1.5, servicing: 1, pa: 1 };
+const columnStyle = (id: string, size: number) => ({ flex: `${GROW[id] ?? 0.4} 0 ${size}px`, minWidth: size });
+
+/** A total of Dolphin screens + store TVs; hovering shows the two apart. Unknown (no count in the sheet) is a dash. */
+function TotalCount({ screens, tvs, label, tone, suffix }: { screens: number | null; tvs: number | null; label: string; tone?: string; suffix?: ReactNode }) {
+  if (screens === null && tvs === null) return dash;
+  const total = (screens ?? 0) + (tvs ?? 0);
+  const part = (value: number | null, one: string, many: string) => (value === null ? `? ${many}` : `${value} ${value === 1 ? one : many}`);
+  const detail = `${part(screens, "Dolphin screen", "Dolphin screens")} · ${part(tvs, "store TV", "store TVs")}`;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span
+          tabIndex={0}
+          className={cn("inline-flex cursor-default items-center gap-1 rounded px-1 font-mono text-sm tabular-nums underline decoration-dotted decoration-slate-300 underline-offset-4", tone ?? "text-slate-700")}
+          aria-label={`${label}: ${total} (${detail})`}
+        >
+          {total}
+          {suffix}
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="top">
+        <span className="flex items-center gap-3">
+          <span className="inline-flex items-center gap-1"><Monitor size={12} /> {part(screens, "Dolphin screen", "Dolphin screens")}</span>
+          <span className="inline-flex items-center gap-1"><Tv size={12} /> {part(tvs, "store TV", "store TVs")}</span>
+        </span>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
 
 export const ATTENTION_LABELS: Record<string, string> = {
   store_name: "no store name",
@@ -105,7 +142,8 @@ function DeviceValue({ value, sheet, onOpen }: { value: string; sheet: string; o
   );
 }
 
-/** ROUTE-PLANNER §6: stores being tended (in a route) and serviced ones stand out in the list. */
+/** ROUTE-PLANNER §6: stores being tended (in a route) and serviced ones stand out in the list. A fulfilled store
+ *  is marked by the check next to its installed count, not by the row. */
 function rowTint(stop: Stop): string {
   if (stop.route_plan_id) return "bg-blue-50/60 hover:bg-blue-50";
   const state = visitState(stop);
@@ -146,14 +184,12 @@ function ServicingCell({ stop, planNames }: { stop: Stop; planNames: Map<string,
     </span>
   );
 }
-const count = (value: number | null) => (value === null ? "—" : String(value));
 
 /** One PA name (no comma list): every store shares it. */
 export const singlePa = (pa: string) => pa.trim() !== "" && !pa.includes(",");
 
 export function StoresTable(props: Props) {
   const { project, stops, sort, dir, onSort, selectedId, hoveredId, onHover, onOpen } = props;
-  const details = useUpdateStoreDetails(project.id);
   const plans = useRoutePlans("active");
   const planNames = useMemo(() => new Map((plans.data ?? []).map((plan) => [plan.id, plan.name])), [plans.data]);
   const hidePa = singlePa(project.pa) && stops.every((stop) => !stop.pa.trim() || stop.pa.trim() === project.pa.trim());
@@ -181,18 +217,16 @@ export function StoresTable(props: Props) {
       }),
       helper.accessor("store_name", {
         header: "Store name",
-        size: 200,
+        size: 240,
         cell: (info) => {
           const shown = info.row.original.device?.store_name;
           // The Dolphin data's name shows over the sheet's; it is changed in the store (Overwrite), not here.
           if (shown) return <DeviceValue value={shown} sheet={info.getValue()} onOpen={() => onOpen(info.row.original.uid)} />;
+          // Not edited here: a click anywhere on the row opens the store.
           return (
-          <EditableCell
-            label={`store name of ${info.row.original.external_id || info.row.original.display_id}`}
-            value={info.getValue()}
-            validate={(value) => coreError("store_name", value)}
-            onSave={(value) => details.mutateAsync({ uid: info.row.original.uid, body: { store_name: value } })}
-          />
+            <span className="block truncate" title={info.getValue()}>
+              {info.getValue() || dash}
+            </span>
           );
         },
       }),
@@ -210,13 +244,14 @@ export function StoresTable(props: Props) {
               onOpen(info.row.original.uid);
             }}
           >
-            {info.row.original.route_stale && <AlertTriangle size={12} className="shrink-0 text-amber-600" aria-label="Route may be stale" />}
+            {info.row.original.route_stale && info.row.original.route_plan_id && <AlertTriangle size={12} className="shrink-0 text-amber-600" aria-label="Route may be stale" />}
             <span className={cn("truncate", (info.row.original.device?.city || info.row.original.device?.state) && DEVICE_TONE.text)}>
               {info.getValue() || "—"}
             </span>
           </button>
         ),
       }),
+      helper.accessor("dma", { header: "DMA", size: 130, cell: (info) => info.getValue() || dash }),
       helper.accessor((stop): string => stop.status, {
         id: "status",
         header: "Status",
@@ -224,7 +259,9 @@ export function StoresTable(props: Props) {
         cell: (info) => (
           <span
             aria-label={`Status of ${info.row.original.external_id || info.row.original.display_id}`}
-            className={cn("rounded border px-1.5 py-0.5 text-xs font-medium", STATUS_META[info.row.original.status].chip)}
+            title={STATUS_META[info.row.original.status].label}
+            // One width for every status, so the column lines up; long labels are cut with an ellipsis.
+            className={cn("inline-block w-[92px] truncate rounded border px-1.5 py-0.5 text-center text-xs font-medium", STATUS_META[info.row.original.status].chip)}
           >
             {STATUS_META[info.row.original.status].label}
           </span>
@@ -242,12 +279,47 @@ export function StoresTable(props: Props) {
       ...(hidePa
         ? []
         : [helper.accessor((stop) => stop.pa || project.pa, { id: "pa", header: "PA", size: 90, cell: (info) => info.getValue() || dash })]),
-      helper.accessor("dma", { header: "DMA", size: 80, cell: (info) => info.getValue() || dash }),
-      helper.accessor((stop) => `${count(stop.committed_dolphin_screens)} / ${count(stop.committed_store_tvs)}`, {
+      helper.accessor("installer_name", {
+        header: "Installer",
+        size: 120,
+        // The technician's name; a self or rep install sends no technician, so it shows as a pill instead.
+        cell: (info) => {
+          const type = info.row.original.install_type;
+          if (type === "Self install" || type === "Rep install") {
+            return (
+              <span className="inline-flex rounded-full border border-brand/30 bg-brand/10 px-2 py-0.5 text-xs font-semibold text-brand" title={type}>
+                {type === "Self install" ? "Self" : "Rep"}
+              </span>
+            );
+          }
+          return info.getValue() || dash;
+        },
+      }),
+
+      helper.accessor((stop) => String((stop.committed_dolphin_screens ?? 0) + (stop.committed_store_tvs ?? 0)), {
         id: "committed",
-        header: "Committed Dolphin / TVs",
-        size: 130,
-        cell: (info) => <span className="font-mono text-xs">{info.getValue()}</span>,
+        header: "Screens committed",
+        size: 96,
+        cell: (info) => (
+          <TotalCount label="Screens committed" screens={info.row.original.committed_dolphin_screens} tvs={info.row.original.committed_store_tvs} />
+        ),
+      }),
+      helper.accessor((stop) => String(fulfillment(stop).installed), {
+        id: "installed",
+        header: "Screens installed",
+        size: 96,
+        cell: (info) => {
+          const done = fulfillment(info.row.original);
+          return (
+            <TotalCount
+              label="Screens installed"
+              screens={done.installedScreens}
+              tvs={done.installedTvs}
+              tone={done.fulfilled ? "font-semibold text-green-700" : undefined}
+              suffix={done.fulfilled ? <Check size={13} className="text-green-700" aria-label="fulfilled" /> : undefined}
+            />
+          );
+        },
       }),
     ],
     [project.pa, onOpen, planNames, hidePa], // the mutation object is stable per project
@@ -282,12 +354,12 @@ export function StoresTable(props: Props) {
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border bg-white">
       <div ref={scroller} className="min-h-0 flex-1 overflow-auto" role="grid" aria-rowcount={props.total} aria-label="Stores">
         <div style={{ width, minWidth: "100%" }}>
-          <div role="row" className="sticky top-0 z-10 flex border-b bg-slate-50 font-mono text-[10px] uppercase tracking-wider text-slate-500">
+          <div role="row" className="sticky top-0 z-10 flex border-b bg-slate-50 font-mono text-[11px] uppercase tracking-wider text-slate-500">
             {table.getFlatHeaders().map((header) => {
               const key = SORT_KEYS[header.id] ?? (header.id.startsWith("fields.") ? header.id : null);
               const active = key !== null && sort === key;
               return (
-                <div key={header.id} role="columnheader" aria-sort={active ? (dir === "asc" ? "ascending" : "descending") : "none"} style={{ width: header.getSize() }} className="shrink-0 px-2 py-2">
+                <div key={header.id} role="columnheader" aria-sort={active ? (dir === "asc" ? "ascending" : "descending") : "none"} style={columnStyle(header.column.id, header.getSize())} className="px-2 py-2">
                   {key ? (
                     <button type="button" className="flex items-center gap-1 uppercase hover:text-slate-800" onClick={() => onSort(key)}>
                       {flexRender(header.column.columnDef.header, header.getContext())}
@@ -322,7 +394,7 @@ export function StoresTable(props: Props) {
                   )}
                 >
                   {row.getVisibleCells().map((cell) => (
-                    <div key={cell.id} role="gridcell" style={{ width: cell.column.getSize() }} className="shrink-0 truncate px-2">
+                    <div key={cell.id} role="gridcell" style={columnStyle(cell.column.id, cell.column.getSize())} className="truncate px-2">
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </div>
                   ))}
@@ -331,6 +403,13 @@ export function StoresTable(props: Props) {
             })}
           </div>
         </div>
+      </div>
+      {/* Under the rows, just above the pages. */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t px-3 py-1.5 text-xs text-slate-600" aria-label="Table legend">
+        <span>Screens = Dolphin screens + store TVs; hover a count to see them apart</span>
+        <span className="inline-flex items-center gap-1">
+          <Check size={13} className="text-green-700" aria-hidden /> Installed ≥ committed
+        </span>
       </div>
       <Pager {...props} shown={rows.length} />
     </div>
@@ -350,7 +429,7 @@ function Pager({ total, offset, pageSize, fetching, onPage, onPageSize, shown }:
     else setDraft(String(index + 1));
   };
   return (
-    <nav aria-label="Pages" className="flex flex-wrap items-center justify-between gap-2 border-t px-3 py-1.5 font-mono text-[11px] text-slate-600">
+    <nav aria-label="Pages" className="flex flex-wrap items-center justify-between gap-2 border-t px-3 py-1.5 font-mono text-xs text-slate-600">
       <span aria-live="polite">
         {total ? `${offset + 1}–${offset + shown} of ${total.toLocaleString()}` : "0 stores"}
         {fetching && <Loader2 size={12} className="ml-2 inline animate-spin" />}
@@ -380,18 +459,18 @@ function Pager({ total, offset, pageSize, fetching, onPage, onPageSize, shown }:
         <PageButton label="Last page" disabled={index >= pages - 1} onClick={() => go(pages - 1)}>
           <ChevronsRight size={14} />
         </PageButton>
-        <select
-          aria-label="Rows per page"
-          className="ml-2 h-6 rounded border bg-white px-1"
-          value={pageSize}
-          onChange={(event) => onPageSize(Number(event.target.value))}
-        >
-          {STORE_PAGE_SIZES.map((size) => (
-            <option key={size} value={size}>
-              {size} / page
-            </option>
-          ))}
-        </select>
+        <Select value={String(pageSize)} onValueChange={(value) => onPageSize(Number(value))}>
+          <SelectTrigger size="sm" aria-label="Rows per page" className="ml-2 h-7 w-[104px] font-mono text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent position="popper" side="top" align="end">
+            {STORE_PAGE_SIZES.map((size) => (
+              <SelectItem key={size} value={String(size)} className="font-mono text-xs">
+                {size} / page
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
     </nav>
   );

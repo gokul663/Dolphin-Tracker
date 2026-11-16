@@ -18,7 +18,7 @@ const STATE: DeviceSyncState = {
 const ITEM: ReviewItem = {
   venue_id: "DD_NEW001", date: "2026-11-09", status: "Online", last_seen: "", offline_days: 0, serial_number: "SN1",
   venue_name: "CMS_NEW", store_name: "New Gas", address: "1 Elm St, Kalamazoo, MI 49009", addr: "1 Elm St",
-  city: "Kalamazoo", state: "MI", zip: "49009", lat: 42.2, lng: -85.6, pa_name: "IBC", external_id: "", key: "DD_NEW001",
+  city: "Kalamazoo", state: "MI", zip: "49009", lat: 42.2, lng: -85.6, pa_name: "IBC", external_id: "", dma: "", venue_type: "", key: "DD_NEW001",
   snoozed_date: "",
 };
 
@@ -122,7 +122,7 @@ describe("Needs review: the address check", () => {
 
 describe("Store drawer: Dolphin data", () => {
   const device = { store_name: "Report Name", venue_name: "CMS_A", address: "", addr: "9 Oak St", city: "Atlanta", state: "GA",
-    zip: "30303", lat: 33.8, lng: -84.3, date: "2026-11-09" };
+    zip: "30303", lat: 33.8, lng: -84.3, dma: "Atlanta", venue_type: "Convenience Store", date: "2026-11-09" };
 
   it("shows the report values over the sheet's and overwrites one field", async () => {
     const { calls } = mockApi({ "POST /api/projects/p1/stores/u1/device-overwrite": () => ({ stores_updated: 1 }) });
@@ -147,6 +147,17 @@ describe("Store drawer: Dolphin data", () => {
     await waitFor(() => expect(calls.some((call) => call.url.pathname.endsWith("/device-alert/ignore"))).toBe(true));
   });
 
+  it("once the sheet matches the Dolphin data, the section stays out of the way (the header says synced)", () => {
+    mockApi({});
+    const synced = makeStop({
+      device, store_name: device.store_name, addr: device.addr, city: device.city, state: device.state, zip: device.zip,
+      lat: device.lat, lng: device.lng,
+    });
+    const { container } = renderWithProviders(<StoreDeviceSection project={makeProject({ device_sync: STATE })} stop={synced} />);
+    expect(container.querySelector("section")).toBeNull();
+  });
+
+
   it("shows nothing for a store without Dolphin data or alerts", () => {
     mockApi({});
     const { container } = renderWithProviders(<StoreDeviceSection project={makeProject()} stop={makeStop()} />);
@@ -162,19 +173,17 @@ describe("Several DD codes in one entry", () => {
     expect(splitCodes("DD-HFN64S.")).toEqual(["DD-HFN64S"]);
   });
 
-  it("suggests a split and applies it only when asked, then saves both rows", async () => {
-    const { ScreensEditor } = await import("@/features/stores/ScreensEditor");
-    const { calls } = mockApi({ "PUT /api/projects/p1/stores/u1/screens": () => makeStop() });
+  it("suggests a split and applies it only when asked", async () => {
+    const { draftScreens } = await import("@/test/screens");
+    mockApi({});
     const stop = makeStop({ screens: [makeScreen({ id: "s1", venue_id: "DD-HJGK7Z. DD-HB8P6I", stick_number: "DD-002-02969. DD-002-01380", status: "Completed" })] });
-    renderWithProviders(<ScreensEditor project={makeProject()} stop={stop} />);
+    const draft = draftScreens(makeProject(), stop);
+    renderWithProviders(draft.element);
     expect(screen.getByRole("alert").textContent).toContain("DD-HJGK7Z (stick DD-002-02969); DD-HB8P6I (stick DD-002-01380)");
     expect(screen.getAllByRole("listitem")).toHaveLength(1); // nothing changes until Split is pressed
     await userEvent.click(screen.getByRole("button", { name: "Split into 2 screens" }));
     expect(screen.getAllByRole("listitem")).toHaveLength(2);
-    await userEvent.click(screen.getByRole("button", { name: "Save screens" }));
-    await waitFor(() => expect(calls.length).toBe(1));
-    const sent = (calls[0]!.body as { screens: { id?: string; venue_id: string; stick_number: string; status: string }[] }).screens;
-    expect(sent.map((row) => [row.id, row.venue_id, row.stick_number, row.status])).toEqual([
+    expect(draft.latest().map((row) => [row.id, row.venue_id, row.stick_number, row.status])).toEqual([
       ["s1", "DD-HJGK7Z", "DD-002-02969", "Completed"],
       [undefined, "DD-HB8P6I", "DD-002-01380", "Completed"],
     ]);

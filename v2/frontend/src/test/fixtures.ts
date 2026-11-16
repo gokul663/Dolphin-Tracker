@@ -21,10 +21,15 @@ export function makeKpi(overrides: Partial<Kpi> = {}): Kpi {
     by_status: statusCounts({ Upcoming: 5, Completed: 4, Offline: 1 }),
     screens_total: 12, screens_by_status: statusCounts({ Upcoming: 6, Completed: 5, Offline: 1 }),
     committed_dolphin_screens: 11, committed_store_tvs: 3, actual_dolphin_screens: 10, actual_store_tvs: 2,
+    committed_stores: 9, installed_screens: 6, installed_stores: 5,
     by_installer: { Ann: 6, Bo: 4 }, by_dma: {}, by_venue_type: {},
     address_status: { total: 10, complete: 4, pending: 6 },
     by_visit: { none: 7, partly: 1, visited: 2 },
     needs_attention: 0,
+    by_bucket: { Completed: 4, Upcoming: 5, "In Progress": 0, Offline: 1, Cancelled: 0 },
+    screens_by_bucket: { Completed: 5, Upcoming: 6, "In Progress": 0, Offline: 1, Cancelled: 0 },
+    by_technician: {},
+    install_types: {},
     ...overrides,
   };
 }
@@ -36,7 +41,7 @@ export function makeSummary(overrides: Partial<ProjectSummary> = {}): ProjectSum
 export function makeScreen(overrides: Partial<Screen> = {}): Screen {
   return {
     id: "sc1", stick_number: "", venue_id: "", screen_size: "", is_dolphin_screen: true, has_mount: false,
-    has_ceiling_mount: false, status: "Upcoming", status_changed_at: "", device: null, ...overrides,
+    has_ceiling_mount: false, needs_mount: false, status: "Upcoming", status_changed_at: "", device: null, ...overrides,
   };
 }
 
@@ -50,7 +55,8 @@ export function makeStop(overrides: Partial<Stop> = {}): Stop {
     pa: "", dma: "ATL", venue_type: "", source_date: "", onsite_contact_name: "", onsite_contact_phone: "",
     owner_name: "", owner_phone: "", owner_email: "", best_contact_time: "", preferred_language: "",
     products_to_avoid: "", store_ssid: "", store_ssid_password: "", installation_notes: "", image_url: "",
-    cms_details_added: false, outlet_status: "", committed_dolphin_screens: null, committed_store_tvs: null,
+    cms_details_added: false, outlet_status: "", install_type: "", committed_dolphin_screens: null, committed_store_tvs: null,
+    wall_mounts_needed: null, ceiling_mounts_needed: null, tv_mounts_needed: null,
     preferred_area: "", ceiling_type: "", ceiling_height: "", nearest_power_outlet: "", ethernet_route: "",
     blocked_dates_notes: "", preferred_install_datetime: "", spot_visible: null, power_within_6ft: null,
     ethernet_possible: null, low_volume_audio_ok: null, ceiling_suitable: null,

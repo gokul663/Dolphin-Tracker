@@ -1,33 +1,44 @@
 import { describe, expect, it } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { ProjectKpis } from "@/features/projects/ProjectKpis";
 import { makeKpi } from "@/test/fixtures";
 
-const card = (group: HTMLElement, name: string) => {
-  const element = within(group).getByLabelText(name);
+const bubble = (name: string) => {
+  const element = screen.getByLabelText(name);
   return { text: element.textContent, note: element.getAttribute("title") };
 };
 
 describe("ProjectKpis", () => {
-  it("a compact stores strip: total, upcoming, completed, offline and partly visited", () => {
+  it("committed (sheet), completed (online + offline), then each status group with the stores under each", () => {
     render(<ProjectKpis kpi={makeKpi()} />);
-    const stores = screen.getByRole("group", { name: "Store KPIs" });
-    expect(card(stores, "Stores")).toEqual({ text: "10Total", note: "5 pending" }); // number over label
-    expect(card(stores, "Upcoming stores")).toEqual({ text: "5Upcoming", note: "50%" });
-    expect(card(stores, "Completed stores")).toEqual({ text: "4Completed", note: "40%" });
-    expect(card(stores, "Offline stores")).toEqual({ text: "1Offline", note: "10%" });
-    expect(card(stores, "Partly visited stores")).toEqual({ text: "1Partly visited", note: "10%" });
-    expect(within(stores).queryByLabelText("Visited stores")).toBeNull();
+    const order = screen.getAllByLabelText(/screens|TVs/).map((element) => element.getAttribute("aria-label"));
+    expect(order).toEqual([
+      "Committed screens and TVs", "Completed screens", "Online screens", "Offline screens", "In Progress screens",
+      "Upcoming screens", "Cancelled screens",
+    ]);
+    expect(bubble("Committed screens and TVs")).toEqual({
+      text: "14Committed9 stores", note: "From the sheet: 11 Dolphin screens · 3 store TVs (10 stores in the project)",
+    });
+    expect(bubble("Completed screens").text).toBe("6Completed5 stores"); // installed
+    expect(bubble("Online screens").text).toBe("5Online4 stores"); // the Completed status
+    expect(bubble("Upcoming screens").text).toBe("6Upcoming5 stores");
+    expect(bubble("In Progress screens").text).toBe("0In Progress0 stores"); // every group always shows
+    expect(bubble("Cancelled screens").note).toContain("Cancelled, Archived");
+    expect(bubble("Offline screens").note).toMatch(/^8.3% of screens/);
   });
 
-  it("a compact screens strip: the four main statuses plus any other in use, and recorded vs committed", () => {
-    render(<ProjectKpis kpi={makeKpi()} />);
-    const screens = screen.getByRole("group", { name: "Screen KPIs" });
-    expect(card(screens, "Screens")).toEqual({ text: "12Total", note: "Dolphin 10 of 11 committed · TVs 2 of 3" });
-    expect(card(screens, "Upcoming screens").text).toBe("6Upcoming");
-    expect(card(screens, "Completed screens").note).toBe("41.7%");
-    expect(card(screens, "Archived screens").text).toBe("0Archived"); // always shown
-    expect(within(screens).queryByLabelText("Cancelled screens")).toBeNull(); // empty and not a main status
+  it("no technician bubbles in the header", () => {
+    render(<ProjectKpis kpi={makeKpi({ by_technician: { Murugan: { done: 200, upcoming: 3 } } })} />);
+    expect(screen.queryByText(/Murugan/)).toBeNull();
+  });
+
+  it("a status bubble toggles the stores filter and shows when it is on", () => {
+    const clicked: string[] = [];
+    render(<ProjectKpis kpi={makeKpi()} activeBuckets={["Offline"]} onBucket={(bucket) => clicked.push(bucket)} />);
+    expect(screen.queryByRole("button", { name: "Completed screens" })).toBeNull(); // a total, not a filter
+    screen.getByRole("button", { name: "Online screens" }).click();
+    expect(clicked).toEqual(["Completed"]);
+    expect(screen.getByRole("button", { name: "Offline screens" }).getAttribute("aria-pressed")).toBe("true");
   });
 
   it("shows how many stores need attention, and opens them", async () => {

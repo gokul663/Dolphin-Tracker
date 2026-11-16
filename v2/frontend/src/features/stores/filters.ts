@@ -1,14 +1,18 @@
 /** Filter bar logic (STORE-MODEL §5). Pure. */
 import type { StoreFilters } from "@/lib/api/resources";
 import type { FilterOption, ScreenStatus, StoreFilterOptions } from "@/lib/api/types";
-import { STATUS_META } from "@/lib/status";
+import { STATUS_META, type StatusBucket } from "@/lib/status";
 import type { Facet, FacetSelection } from "@/stores/ui";
 
 export const FACET_LABELS: Record<Facet, string> = {
+  bucket: "Status group",
   status: "Status",
+  install_type: "Install type",
+  mount: "Mount",
+  fulfilled: "Screens done",
   route: "Route",
   visit: "Visits",
-  installer: "Installer",
+  technician: "Technician",
   pa: "PA",
   state: "State",
   city: "City",
@@ -20,14 +24,15 @@ export const FACET_LABELS: Record<Facet, string> = {
 
 export function optionLabel(facet: Facet, value: string): string {
   if (facet === "status") return STATUS_META[value as ScreenStatus]?.label ?? value;
+  if (facet === "technician" && value === "") return "No technician";
   return value;
 }
 
-/** The server's values for a filter. A store without an installer is not an installer: the blank value is left
- *  out, so a project with no installers shows the Installer filter greyed out ("no values"). */
+/** The server's values for a filter. "No technician" alone is nothing to choose from: a project where nobody is
+ *  assigned shows the Technician filter greyed out ("no values"). */
 function listedOptions(options: StoreFilterOptions | undefined, facet: Facet): FilterOption[] {
   const listed = options?.[facet] ?? [];
-  return facet === "installer" ? listed.filter((option) => option.value.trim() !== "") : listed;
+  return facet === "technician" && listed.every((option) => option.value.trim() === "") ? [] : listed;
 }
 
 /** The server's options, plus any selected value it no longer lists (so it can still be unticked), at count 0. */
@@ -50,7 +55,7 @@ export function facetSummary(facet: Facet, selected: string[]): string {
 
 /** The API query for the current selection. */
 export function toStoreFilters(facets: FacetSelection, search: string, needsAttention = false): StoreFilters {
-  return { ...facets, status: facets.status as ScreenStatus[], q: search, ...(needsAttention ? { needs_attention: true } : {}) };
+  return { ...facets, status: facets.status as ScreenStatus[], bucket: facets.bucket as StatusBucket[], q: search, ...(needsAttention ? { needs_attention: true } : {}) };
 }
 
 export const anyFacet = (facets: FacetSelection) => Object.values(facets).some((values) => values.length > 0);

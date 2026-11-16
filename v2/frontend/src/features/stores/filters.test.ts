@@ -15,6 +15,11 @@ const OPTIONS: StoreFilterOptions = {
   screen_size: [],
   route: [{ value: "Not in route", count: 3 }],
   visit: [{ value: "Not visited", count: 3 }],
+  bucket: [{ value: "Upcoming", count: 2 }, { value: "In Progress", count: 1 }],
+  install_type: [],
+  mount: [{ value: "No mount needed", count: 3 }],
+  fulfilled: [{ value: "No commitment", count: 3 }],
+  technician: [{ value: "Ann", count: 2 }, { value: "", count: 1 }],
 };
 
 describe("filter bar helpers", () => {
@@ -25,13 +30,12 @@ describe("filter bar helpers", () => {
     expect(facetDisabled(undefined, "dma", [])).toBe(false); // not loaded yet: don't flash grey
   });
 
-  it("leaves out stores without an installer: no installers at all greys the filter out", () => {
-    const none = { ...OPTIONS, installer: [{ value: "", count: 614 }] };
-    expect(facetOptions(none, "installer", [])).toEqual([]);
-    expect(facetDisabled(none, "installer", [])).toBe(true);
-    const some = { ...OPTIONS, installer: [{ value: "", count: 3 }, { value: "Ann", count: 2 }] };
-    expect(facetOptions(some, "installer", [])).toEqual([{ value: "Ann", count: 2 }]);
-    expect(facetDisabled(some, "installer", [])).toBe(false);
+  it("greys out the Technician filter when nobody is assigned; otherwise offers No technician too", () => {
+    const none = { ...OPTIONS, technician: [{ value: "", count: 614 }] };
+    expect(facetOptions(none, "technician", [])).toEqual([]);
+    expect(facetDisabled(none, "technician", [])).toBe(true);
+    expect(facetOptions(OPTIONS, "technician", [])).toEqual([{ value: "Ann", count: 2 }, { value: "", count: 1 }]);
+    expect(optionLabel("technician", "")).toBe("No technician");
   });
 
   it("keeps a selected value the server no longer lists, at count 0", () => {
@@ -39,7 +43,7 @@ describe("filter bar helpers", () => {
   });
 
   it("labels values and summarises the selection", () => {
-    expect(optionLabel("installer", "Ann")).toBe("Ann");
+    expect(optionLabel("technician", "Ann")).toBe("Ann");
     expect(optionLabel("status", "Invitation Email Sent")).toBe("Invitation Email Sent");
     expect(facetSummary("dd_code", [])).toBe("DD code");
     expect(facetSummary("state", ["GA"])).toBe("State: GA");

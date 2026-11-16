@@ -14,7 +14,7 @@ import {
 } from "@/lib/api/types";
 import { patchPin, patchStopInPage, patchStopInRoutes } from "@/features/stores/cache";
 
-export const STORE_PAGE_SIZES = [20, 30, 50] as const;
+export const STORE_PAGE_SIZES = [15, 20, 30, 50] as const;
 export const DEFAULT_STORE_PAGE_SIZE = 20;
 
 /** One numbered page of the filtered, sorted stores (with the total), optionally only those in the map view. */
@@ -22,6 +22,16 @@ export function useStoreList(projectId: string, filters: StoreFilters, page: Sto
   return useQuery({
     queryKey: keys.storeList(projectId, filters, page),
     queryFn: () => storesApi.list(projectId, filters, page),
+    placeholderData: keepPreviousData,
+  });
+}
+
+/** The five stores closest to what is typed in the search (IBC#, name, address), for its drop-down. */
+export function useStoreSuggestions(projectId: string, q: string) {
+  return useQuery({
+    queryKey: keys.storeList(projectId, { q, sort: "store_name", dir: "asc" }, { offset: 0, limit: 5, bounds: null }),
+    queryFn: () => storesApi.list(projectId, { q, sort: "store_name", dir: "asc" }, { offset: 0, limit: 5, bounds: null }),
+    enabled: q.length > 0,
     placeholderData: keepPreviousData,
   });
 }
@@ -44,11 +54,11 @@ export function useFilterOptions(projectId: string, filters: StoreFilters) {
 }
 
 /** Pending stores per state, top 10, under every active filter except State. */
-/** Every state with upcoming installs (stores, or screens), most first; the State filter itself is ignored. */
+/** Stores (or screens) of every status per state under the active filters, most first; the State filter itself is ignored. */
 export function useStoresByState(projectId: string, filters: StoreFilters, unit: "stores" | "screens" = "stores") {
   return useQuery({
     queryKey: [...keys.byState(projectId, { ...filters, state: [] }), unit],
-    queryFn: () => storesApi.byState(projectId, { ...filters, state: [] }, true, unit),
+    queryFn: () => storesApi.byState(projectId, { ...filters, state: [] }, false, unit),
     placeholderData: keepPreviousData,
   });
 }

@@ -1,6 +1,6 @@
 /** Pure helpers behind MapView: same-location stacking, status colours, legend counts, bounds. */
 import { deriveStatus, STOP_STATUSES, type Pin, type StopStatus } from "@/lib/api/types";
-import { STATUS_META } from "@/lib/status";
+import { BUCKET_META, BUCKETS, bucketInk, bucketOf, type StatusBucket } from "@/lib/status";
 
 /** What the map counts: locations (one per store) or screens (one per screen row). */
 export type MapUnit = "locations" | "screens";
@@ -75,6 +75,14 @@ export function filterByStatus(pins: Pin[], active: ReadonlySet<StopStatus>, uni
   });
 }
 
+/** Legend counts by status group: stores (by their derived status) or screens. */
+export function bucketCounts(pins: Pin[], unit: MapUnit = "locations"): Record<StatusBucket, number> {
+  const counts = Object.fromEntries(BUCKETS.map((bucket) => [bucket, 0])) as Record<StatusBucket, number>;
+  const byStatus = statusCounts(pins, unit);
+  for (const status of STOP_STATUSES) counts[bucketOf(status)] += byStatus[status];
+  return counts;
+}
+
 /** Legend counts: stores by status, or screens by status. */
 export function statusCounts(pins: Pin[], unit: MapUnit = "locations"): Record<StopStatus, number> {
   const counts = Object.fromEntries(STOP_STATUSES.map((status) => [status, 0])) as Record<StopStatus, number>;
@@ -116,16 +124,17 @@ export function inBounds(point: { lat: number; lng: number }, bounds: Bounds): b
   return point.lat >= bounds.south && point.lat <= bounds.north && inLng;
 }
 
-/** v1 `projectMarkerIcon`: a status-coloured pin with the stack count in its head. */
+/** v1 `projectMarkerIcon`: a pin in its status group's colour with the stack count in its head. */
 export function markerSvg(status: StopStatus, count = 1, emphasis: "normal" | "hover" | "selected" = "normal", overlay: Overlay = NO_OVERLAY): string {
-  const color = STATUS_META[status].color;
+  const color = BUCKET_META[bucketOf(status)].color;
+  const ink = bucketInk(bucketOf(status));
   const label = count > 1 ? (count > 99 ? "99+" : String(count)) : "";
   const ring = emphasis === "selected" ? "#0f172a" : emphasis === "hover" ? "#0891b2" : "#ffffff";
   const svg =
     `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="50" viewBox="0 0 40 50">` +
     `<path fill="${color}" stroke="${ring}" stroke-width="3" d="M20 3C11.2 3 4 10.2 4 19c0 11.8 16 28 16 28s16-16.2 16-28C36 10.2 28.8 3 20 3z"/>` +
     `<circle cx="20" cy="19" r="${count > 1 ? 10 : 6}" fill="#ffffff"/>` +
-    `<text x="20" y="${count > 99 ? 22 : 23}" text-anchor="middle" font-family="Arial, sans-serif" font-size="${count > 99 ? 8 : 12}" font-weight="800" fill="${color}">${label}</text>` +
+    `<text x="20" y="${count > 99 ? 22 : 23}" text-anchor="middle" font-family="Arial, sans-serif" font-size="${count > 99 ? 8 : 12}" font-weight="800" fill="${ink}">${label}</text>` +
     // In route: a blue badge with an arrow, top left. Visited: a green check, top right; partly: an amber dot.
     (overlay.inRoute
       ? `<circle cx="7" cy="7" r="6.5" fill="${OVERLAY_COLORS.route}" stroke="#fff" stroke-width="1.5"/><path d="M4 7h6M7.5 4.5 10 7l-2.5 2.5" stroke="#fff" stroke-width="1.6" fill="none" stroke-linecap="round"/>`
@@ -148,6 +157,12 @@ export type Emphasis = "normal" | "hover" | "selected";
  */
 export function locationSignature(groups: Pick<PinGroup, "key">[]): string {
   return groups.map((group) => group.key).join(",");
+}
+
+/** Which clusterer each marker sits in: a location moving to another status group is rebuilt into that group's
+ *  clusterer, so bubbles never mix groups. A recolour within a group is still only a restyle. */
+export function clusterSignature(groups: Pick<PinGroup, "key" | "status">[]): string {
+  return groups.map((group) => `${group.key}:${bucketOf(group.status)}`).join(",");
 }
 
 export interface MarkerStyle {

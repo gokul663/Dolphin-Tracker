@@ -17,6 +17,7 @@ from dolphin_tracker.api.schemas import (
     StoreFilterOptions,
 )
 from dolphin_tracker.domain.models import ScreenStatus, Stop
+from dolphin_tracker.domain.statuses import StatusBucket
 from dolphin_tracker.services.stores import Bounds, StorePage, StoreQuery, StoreService
 
 router = APIRouter(prefix="/projects/{project_id}/stores", tags=["stores"])
@@ -38,6 +39,13 @@ def store_query(
     screen_size: Annotated[list[str] | None, Query(description="Repeatable; any screen's size")] = None,
     route: Annotated[list[str] | None, Query(description='Repeatable; "In route" or "Not in route"')] = None,
     visit: Annotated[list[str] | None, Query(description="Repeatable; Visited, Partly visited, Not visited")] = None,
+    bucket: Annotated[list[StatusBucket] | None, Query(description="Repeatable; the store's status group")] = None,
+    install_type: Annotated[list[str] | None, Query(description="Repeatable; Technician, Self install, …")] = None,
+    technician: Annotated[list[str] | None, Query(description="Repeatable; a technician's name, \"\" = none")] = None,
+    mount: Annotated[list[str] | None, Query(description='Repeatable; "Needs mount" or "No mount needed"')] = None,
+    fulfilled: Annotated[
+        list[str] | None, Query(description='Repeatable; "Fulfilled", "Not fulfilled" or "No commitment"')
+    ] = None,
     q: Annotated[str, Query(max_length=200)] = "",
     needs_attention: Annotated[bool, Query(description="Only stores added without a name or a verified address")] = (
         False
@@ -50,7 +58,9 @@ def store_query(
     return StoreQuery(
         status=status or [], installer=installer or [], pa=pa or [], state=state or [], city=city or [],
         dma=dma or [], venue_type=venue_type or [], dd_code=dd_code or [], screen_size=screen_size or [],
-        route=route or [], visit=visit or [], q=q, sort=sort, dir=dir, needs_attention=needs_attention,
+        route=route or [], visit=visit or [], bucket=bucket or [], install_type=install_type or [],
+        technician=technician or [], mount=mount or [], fulfilled=fulfilled or [], q=q, sort=sort, dir=dir,
+        needs_attention=needs_attention,
     )
 
 

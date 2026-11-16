@@ -185,17 +185,17 @@ def get_device_review_repository(table: Annotated[object, Depends(get_table)]) -
 
 
 @lru_cache
-def _device_data(function_name: str, mongo_uri: str, mongo_uri_secret: str, region: str) -> DeviceDataSource | None:
+def _device_data(function_name: str, mongo_uri: str, mongo_uri_param: str, region: str) -> DeviceDataSource | None:
     settings = Settings(
         _env_file=None, device_data_function_name=function_name, mongo_uri=mongo_uri,
-        mongo_uri_secret=mongo_uri_secret, aws_region=region,
+        mongo_uri_param=mongo_uri_param, aws_region=region,
     )
     return make_device_data(settings)  # one Mongo client (local) or Lambda client per process
 
 
 def get_device_data(settings: SettingsDep) -> DeviceDataSource | None:
     return _device_data(
-        settings.device_data_function_name, settings.mongo_uri, settings.mongo_uri_secret, settings.aws_region
+        settings.device_data_function_name, settings.mongo_uri, settings.mongo_uri_param, settings.aws_region
     )
 
 

@@ -133,8 +133,12 @@ class StoreDetailsUpdate(ApiModel):
     image_url: str | None = Field(default=None, max_length=5000)
     cms_details_added: bool | None = None
     outlet_status: str | None = Field(default=None, max_length=20)
+    install_type: str | None = Field(default=None, max_length=20)
     committed_dolphin_screens: int | None = Field(default=None, ge=0)  # null clears it (unknown)
     committed_store_tvs: int | None = Field(default=None, ge=0)
+    wall_mounts_needed: int | None = Field(default=None, ge=0)
+    ceiling_mounts_needed: int | None = Field(default=None, ge=0)
+    tv_mounts_needed: int | None = Field(default=None, ge=0)
     preferred_area: str | None = Field(default=None, max_length=500)
     ceiling_type: str | None = Field(default=None, max_length=200)
     ceiling_height: str | None = Field(default=None, max_length=100)
@@ -189,6 +193,11 @@ class StoreFilterOptions(ApiModel):
     screen_size: list[FilterOption]
     route: list[FilterOption]
     visit: list[FilterOption]
+    bucket: list[FilterOption]
+    install_type: list[FilterOption]
+    technician: list[FilterOption]
+    mount: list[FilterOption]
+    fulfilled: list[FilterOption]
 
 
 class StoreFieldSpec(ApiModel):

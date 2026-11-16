@@ -4,7 +4,10 @@ import type { Bounds, MapUnit } from "@/components/map/pins";
 export type SortDir = "asc" | "desc";
 
 /** The Stores tab filters, in STORE-MODEL §5 order. Each holds the selected values (OR within, AND across). */
-export const FACETS = ["status", "route", "visit", "installer", "pa", "state", "city", "dma", "venue_type", "dd_code", "screen_size"] as const;
+export const FACETS = [
+  "bucket", "status", "route", "visit", "technician", "install_type", "pa", "state", "city", "dma", "venue_type", "dd_code",
+  "screen_size", "mount", "fulfilled",
+] as const;
 export type Facet = (typeof FACETS)[number];
 export type FacetSelection = Record<Facet, string[]>;
 

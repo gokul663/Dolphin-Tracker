@@ -79,7 +79,7 @@ export function DashboardPage() {
           <KpiCard icon={MapPin} label="Total sites" value={totals.sites} color="#0891b2" />
           <KpiCard icon={Users} label="Total installers" value={totals.installers} color="#7c3aed" />
           <KpiCard icon={CheckCircle2} label="Completed" value={totals.complete} color="#16a34a" />
-          <KpiCard icon={Clock} label="Upcoming" value={totals.pending} color="#d97706" />
+          <KpiCard icon={Clock} label="Upcoming" value={totals.pending} color="#ca8a04" />
           <KpiCard icon={AlertTriangle} label="Offline" value={totals.offline} color="#dc2626" />
           <KpiCard
             icon={MonitorPlay}

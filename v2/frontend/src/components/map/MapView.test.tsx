@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { screen } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import { densityColor, MapView } from "@/components/map/MapView";
+import { screen, within } from "@testing-library/react";
+import { MapView } from "@/components/map/MapView";
+import { bucketShade, BUCKET_META } from "@/lib/status";
 import { mockApi, renderWithProviders } from "@/test/render";
 import type { Pin } from "@/lib/api/types";
 
@@ -17,35 +17,26 @@ describe("MapView", () => {
     renderWithProviders(<MapView pins={pins} />);
     expect(await screen.findByText(/no Google Maps browser key is configured/)).toBeTruthy();
     expect(screen.getByText("3 records · 2 pins · 2 at 1 shared addresses")).toBeTruthy();
-    expect(screen.getByRole("button", { name: /Upcoming 1/ }).getAttribute("aria-pressed")).toBe("true");
   });
 
-  it("legend toggles filter the pins like v1", async () => {
+  it("the legend only explains the colours: one entry per status group with stores, no toggles", async () => {
     mockApi({ "GET /api/config/maps": () => ({ google_maps_browser_key: "" }) });
     renderWithProviders(<MapView pins={pins} />);
-    await userEvent.click(await screen.findByRole("button", { name: /Completed 1/ }));
-    expect(screen.getByRole("button", { name: /Completed 1/ }).getAttribute("aria-pressed")).toBe("false");
-    expect(screen.getByText("2 records · 2 pins")).toBeTruthy();
-    await userEvent.click(screen.getByRole("button", { name: /Upcoming 1/ }));
-    await userEvent.click(screen.getByRole("button", { name: /Archived 1/ }));
-    // Turning off the last visible status brings every status back.
-    expect(screen.getByText("3 records · 2 pins · 2 at 1 shared addresses")).toBeTruthy();
-    expect(screen.getByRole("button", { name: /Completed 1/ }).getAttribute("aria-pressed")).toBe("true");
+    await screen.findByText(/no Google Maps browser key/);
+    const legend = screen.getByRole("list", { name: "Status colours" });
+    expect(within(legend).getAllByRole("listitem").map((item) => item.textContent)).toEqual(["Completed 1", "Upcoming 1", "Cancelled 1"]);
+    expect(within(screen.getByRole("group", { name: "Map legend" })).queryAllByRole("button")).toEqual([]);
+    // Each status has its own light → dark bubble scale right under its name.
+    for (const item of within(legend).getAllByRole("listitem")) {
+      const bucket = item.textContent!.split(" ")[0]!;
+      expect(within(item).getByLabelText(`${bucket} clusters, light to dark`)).toBeTruthy();
+    }
   });
 
-  it("lists only statuses that have stores", async () => {
-    mockApi({ "GET /api/config/maps": () => ({ google_maps_browser_key: "" }) });
-    renderWithProviders(<MapView pins={pins} />);
-    await screen.findByRole("button", { name: /Upcoming 1/ });
-    expect(screen.queryByRole("button", { name: /Offline/ })).toBeNull();
-    expect(screen.queryByRole("button", { name: /Cancelled/ })).toBeNull();
-    expect(screen.getByLabelText("Clusters")).toBeTruthy();
-  });
-
-  it("colours clusters light → dark blue by density", () => {
-    expect(densityColor(2)).toBe("#bae6fd");
-    expect(densityColor(20)).toBe("#3b82f6");
-    expect(densityColor(200)).toBe("#1e3a8a");
-    expect(densityColor(5000)).toBe("#1e3a8a");
+  it("shades each group's bubbles light → dark by count", () => {
+    expect(bucketShade("Offline", 1)).toBe(BUCKET_META.Offline.light);
+    expect(bucketShade("Offline", 200)).toBe(BUCKET_META.Offline.dark);
+    expect(bucketShade("Completed", 5000)).toBe(BUCKET_META.Completed.dark);
+    expect(bucketShade("Completed", 20)).not.toBe(BUCKET_META.Completed.light);
   });
 });

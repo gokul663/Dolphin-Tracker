@@ -212,8 +212,10 @@ class SampleSheetImportTests(unittest.TestCase):
         self.assertEqual((alpha_again["duplicate_of"], alpha_again["duplicate_reason"]), (0, "external_id"))
         self.assertEqual((beta_dup["duplicate_of"], beta_dup["duplicate_reason"]), (1, "address"))
 
+        # Not a work status: the sheet's mark for a self install, so Upcoming and not flagged.
         self.assertEqual((gamma["venue_status"], gamma["venue_status_valid"], gamma["venue_status_raw"]),
-                         ("Upcoming", False, "on hold"))
+                         ("Upcoming", True, "on hold"))
+        self.assertEqual(gamma["details"]["install_type"], "Self install")
         self.assertEqual(len(gamma["screens"]), 3)
         self.assertEqual(set(gamma["problems"]), {"external_id", "owner_email", "committed_dolphin_screens"})
         self.assertIsNone(gamma["details"]["committed_dolphin_screens"])

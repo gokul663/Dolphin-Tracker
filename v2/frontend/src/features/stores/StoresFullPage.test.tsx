@@ -59,8 +59,18 @@ describe("full-page map and chart", () => {
   it("the chart page counts what the switch says", async () => {
     useStoresUi.setState({ projectId: null });
     const api = renderPage("states", "unit=screens");
-    expect(await screen.findByRole("region", { name: "Top states by upcoming screens" })).toBeTruthy();
+    expect(await screen.findByRole("region", { name: "Top states by screens" })).toBeTruthy();
     const byState = api.calls.filter((c) => c.url.pathname.endsWith("/by-state")).at(-1)!.url;
     expect(byState.searchParams.get("unit")).toBe("screens");
+  });
+
+  it("the full-page chart lists every state and a click filters to it (and clears on a second click)", async () => {
+    useStoresUi.setState({ projectId: null });
+    renderPage("states", "");
+    const chart = await screen.findByRole("region", { name: "Top states by stores" });
+    await userEvent.click(await within(chart).findByRole("button", { name: "TX 3" }));
+    await waitFor(() => expect(screen.getByTestId("where").textContent).toBe("?state=TX"));
+    await userEvent.click(within(chart).getByRole("button", { name: "TX 3" }));
+    await waitFor(() => expect(screen.getByTestId("where").textContent).toBe(""));
   });
 });

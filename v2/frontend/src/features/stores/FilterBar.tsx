@@ -11,7 +11,7 @@ import { facetDisabled, facetOptions, facetSummary, optionLabel } from "@/featur
 import type { ScreenStatus, StoreFilterOptions } from "@/lib/api/types";
 import { STATUS_META } from "@/lib/status";
 import { cn } from "@/lib/utils";
-import { FACETS, type Facet, type FacetSelection } from "@/stores/ui";
+import type { Facet, FacetSelection } from "@/stores/ui";
 
 interface Props {
   options: StoreFilterOptions | undefined;
@@ -20,13 +20,23 @@ interface Props {
 }
 
 /** Short, fixed lists need no search box; every other filter gets one above its values. */
-const UNSEARCHED: ReadonlySet<Facet> = new Set(["status", "visit", "screen_size", "route"]);
+const UNSEARCHED: ReadonlySet<Facet> = new Set(["status", "visit", "screen_size", "route", "install_type", "mount", "fulfilled"]);
+/** Shown as chips of their own (`BucketChips`), not as a dropdown. */
+const AS_CHIPS: ReadonlySet<Facet> = new Set(["bucket"]);
 
-/** One dropdown per filter in STORE-MODEL §5 order; values come with store counts under the other filters. */
+/** The filters offered, in order. The others (route, visits, technician, install type, mount, screen size, screens
+ *  done) still work from a link but have no dropdown; the status groups are chips of their own. */
+export const SHOWN_FACETS: readonly Facet[] = ["status", "state", "pa", "city", "dma", "venue_type", "dd_code"];
+
+/** One dropdown per filter; values come with store counts under the other filters. PA is left out while the
+ *  project has a single PA (nothing to choose). */
 export function FilterBar({ options, facets, onToggle }: Props) {
+  const shown = SHOWN_FACETS.filter(
+    (facet) => !AS_CHIPS.has(facet) && !(facet === "pa" && (options?.pa?.length ?? 0) <= 1 && facets.pa.length === 0),
+  );
   return (
     <div className="flex min-w-0 flex-wrap gap-1.5" role="group" aria-label="Filters">
-      {FACETS.map((facet) => {
+      {shown.map((facet) => {
         const selected = facets[facet];
         const disabled = facetDisabled(options, facet, selected);
         return (
@@ -37,10 +47,10 @@ export function FilterBar({ options, facets, onToggle }: Props) {
                 size="sm"
                 aria-label={disabled ? `${facetSummary(facet, selected)} (no values)` : facetSummary(facet, selected)}
                 title={disabled ? "No store in this project has a value for this filter" : undefined}
-                className={cn("max-w-52 font-mono text-[11px]", selected.length > 0 && "border-slate-800 bg-slate-800 text-white hover:bg-slate-700 hover:text-white")}
+                className={cn("max-w-52 font-mono text-xs", selected.length > 0 && "border-slate-800 bg-slate-800 text-white hover:bg-slate-700 hover:text-white")}
               >
                 <span className="truncate">{facetSummary(facet, selected)}</span>
-                {disabled ? <span className="text-[10px] text-slate-400">no values</span> : <ChevronDown />}
+                {disabled ? <span className="text-[11px] text-slate-400">no values</span> : <ChevronDown />}
               </Button>
             </DropdownMenuTrigger>
             <FacetMenu facet={facet} options={options} selected={selected} onToggle={onToggle} />
@@ -89,7 +99,7 @@ function FacetMenu({ facet, options, selected, onToggle }: { facet: Facet; optio
                 <span className="size-2 rounded-full" style={{ background: STATUS_META[option.value as ScreenStatus]?.color }} />
               )}
               <span className="flex-1">{optionLabel(facet, option.value)}</span>
-              <span className="font-mono text-[10px] text-slate-400">{option.count}</span>
+              <span className="font-mono text-xs text-slate-400">{option.count}</span>
             </DropdownMenuCheckboxItem>
           ))
         )}

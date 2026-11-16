@@ -15,7 +15,7 @@ export const reportDay = (date: string) => (date.length >= 10 ? `${date.slice(5,
 export function DeviceBadge({ date, className }: { date: string; className?: string }) {
   return (
     <span
-      className={cn("inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] font-medium", DEVICE_TONE.chip, className)}
+      className={cn("inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[11px] font-medium", DEVICE_TONE.chip, className)}
       title={`From the Dolphin device report of ${date}`}
     >
       <Radio size={10} /> Dolphin data · {reportDay(date)}

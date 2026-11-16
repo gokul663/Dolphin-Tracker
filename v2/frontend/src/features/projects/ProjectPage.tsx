@@ -9,20 +9,20 @@ import {
   useParams,
 } from "react-router";
 import { useStoresUi } from "@/stores/ui";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
   useProject,
   useRefreshWhenRoutingFinishes,
 } from "@/features/projects/api";
-import { ProjectKpis } from "@/features/projects/ProjectKpis";
+import { ALERT_BUBBLE_WIDTH, ProjectKpis } from "@/features/projects/ProjectKpis";
 import { useAutoDeviceSync } from "@/features/device/api";
 import { DeviceBadge } from "@/features/device/DeviceBits";
 import { ReviewDialog } from "@/features/device/ReviewDialog";
 import { ApiError, type Project } from "@/lib/api/types";
-import { PROJECT_TYPE_LABELS } from "@/lib/status";
 import { cn } from "@/lib/utils";
+
+const NO_BUCKETS: string[] = [];
 
 const TABS = [
   { to: "stores", label: "Stores" },
@@ -41,6 +41,7 @@ export function ProjectPage() {
   useRefreshWhenRoutingFinishes(query.data);
   const autoSync = useAutoDeviceSync(query.data);
   const [reviewing, setReviewing] = useState(false);
+  const activeBuckets = useStoresUi((state) => (state.projectId === projectId ? state.facets.bucket : NO_BUCKETS));
 
   if (query.isPending)
     return (
@@ -67,34 +68,49 @@ export function ProjectPage() {
     <section className="space-y-4">
       {/* One row, as in v1: back + name, the KPI strip, then the sections. */}
       <div className="flex flex-wrap items-stretch gap-3">
-        <div className="flex min-w-0 items-center gap-3 rounded-xl border bg-white px-3 py-2 shadow-sm">
-          <Link
-            to="/"
-            className="inline-flex shrink-0 items-center gap-1 rounded-md border px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-slate-600 hover:bg-slate-50 hover:text-brand"
-          >
-            <ArrowLeft size={12} /> Projects
-          </Link>
-          <h1 className="min-w-0 truncate border-l pl-3 font-display text-2xl leading-tight tracking-[3px]">
-            {project.name}
-          </h1>
+        {/* Breadcrumb on top, the project's name as the main part, its PA under it; centred. */}
+        <div className="flex min-w-[9rem] flex-col items-center justify-center gap-0.5 rounded-xl border bg-white px-4 py-2 text-center shadow-sm">
+          <nav aria-label="Breadcrumb">
+            <Link
+              to="/"
+              className="inline-flex items-center gap-1 font-mono text-xs uppercase tracking-wider text-slate-500 hover:text-brand hover:underline"
+            >
+              <ArrowLeft size={12} /> Projects
+            </Link>
+          </nav>
+          <h1 className="min-w-0 max-w-full truncate font-display text-3xl leading-tight tracking-[3px]">{project.name}</h1>
+          {project.pa && (
+            <p className="font-mono text-xs text-slate-500" aria-label="Project PA">
+              PA · <span className="font-medium text-slate-700">{project.pa}</span>
+            </p>
+          )}
         </div>
-        {project.device_sync && project.device_sync.review_count > 0 && (
-          <button
+        <div className="flex min-w-0 flex-1">
+          <ProjectKpis
+            kpi={project.kpi}
+            // In the same row as the other bubbles, so it gets the same share of the width.
+            leading={
+              project.device_sync && project.device_sync.review_count > 0 ? (
+                <button
             type="button"
             onClick={() => setReviewing(true)}
-            className="flex flex-col items-center justify-center rounded-xl border border-cyan-300 bg-cyan-50 px-3 py-2 text-center text-cyan-900 shadow-sm hover:bg-cyan-100"
+            className={cn("flex flex-col items-center justify-center rounded-xl border border-cyan-300 bg-cyan-50 px-3 py-2 text-center text-cyan-900 shadow-sm hover:bg-cyan-100", ALERT_BUBBLE_WIDTH)}
             aria-label={`${project.device_sync.review_count} screens in the Dolphin data need review`}
             title="Screens the CMS reports for this PA that are in no store here: add them or set them aside"
           >
             <span className="flex items-center gap-1 text-2xl font-semibold leading-tight tabular-nums">
               <Inbox className="size-5" /> {project.device_sync.review_count.toLocaleString()}
             </span>
-            <span className="max-w-[10ch] text-balance font-mono text-[10px] uppercase leading-tight tracking-wider">Needs review</span>
+            <span className="text-balance font-mono text-xs uppercase leading-tight tracking-wider">Needs review</span>
           </button>
-        )}
-        <div className="flex min-w-0 flex-1">
-          <ProjectKpis
-            kpi={project.kpi}
+              ) : null
+            }
+            activeBuckets={activeBuckets}
+            onBucket={(bucket) => {
+              useStoresUi.getState().enterProject(project.id);
+              useStoresUi.getState().toggleFacet("bucket", bucket);
+              navigate("stores");
+            }}
             onNeedsAttention={() => {
               useStoresUi.getState().enterProject(project.id);
               useStoresUi.getState().setNeedsAttention(true);
@@ -102,7 +118,7 @@ export function ProjectPage() {
             }}
           />
         </div>
-        {/* One column width: the tabs, the type/PA line and the Dolphin data pill line up edge to edge. */}
+        {/* One column width: the tabs and the Dolphin data pill line up edge to edge. */}
         <div className="flex flex-col items-stretch justify-center gap-1.5">
           <nav
             aria-label="Project sections"
@@ -114,7 +130,7 @@ export function ProjectPage() {
                 to={tab.to}
                 className={({ isActive }) =>
                   cn(
-                    "rounded-md px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider",
+                    "rounded-md px-3 py-1.5 font-mono text-xs uppercase tracking-wider",
                     isActive
                       ? "bg-brand text-white"
                       : "text-slate-600 hover:bg-slate-100",
@@ -125,18 +141,9 @@ export function ProjectPage() {
               </NavLink>
             ))}
           </nav>
-          <div className="flex flex-wrap items-center justify-end gap-1.5 font-mono text-[10px] text-slate-500">
-            <Badge
-              variant="outline"
-              className="px-1.5 py-0 font-mono text-[9px]"
-            >
-              {PROJECT_TYPE_LABELS[project.project_type]}
-            </Badge>
-            <span>PA · {project.pa || "—"}</span>
-          </div>
-          {/* Its own line, under the type and PA. */}
+          {/* Under the tabs: when the Dolphin data was last synced. */}
           {autoSync.isPending ? (
-            <span className="flex items-center gap-1 font-mono text-[10px] text-cyan-800">
+            <span className="flex items-center gap-1 font-mono text-xs text-cyan-800">
               <Loader2 className="size-3 animate-spin" /> Syncing Dolphin data
             </span>
           ) : (

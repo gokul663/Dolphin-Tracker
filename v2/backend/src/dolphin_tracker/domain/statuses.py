@@ -60,8 +60,101 @@ STATUS_ALIASES: dict[str, ScreenStatus] = {
     ),
     "offline": ScreenStatus.OFFLINE,
     "archived": ScreenStatus.ARCHIVED,
-    **dict.fromkeys(("cancelled", "canceled"), ScreenStatus.CANCELLED),
+    **dict.fromkeys(
+        ("cancelled", "canceled", "cancelled location", "canceled location"), ScreenStatus.CANCELLED
+    ),
 }
+
+
+
+class StatusBucket(StrEnum):
+    """The five groups the UI shows (KPI bubbles, filter chips, map colours). Stored statuses keep all nine."""
+
+    COMPLETED = "Completed"
+    UPCOMING = "Upcoming"
+    IN_PROGRESS = "In Progress"
+    OFFLINE = "Offline"
+    CANCELLED = "Cancelled"
+
+
+BUCKET_OF: dict[ScreenStatus, StatusBucket] = {
+    ScreenStatus.UPCOMING: StatusBucket.UPCOMING,
+    ScreenStatus.INVITATION_EMAIL_SENT: StatusBucket.IN_PROGRESS,
+    ScreenStatus.SHIPPED: StatusBucket.IN_PROGRESS,
+    ScreenStatus.DELIVERED: StatusBucket.IN_PROGRESS,
+    ScreenStatus.NEEDS_MORE_WORK: StatusBucket.IN_PROGRESS,
+    ScreenStatus.COMPLETED: StatusBucket.COMPLETED,
+    ScreenStatus.OFFLINE: StatusBucket.OFFLINE,
+    ScreenStatus.ARCHIVED: StatusBucket.CANCELLED,
+    ScreenStatus.CANCELLED: StatusBucket.CANCELLED,
+}
+BUCKET_ORDER: tuple[StatusBucket, ...] = (
+    StatusBucket.COMPLETED,
+    StatusBucket.UPCOMING,
+    StatusBucket.IN_PROGRESS,
+    StatusBucket.OFFLINE,
+    StatusBucket.CANCELLED,
+)
+
+
+def bucket_of(status: object) -> StatusBucket:
+    return BUCKET_OF[ScreenStatus(status)]
+
+
+class InstallType(StrEnum):
+    TECHNICIAN = "Technician"
+    SELF_INSTALL = "Self install"
+    REP_INSTALL = "Rep install"
+
+
+INSTALL_TYPES = tuple(item.value for item in InstallType)
+# Sheet status values that say nothing about who installs (completed, archived, cancelled location, offline and
+# their spellings). Any other non-blank value except "technician" marks a self install.
+_NO_INSTALL_TYPE = frozenset(
+    {ScreenStatus.COMPLETED, ScreenStatus.ARCHIVED, ScreenStatus.CANCELLED, ScreenStatus.OFFLINE}
+)
+
+
+def install_type_from_sheet(value: object) -> str:
+    """The sheet's status cell → install type: "technician" → Technician, the work statuses (completed, archived,
+    cancelled location, offline) and blank → "" (unknown), anything else → Self install."""
+    raw = "" if value is None else " ".join(str(value).split()).lower()
+    if raw == "technician":
+        return InstallType.TECHNICIAN.value
+    if not raw or STATUS_ALIASES.get(raw) in _NO_INSTALL_TYPE:
+        return ""
+    return InstallType.SELF_INSTALL.value
+
+
+# What the sheet's Technician column holds besides names: an install type, or "not known". None of them is a person.
+_TECHNICIAN_INSTALL_TYPES = {
+    "self install": InstallType.SELF_INSTALL.value, "self-install": InstallType.SELF_INSTALL.value,
+    "self": InstallType.SELF_INSTALL.value, "rep install": InstallType.REP_INSTALL.value,
+    "rep-install": InstallType.REP_INSTALL.value, "rep": InstallType.REP_INSTALL.value,
+}
+_NOT_A_TECHNICIAN = frozenset({"unsure", "unknown", "other", "n/a", "na", "none", "tbd", "-", "?"})
+
+
+# On the wall: done, on the wall but not reporting, or visited and still needing work. Counts as installed against
+# the committed screens and TVs.
+INSTALLED_STATUSES = frozenset({ScreenStatus.COMPLETED, ScreenStatus.OFFLINE, ScreenStatus.NEEDS_MORE_WORK})
+
+
+def store_assignment(installer_name: str, install_type: str) -> tuple[str, str]:
+    """(technician, install type) for a store. The Technician column's "self install" / "REP install" are install
+    types and "unsure" / "OTHER" mean nobody, so none of them is kept as a name. A named technician implies a
+    Technician install when no type is set; a self or rep install has no technician."""
+    name = " ".join(installer_name.split())
+    key = name.lower()
+    if key in _TECHNICIAN_INSTALL_TYPES:
+        return "", install_type or _TECHNICIAN_INSTALL_TYPES[key]
+    if key in _NOT_A_TECHNICIAN:
+        return "", install_type
+    if install_type in (InstallType.SELF_INSTALL.value, InstallType.REP_INSTALL.value):
+        return "", install_type  # the store or a rep installs: no technician is sent
+    if name and not install_type:
+        return name, InstallType.TECHNICIAN.value
+    return name, install_type
 
 # v1's four values (§4.4). Only the migration and items written before v2 carry them.
 LEGACY_STATUSES: dict[str, ScreenStatus] = {
@@ -73,7 +166,8 @@ LEGACY_STATUSES: dict[str, ScreenStatus] = {
 
 
 def normalize_screen_status(value: object) -> tuple[ScreenStatus, bool]:
-    """A sheet cell → (status, recognised). Unknown values are Upcoming and flagged (`False`) for review."""
+    """A sheet cell → (status, recognised). Unknown values are Upcoming and reported as not recognised; the import
+    reads them as a self install (`install_type_from_sheet`) rather than flagging the row."""
     raw = "" if value is None else " ".join(str(value).split()).lower()
     if raw in STATUS_ALIASES:
         return STATUS_ALIASES[raw], True

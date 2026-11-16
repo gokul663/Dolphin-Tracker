@@ -9,6 +9,7 @@ from dolphin_tracker.api.schemas import (
     AppendResult,
     AppendStops,
     ExternalIdSet,
+    HardwareCounts,
     Pin,
     ProgressUpdate,
     ScreensUpdate,
@@ -108,6 +109,15 @@ def filter_options(project_id: str, service: ServiceDep, query: QueryDep) -> dic
     """Distinct values per filter, each counted under the other active filters (whole project, like pins)."""
     try:
         return service.filters(project_id, query)
+    except ValueError as exc:
+        raise _bad_request(exc) from exc
+
+
+@router.get("/hardware", response_model=HardwareCounts)
+def stores_hardware(project_id: str, service: ServiceDep, query: QueryDep) -> dict:
+    """Installed hardware (sticks, Dolphin TVs by size) of the stores the filters keep: every filter applies."""
+    try:
+        return service.hardware(project_id, query)
     except ValueError as exc:
         raise _bad_request(exc) from exc
 

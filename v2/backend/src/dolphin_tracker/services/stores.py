@@ -400,6 +400,22 @@ class StoreService:
         ranked = sorted(((s, c) for s, c in counts.items() if c), key=lambda item: (-item[1], item[0]))[:limit]
         return [{"state": state, "count": count} for state, count in ranked]
 
+    def hardware(self, project_id: str, query: StoreQuery | None = None) -> dict[str, Any]:
+        """The installed hardware of the stores the filters keep (the "Hardware cost" chart): installed screens (a stick
+        each) and installed Dolphin TVs by size. Prices live on the project; the page multiplies."""
+        project = self._project(project_id)
+        stops = self._filter(project, self._stores.list_all(project_id), query or StoreQuery())
+        by_size = {'24"': 0, '43"': 0, '50"': 0}
+        screens = stores = 0
+        for stop in stops:
+            installed = [screen for screen in stop.screens if screen.status in INSTALLED_STATUSES]
+            stores += bool(installed)
+            screens += len(installed)
+            for screen in installed:
+                if screen.is_dolphin_screen:
+                    by_size[screen.screen_size] = by_size.get(screen.screen_size, 0) + 1
+        return {"installed_screens": screens, "installed_stores": stores, "installed_dolphin_by_size": by_size}
+
     def field_usage(self, project_id: str) -> dict[str, int]:
         """How many stores hold a non-empty value per `fields` key (Settings warns before a field is removed)."""
         self._project(project_id)

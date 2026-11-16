@@ -4,7 +4,8 @@ import { Button } from "@/components/ui/button";
 import { MapView } from "@/components/map/MapView";
 import { OpenFullPage, UnitToggle } from "@/features/stores/StoresViewControls";
 import { useProjectContext } from "@/features/projects/ProjectPage";
-import { DEFAULT_STORE_PAGE_SIZE, useFilterOptions, usePins, useStoreList, useStoresByState } from "@/features/stores/api";
+import { DEFAULT_STORE_PAGE_SIZE, useFilterOptions, usePins, useStoreHardware, useStoreList, useStoresByState } from "@/features/stores/api";
+import { HardwareCostChart } from "@/features/stores/HardwareCostChart";
 import { BucketChips } from "@/features/stores/BucketChips";
 import { FilterBar } from "@/features/stores/FilterBar";
 import { toStoreFilters } from "@/features/stores/filters";
@@ -60,6 +61,7 @@ export function StoresTab() {
   const unit = useStoresUi((state) => state.unit);
   const setUnit = useStoresUi((state) => state.setUnit);
   const byState = useStoresByState(project.id, selection, unit === "screens" ? "screens" : "stores");
+  const hardware = useStoreHardware(project.id, selection);
 
   const stops = list.data?.items ?? [];
   const total = list.data?.total ?? 0;
@@ -96,17 +98,21 @@ export function StoresTab() {
             onBoundsChange={ui.setBounds}
           />
         </div>
-        <div className="flex min-h-0 flex-col overflow-y-auto rounded-xl">
-          <Suspense fallback={<Card className="h-56 animate-pulse bg-slate-50" aria-label="Top states (loading)" />}>
-            <TopStatesChart
-              data={byState.data ?? []}
-              selected={ui.facets.state}
-              // Every state, read only here (the panel scrolls); the full-page chart filters on click.
-              unit={unit}
-              className="min-h-full"
-              action={<OpenFullPage projectId={project.id} view="states" label="Open chart in a new tab" />}
-            />
-          </Suspense>
+        {/* Top states (scrolls when long), then the hardware cost of the same filtered stores. */}
+        <div className="flex min-h-0 flex-col gap-3">
+          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto rounded-xl">
+            <Suspense fallback={<Card className="h-56 animate-pulse bg-slate-50" aria-label="Top states (loading)" />}>
+              <TopStatesChart
+                data={byState.data ?? []}
+                selected={ui.facets.state}
+                // Every state, read only here (the panel scrolls); the full-page chart filters on click.
+                unit={unit}
+                className="min-h-full"
+                action={<OpenFullPage projectId={project.id} view="states" label="Open chart in a new tab" />}
+              />
+            </Suspense>
+          </div>
+          <HardwareCostChart counts={hardware.data} costs={project.hardware_costs} projectId={project.id} />
         </div>
       </div>
       {/* As tall as its rows, up to three quarters of the screen (then the rows scroll): no empty band under a short

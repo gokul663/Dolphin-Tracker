@@ -142,11 +142,13 @@ class ProjectService:
     UPDATABLE = frozenset(
         {
             "name", "pa", "device_pa", "project_type", "field_agent", "partner_account", "pa_percentage",
-            "dolphin_percentage", "store_percentage", "fa_percentage", "field_schema",
+            "dolphin_percentage", "store_percentage", "fa_percentage", "field_schema", "hardware_costs",
         }
     )
     REQUIRED_TEXT = ("name",)
-    NOT_NULL = ("name", "pa", "device_pa", "project_type", "field_agent", "partner_account", "field_schema")
+    NOT_NULL = (
+        "name", "pa", "device_pa", "project_type", "field_agent", "partner_account", "field_schema", "hardware_costs",
+    )
 
     def update(self, project_id: str, changes: dict[str, Any], *, expected_version: int | None = None) -> Project:
         """Metadata only (bounds are checked by the request model). A new `stops_per_day` applies from the next

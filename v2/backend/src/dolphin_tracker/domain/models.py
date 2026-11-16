@@ -15,6 +15,7 @@ from dolphin_tracker.domain.statuses import (  # re-exported: callers import sta
     LEGACY_STATUSES,
     ScreenStatus,
     derive_store_status,
+    dolphin_screen_size,
     store_assignment,
 )
 from dolphin_tracker.domain.statuses import (
@@ -72,11 +73,10 @@ class Screen(ApiModel):
     @model_validator(mode="after")
     def _dolphin_screen_size(self) -> Self:
         if self.is_dolphin_screen:
-            self.screen_size = DOLPHIN_SCREEN_SIZE  # every Dolphin screen is the 24-inch one; sizes are for store TVs
+            self.screen_size = dolphin_screen_size(self.screen_size)
         return self
 
 
-DOLPHIN_SCREEN_SIZE = '24"'
 
 
 class RoutingStatus(StrEnum):
@@ -117,6 +117,16 @@ class FieldDef(ApiModel):
     source_column: str | None = None
 
 
+class HardwareCosts(ApiModel):
+    """What the hardware costs Dolphin, per project (dollars; None = not set). Every installed screen has a stick; a
+    Dolphin TV also costs its screen, by size."""
+
+    stick: float | None = Field(default=None, ge=0)
+    screen_24: float | None = Field(default=None, ge=0)
+    screen_43: float | None = Field(default=None, ge=0)
+    screen_50: float | None = Field(default=None, ge=0)
+
+
 class Project(ApiModel):
     id: str
     name: str
@@ -131,6 +141,7 @@ class Project(ApiModel):
     dolphin_percentage: float | None = None
     store_percentage: float | None = None
     fa_percentage: float | None = None
+    hardware_costs: HardwareCosts = Field(default_factory=HardwareCosts)
     stops_per_day: int = Field(default=8, ge=1, le=50)
     field_schema: list[FieldDef] = Field(default_factory=list)
     # The column → field mapping the last import confirmed, by normalised header (STORE-MODEL §6); the next

@@ -76,6 +76,7 @@ function renderTab(routes: Parameters<typeof mockApi>[0] = {}, onRender?: () => 
     "GET /api/config/store-fields": () => STORE_FIELDS_FOR_TESTS,
     "GET /api/projects/p1/stores/filters": () => FILTER_OPTIONS,
     "GET /api/projects/p1/stores/by-state": () => [{ state: "GA", count: 2 }, { state: "TN", count: 1 }],
+    "GET /api/projects/p1/stores/hardware": () => ({ installed_screens: 0, installed_stores: 0, installed_dolphin_by_size: { '24"': 0, '43"': 0, '50"': 0 } }),
     ...routes,
   });
   const { client } = renderWithProviders(
@@ -405,6 +406,29 @@ describe("StoresTab", () => {
     expect(calls.some((call) => call.url.pathname.endsWith("/device-overwrite"))).toBe(false);
   });
 
+  it("hardware cost sits under Top states: completed screens only, priced from Settings, following the filters", async () => {
+    const { calls } = renderTab({
+      "GET /api/projects/p1": () => makeSummary({ hardware_costs: { stick: 40, screen_24: 120, screen_43: 300, screen_50: null } }),
+      "GET /api/projects/p1/stores/hardware": () => ({ installed_screens: 5, installed_stores: 4, installed_dolphin_by_size: { '24"': 3, '43"': 1, '50"': 0 } }),
+    });
+    await screen.findByText("Alpha Mart");
+    const chart = await screen.findByRole("region", { name: "Hardware cost" });
+    // 5 sticks × 40 + 3 × 120 + 1 × 300 = 860
+    await waitFor(() => expect(within(chart).getByLabelText("Hardware cost total").textContent).toBe("$860"));
+    expect(chart.textContent).toContain("Completed screens only");
+    const items = within(within(chart).getByRole("list", { name: "Hardware cost by item" })).getAllByRole("listitem").map((item) => item.textContent);
+    expect(items).toEqual(["5 × Sticks @ $40$200", '3 × 24" Dolphin TVs @ $120$360', '1 × 43" Dolphin TVs @ $300$300']);
+    // Under the Top states chart, in the same column.
+    const states = screen.getByRole("region", { name: "Top states by stores" });
+    expect(states.parentElement?.parentElement?.contains(chart)).toBe(true);
+    await userEvent.click(within(screen.getByRole("group", { name: "Filters" })).getByRole("button", { name: "City" }));
+    await userEvent.click(await screen.findByRole("menuitemcheckbox", { name: /Decatur/ }));
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() =>
+      expect([...calls].reverse().find((call) => call.url.pathname.endsWith("/hardware"))?.url.searchParams.getAll("city")).toEqual(["Decatur"]),
+    );
+  });
+
   it("an unverified address offers Verify address, which saves Google's pin", async () => {
     const { calls } = renderTab({
       "GET /api/projects/p1/stores/u1": () => ({ ...STOPS[0], geocoded: "", needs_attention: ["address"] }),
@@ -494,9 +518,9 @@ describe("StoresTab", () => {
 
     await userEvent.click(within(rows).getByRole("button", { name: "Add screen" }));
     const second = within(rows).getByRole("listitem", { name: "Screen 2" });
-    expect(within(second).getByRole("checkbox", { name: "Dolphin screen, screen 2" }).getAttribute("aria-checked")).toBe("true");
+    expect(within(second).getByRole("checkbox", { name: "Dolphin TV, screen 2" }).getAttribute("aria-checked")).toBe("true");
     await userEvent.type(within(second).getByLabelText("DD code"), "V9");
-    await userEvent.click(within(second).getByRole("checkbox", { name: "Dolphin screen, screen 2" }));
+    await userEvent.click(within(second).getByRole("checkbox", { name: "Dolphin TV, screen 2" }));
     await userEvent.click(within(rows).getByRole("combobox", { name: "Status of screen 1" }));
     await userEvent.click(await screen.findByRole("option", { name: "Completed" }));
     expect(within(rows).getByTestId("derived-status").textContent).toBe("Upcoming"); // the new row is still Upcoming

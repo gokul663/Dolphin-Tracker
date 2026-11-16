@@ -7,7 +7,15 @@ from pydantic import ConfigDict, Field
 
 from dolphin_tracker.domain.base import ApiModel
 from dolphin_tracker.domain.lists import Category
-from dolphin_tracker.domain.models import FieldDef, Project, ProjectType, ScreenInput, ScreenStatus, StopInput
+from dolphin_tracker.domain.models import (
+    FieldDef,
+    HardwareCosts,
+    Project,
+    ProjectType,
+    ScreenInput,
+    ScreenStatus,
+    StopInput,
+)
 from dolphin_tracker.domain.visits import VisitState
 
 
@@ -219,6 +227,14 @@ class StateCount(ApiModel):
     count: int
 
 
+class HardwareCounts(ApiModel):
+    """Installed hardware under the filters: one stick per installed screen; Dolphin TVs by size."""
+
+    installed_screens: int
+    installed_stores: int
+    installed_dolphin_by_size: dict[str, int]
+
+
 class ProjectUpdate(ApiModel):
     """Metadata edit. Installers change only through the installer endpoints; routing state only through jobs."""
 
@@ -234,6 +250,7 @@ class ProjectUpdate(ApiModel):
     dolphin_percentage: float | None = Field(default=None, ge=0, le=100)
     store_percentage: float | None = Field(default=None, ge=0, le=100)
     fa_percentage: float | None = Field(default=None, ge=0, le=100)
+    hardware_costs: HardwareCosts | None = None  # the whole set at once
     field_schema: list[FieldDef] | None = None
     expected_version: int | None = Field(default=None, description="409 if the project has moved past this version")
 

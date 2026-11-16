@@ -32,8 +32,41 @@ let nextKey = 0;
 export const toRows = (stop: Pick<Stop, "screens">): ScreenRow[] =>
   stop.screens.map(({ device: _device, status_changed_at: _changed, ...screen }) => ({ key: screen.id, ...screen }));
 
-/** Every Dolphin screen is the 24-inch one (the server holds to it too); sizes are picked for store TVs. */
+/** A Dolphin TV is 24", 43" or 50" (24" unless picked; the server holds to it too); store TVs can be any size. */
 export const DOLPHIN_SCREEN_SIZE = '24"';
+export const DOLPHIN_SIZES = [24, 43, 50] as const;
+
+/** A Dolphin TV's size as one of its three tiles; always one is chosen (24" by default). */
+function DolphinSizePicker({ value, onChange, screen }: { value: string; onChange: (value: string) => void; screen: number }) {
+  const inches = Number(/^\s*(\d{2})/.exec(value)?.[1] ?? 24);
+  const current = (DOLPHIN_SIZES as readonly number[]).includes(inches) ? inches : 24;
+  return (
+    <div className="flex flex-wrap items-center gap-1.5" role="radiogroup" aria-label={`Size of screen ${screen}`}>
+      {DOLPHIN_SIZES.map((size) => {
+        const Icon = size <= 32 ? Monitor : Tv;
+        const selected = current === size;
+        return (
+          <button
+            key={size}
+            type="button"
+            role="radio"
+            aria-checked={selected}
+            aria-label={`${size} inch`}
+            onClick={() => onChange(`${size}"`)}
+            className={cn(
+              "flex h-14 w-14 flex-col items-center justify-center gap-1 rounded-lg border-2 text-slate-600 transition-colors",
+              selected ? "border-brand bg-brand/5 text-brand shadow-sm" : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50",
+            )}
+          >
+            <Icon size={12 + (size - 24) / 4} strokeWidth={1.6} />
+            <span className="font-mono text-sm font-semibold leading-none">{size}″</span>
+          </button>
+        );
+      })}
+      <span className="ml-1 text-xs text-slate-500">Dolphin TVs come in 24, 43 and 50 inch</span>
+    </div>
+  );
+}
 
 /** STORE-MODEL §4.1: a new row is Upcoming, a Dolphin screen (so 24"), wall-mounted, no mount yet. */
 export const newRow = (): ScreenRow => ({
@@ -230,9 +263,7 @@ export function ScreensEditor({ project, stop, rows, onChange }: { project: Proj
               </div>
             )}
             {row.is_dolphin_screen ? (
-              <p className="flex items-center gap-2 text-sm text-slate-600" aria-label={`Size of screen ${index + 1}`}>
-                <Monitor size={16} className="text-brand" /> <span className="font-mono font-semibold text-slate-800">24″</span> Dolphin screens are all 24 inch
-              </p>
+              <DolphinSizePicker screen={index + 1} value={row.screen_size} onChange={(screen_size) => patch(row.key, { screen_size })} />
             ) : (
               <SizePicker id={`${row.key}-screen_size`} screen={index + 1} value={row.screen_size} onChange={(screen_size) => patch(row.key, { screen_size })} />
             )}
@@ -250,7 +281,7 @@ export function ScreensEditor({ project, stop, rows, onChange }: { project: Proj
               ))}
             </div>
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm">
-              {([["is_dolphin_screen", "Dolphin screen"], ["has_mount", "Has mount"], ["has_ceiling_mount", "Ceiling mount"]] as const).map(([key, label]) => (
+              {([["is_dolphin_screen", "Dolphin TV"], ["has_mount", "Has mount"], ["has_ceiling_mount", "Ceiling mount"]] as const).map(([key, label]) => (
                 <label key={key} className="flex items-center gap-1.5">
                   <Checkbox
                     aria-label={`${label}, screen ${index + 1}`}
@@ -365,10 +396,10 @@ export function ScreensView({ project, stop, rows }: { project: Project; stop: S
                   <td className="whitespace-nowrap px-2 py-2">
                     <span className="inline-flex items-center gap-1.5">
                       <Icon size={14} className="text-slate-500" />
-                      {row.is_dolphin_screen ? "Dolphin" : "Store TV"}
+                      {row.is_dolphin_screen ? "Dolphin TV" : "Store TV"}
                     </span>
                   </td>
-                  <td className="px-2 py-2 font-mono">{(row.is_dolphin_screen ? DOLPHIN_SCREEN_SIZE : row.screen_size) || dash}</td>
+                  <td className="px-2 py-2 font-mono">{(row.is_dolphin_screen ? row.screen_size || DOLPHIN_SCREEN_SIZE : row.screen_size) || dash}</td>
                   <td className="px-2 py-2" aria-label={`Has mount, screen ${index + 1}`}>{yesNo(row.has_mount)}</td>
                   <td className="px-2 py-2" aria-label={`Ceiling mount, screen ${index + 1}`}>{row.has_mount ? yesNo(row.has_ceiling_mount) : dash}</td>
                   <td className="whitespace-nowrap px-2 py-2 text-xs">

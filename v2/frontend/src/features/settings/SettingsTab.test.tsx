@@ -114,4 +114,23 @@ describe("Settings tab", () => {
     await userEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Remove and save" }));
     await waitFor(() => expect(body(calls, "PATCH", "/api/projects/p1")).toBeTruthy());
   });
+
+  it("hardware prices: a stick and each Dolphin TV size, saved together; blank is not set", async () => {
+    const { calls } = mockApi({
+      "GET /api/projects/p1": () => makeSummary(),
+      "PATCH /api/projects/p1": () => makeProject(),
+    });
+    renderProject();
+    const card = await screen.findByLabelText("Hardware costs");
+    await userEvent.type(within(card).getByLabelText(/Stick/), "40");
+    await userEvent.type(within(card).getByLabelText(/24" Dolphin TV/), "120.50");
+    await userEvent.type(within(card).getByLabelText(/43" Dolphin TV/), "abc");
+    expect(within(card).getByText("Enter an amount, e.g. 45 or 45.50")).toBeTruthy();
+    expect(within(card).getByRole("button", { name: /Save prices/ }).hasAttribute("disabled")).toBe(true);
+    await userEvent.clear(within(card).getByLabelText(/43" Dolphin TV/));
+    await userEvent.click(within(card).getByRole("button", { name: /Save prices/ }));
+    await waitFor(() => expect(body(calls, "PATCH", "/api/projects/p1")).toEqual({
+      hardware_costs: { stick: 40, screen_24: 120.5, screen_43: null, screen_50: null }, expected_version: 1,
+    }));
+  });
 });

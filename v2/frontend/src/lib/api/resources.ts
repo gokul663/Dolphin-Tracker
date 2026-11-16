@@ -25,6 +25,7 @@ import type {
   RoutesBundle,
   Stop,
   StateCount,
+  HardwareCounts,
   StoreFieldSpec,
   StoreFilterOptions,
   StopStatus,
@@ -164,6 +165,9 @@ export const storesApi = {
     api<StateCount[]>(`/projects/${enc(projectId)}/stores/by-state`, {
       query: { ...storeQuery(filters), pending, unit, limit: 60 }, // every state: the chart grows a row per state
     }),
+  /** Installed hardware (sticks, Dolphin TVs by size) of the stores the filters keep. */
+  hardware: (projectId: string, filters: StoreFilters) =>
+    api<HardwareCounts>(`/projects/${enc(projectId)}/stores/hardware`, { query: storeQuery(filters) }),
   fieldUsage: (projectId: string) => api<Record<string, number>>(`/projects/${enc(projectId)}/stores/field-usage`),
   /** A plain URL for an <a download> link: the browser streams the CSV itself. */
   exportUrl: (projectId: string, filters: StoreFilters) =>

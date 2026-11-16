@@ -49,6 +49,7 @@ class BucketTests(unittest.TestCase):
         # Completed in the header = installed: online (Completed) and Offline screens together.
         self.assertEqual((kpi.installed_screens, kpi.installed_stores), (3, 2))  # a: 2 Completed; d: Offline
         self.assertEqual(kpi.committed_stores, 0)
+        self.assertEqual(kpi.installed_dolphin_by_size, {'24"': 3, '43"': 0, '50"': 0})  # its installed Dolphin TVs
 
 
 class InstallTypeTests(unittest.TestCase):
@@ -225,11 +226,24 @@ def test_a_store_never_shows_one_code_twice() -> None:
     assert [(screen.venue_id, screen.stick_number) for screen in store.screens] == [("DD-HIYWYB", "DD-002-02155")]
 
 
-def test_a_dolphin_screen_is_always_24_inches() -> None:
-    assert Screen(is_dolphin_screen=True).screen_size == '24"'
-    assert Screen(is_dolphin_screen=True, screen_size='55"').screen_size == '24"'
+def test_a_dolphin_tv_is_24_43_or_50_inches() -> None:
+    assert Screen(is_dolphin_screen=True).screen_size == '24"'  # the default
+    assert Screen(is_dolphin_screen=True, screen_size="43in").screen_size == '43"'
+    assert Screen(is_dolphin_screen=True, screen_size='50"').screen_size == '50"'
+    assert Screen(is_dolphin_screen=True, screen_size='55"').screen_size == '24"'  # not a Dolphin size
     assert Screen(is_dolphin_screen=False, screen_size='55"').screen_size == '55"'  # a store TV keeps its own
     assert ScreenInput(is_dolphin_screen=True).to_screen().screen_size == '24"'
+
+
+class HardwareCostTests(StoresApiTestCase):
+    def test_prices_are_set_together_and_never_negative(self):
+        prices = {"stick": 40, "screen_24": 120, "screen_43": 250.5, "screen_50": None}
+        response = self.client.patch("/api/projects/p1", json={"hardware_costs": prices})
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()["hardware_costs"], prices)
+        bad = self.client.patch("/api/projects/p1", json={"hardware_costs": {"stick": -1}})
+        self.assertEqual(bad.status_code, 422, bad.text)
+        self.assertEqual(self.client.patch("/api/projects/p1", json={"hardware_costs": None}).status_code, 422)
 
 
 # --- Venue type from the Dolphin data's OOH category -----------------------------------------------------------------
@@ -264,3 +278,13 @@ class VenueTypeSyncTests(unittest.TestCase):
 
     def test_never_overwrites_a_venue_type(self):
         self.assertNotIn("venue_type", self.sync(stop("a", "Upcoming", venue_type="Bar")))
+
+
+class HardwareCountTests(StoresApiTestCase):
+    def test_counts_installed_hardware_under_the_filters(self):
+        everything = self.client.get("/api/projects/p1/stores/hardware").json()
+        # a: Completed Dolphin TV; c: Offline Dolphin TV → 2 sticks, two 24" TVs; b and d have nothing installed
+        self.assertEqual(everything, {"installed_screens": 2, "installed_stores": 2,
+                                      "installed_dolphin_by_size": {'24"': 2, '43"': 0, '50"': 0}})
+        only_ga = self.client.get("/api/projects/p1/stores/hardware", params={"city": "Macon"}).json()
+        self.assertEqual(only_ga["installed_screens"], 1)  # the filters apply (c is in Macon)

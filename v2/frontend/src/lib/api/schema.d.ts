@@ -348,6 +348,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{project_id}/stores/hardware": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Stores Hardware
+         * @description Installed hardware (sticks, Dolphin TVs by size) of the stores the filters keep: every filter applies.
+         */
+        get: operations["stores_hardware_api_projects__project_id__stores_hardware_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects/{project_id}/stores/by-state": {
         parameters: {
             query?: never;
@@ -1387,6 +1407,50 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        /**
+         * HardwareCosts
+         * @description What the hardware costs Dolphin, per project (dollars; None = not set). Every installed screen has a stick; a
+         *     Dolphin TV also costs its screen, by size.
+         */
+        "HardwareCosts-Input": {
+            /** Stick */
+            stick?: number | null;
+            /** Screen 24 */
+            screen_24?: number | null;
+            /** Screen 43 */
+            screen_43?: number | null;
+            /** Screen 50 */
+            screen_50?: number | null;
+        };
+        /**
+         * HardwareCosts
+         * @description What the hardware costs Dolphin, per project (dollars; None = not set). Every installed screen has a stick; a
+         *     Dolphin TV also costs its screen, by size.
+         */
+        "HardwareCosts-Output": {
+            /** Stick */
+            stick: number | null;
+            /** Screen 24 */
+            screen_24: number | null;
+            /** Screen 43 */
+            screen_43: number | null;
+            /** Screen 50 */
+            screen_50: number | null;
+        };
+        /**
+         * HardwareCounts
+         * @description Installed hardware under the filters: one stick per installed screen; Dolphin TVs by size.
+         */
+        HardwareCounts: {
+            /** Installed Screens */
+            installed_screens: number;
+            /** Installed Stores */
+            installed_stores: number;
+            /** Installed Dolphin By Size */
+            installed_dolphin_by_size: {
+                [key: string]: number;
+            };
+        };
         /** HealthResponse */
         HealthResponse: {
             /**
@@ -1795,6 +1859,10 @@ export interface components {
              * @default 0
              */
             installed_stores: number;
+            /** Installed Dolphin By Size */
+            installed_dolphin_by_size: {
+                [key: string]: number;
+            };
             /**
              * Actual Dolphin Screens
              * @default 0
@@ -2329,6 +2397,7 @@ export interface components {
             store_percentage: number | null;
             /** Fa Percentage */
             fa_percentage: number | null;
+            hardware_costs: components["schemas"]["HardwareCosts-Output"];
             /**
              * Stops Per Day
              * @default 8
@@ -2449,6 +2518,7 @@ export interface components {
             store_percentage: number | null;
             /** Fa Percentage */
             fa_percentage: number | null;
+            hardware_costs: components["schemas"]["HardwareCosts-Output"];
             /**
              * Stops Per Day
              * @default 8
@@ -2512,6 +2582,7 @@ export interface components {
             store_percentage?: number | null;
             /** Fa Percentage */
             fa_percentage?: number | null;
+            hardware_costs?: components["schemas"]["HardwareCosts-Input"] | null;
             /** Field Schema */
             field_schema?: components["schemas"]["FieldDef-Input"][] | null;
             /**
@@ -4671,6 +4742,75 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StoreFilterOptions"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stores_hardware_api_projects__project_id__stores_hardware_get: {
+        parameters: {
+            query?: {
+                status?: components["schemas"]["ScreenStatus"][] | null;
+                /** @description Repeatable; empty value = unassigned */
+                installer?: string[] | null;
+                /** @description Repeatable; a store matches any of the values */
+                pa?: string[] | null;
+                /** @description Repeatable; a store matches any of the values */
+                state?: string[] | null;
+                /** @description Repeatable; a store matches any of the values */
+                city?: string[] | null;
+                /** @description Repeatable; a store matches any of the values */
+                dma?: string[] | null;
+                /** @description Repeatable; a store matches any of the values */
+                venue_type?: string[] | null;
+                /** @description Repeatable; any screen's venue id */
+                dd_code?: string[] | null;
+                /** @description Repeatable; any screen's size */
+                screen_size?: string[] | null;
+                /** @description Repeatable; "In route" or "Not in route" */
+                route?: string[] | null;
+                /** @description Repeatable; Visited, Partly visited, Not visited */
+                visit?: string[] | null;
+                /** @description Repeatable; the store's status group */
+                bucket?: components["schemas"]["StatusBucket"][] | null;
+                /** @description Repeatable; Technician, Self install, … */
+                install_type?: string[] | null;
+                /** @description Repeatable; a technician's name, "" = none */
+                technician?: string[] | null;
+                /** @description Repeatable; "Needs mount" or "No mount needed" */
+                mount?: string[] | null;
+                /** @description Repeatable; "Fulfilled", "Not fulfilled" or "No commitment" */
+                fulfilled?: string[] | null;
+                q?: string;
+                /** @description Only stores added without a name or a verified address */
+                needs_attention?: boolean;
+                /** @description a store attribute, status, installer, day, screens, fields.<key> */
+                sort?: string;
+                dir?: string;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HardwareCounts"];
                 };
             };
             /** @description Validation Error */

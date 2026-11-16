@@ -2,7 +2,7 @@ import { Check, HardHat, Monitor, Tv, Wrench } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { actualCounts, fulfillment } from "@/features/stores/details";
+import { actualCounts, fulfillment, hardwareCost, money, type HardwareCosts } from "@/features/stores/details";
 import type { ScreenRow } from "@/features/stores/ScreensEditor";
 import { cn } from "@/lib/utils";
 
@@ -38,12 +38,15 @@ const toNumber = (text: string) => (/^\d+$/.test(text.trim()) ? Number(text.trim
  *  bring, and who is assigned to install. Everything is a draft until the window's Save. */
 export function StoreSummary({
   draft,
+  costs,
   technicians,
   onCount,
   onTechnician,
   onInstallType,
 }: {
   draft: SummaryDraft;
+  /** The project's hardware prices (Settings). */
+  costs: HardwareCosts;
   technicians: string[];
   onCount: (key: CountKey, text: string) => void;
   onTechnician: (name: string) => void;
@@ -72,7 +75,14 @@ export function StoreSummary({
           Screen rows: {rows.dolphin} screens · {rows.tvs} TVs
         </p>
       </section>
-      <InstalledCard screens={done.installedScreens} tvs={done.installedTvs} installed={done.installed} committed={done.committed} fulfilled={done.fulfilled} />
+      <InstalledCard
+        screens={done.installedScreens}
+        tvs={done.installedTvs}
+        installed={done.installed}
+        committed={done.committed}
+        fulfilled={done.fulfilled}
+        cost={hardwareCost(draft.rows, costs)}
+      />
       <section aria-label="Mounts needed" className="flex flex-col gap-2 rounded-lg border bg-white p-3">
         <CardTitle
           title="Mounts needed"
@@ -150,7 +160,21 @@ function CountInput({
   );
 }
 
-function InstalledCard({ screens, tvs, installed, committed, fulfilled }: { screens: number; tvs: number; installed: number; committed: number; fulfilled: boolean }) {
+function InstalledCard({
+  screens,
+  tvs,
+  installed,
+  committed,
+  fulfilled,
+  cost,
+}: {
+  screens: number;
+  tvs: number;
+  installed: number;
+  committed: number;
+  fulfilled: boolean;
+  cost: ReturnType<typeof hardwareCost>;
+}) {
   return (
     <section aria-label="Installed" className={cn("flex flex-col gap-2 rounded-lg border bg-white p-3", fulfilled && "border-green-300 bg-green-50/60")}>
       <CardTitle
@@ -191,6 +215,29 @@ function InstalledCard({ screens, tvs, installed, committed, fulfilled }: { scre
         </>
       ) : (
         <p className="text-xs text-slate-500">Completed, Offline or Needs More Work (no commitment yet)</p>
+      )}
+      {/* What the installed hardware cost Dolphin: a stick per screen, plus the screen for a Dolphin TV. */}
+      <div className="flex items-baseline justify-between gap-2 border-t pt-2 text-sm" aria-label="Hardware cost">
+        <span className="text-slate-500">Hardware cost</span>
+        {cost.installed === 0 ? (
+          <span className="text-slate-300">—</span>
+        ) : cost.total === null ? (
+          <span className="text-xs text-amber-700">Set the {cost.missing.join(", ")} price in Settings</span>
+        ) : (
+          <span className="font-mono font-semibold tabular-nums text-slate-800">{money(cost.total)}</span>
+        )}
+      </div>
+      {cost.installed > 0 && (
+        <ul className="space-y-0.5 text-xs text-slate-500" aria-label="Hardware cost lines">
+          {cost.lines.map((line) => (
+            <li key={line.label} className="flex justify-between gap-2">
+              <span>
+                {line.count} × {line.label}
+              </span>
+              <span className="font-mono tabular-nums">{line.price === null ? "no price" : money(line.count * line.price)}</span>
+            </li>
+          ))}
+        </ul>
       )}
     </section>
   );

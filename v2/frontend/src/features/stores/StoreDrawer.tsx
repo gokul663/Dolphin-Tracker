@@ -822,6 +822,7 @@ function DetailsEditor({
           installType: String(form.install_type ?? ""),
         }}
         technicians={technicians}
+        costs={project.hardware_costs}
         onCount={set}
         onTechnician={setTechnician}
         // Technician is the default: a store saved without a type keeps "" (it reads as Technician once named).

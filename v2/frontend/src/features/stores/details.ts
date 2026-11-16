@@ -128,3 +128,54 @@ export function screenTechnicians(visits: { screen_id: string; installer: string
   const all = [...new Set(mine.map((visit) => visit.installer.trim()))];
   return { last: latest ? { name: latest.installer.trim(), date: latest.visit_date } : null, all };
 }
+
+export type HardwareCosts = { stick: number | null; screen_24: number | null; screen_43: number | null; screen_50: number | null };
+
+const DOLPHIN_PRICE_KEY = { '24"': "screen_24", '43"': "screen_43", '50"': "screen_50" } as const;
+
+/** What one store's installed hardware cost Dolphin: a stick for every installed screen (Completed, Offline, Needs More
+ *  Work), plus the screen itself for a Dolphin TV, at its size's price. `missing` lists prices not set in Settings
+ *  that the store needs (the total is then left open). */
+export function hardwareCost(
+  screens: { status: string; is_dolphin_screen: boolean; screen_size: string }[],
+  costs: HardwareCosts,
+) {
+  const installed = screens.filter((screen) => INSTALLED_STATUSES.has(screen.status));
+  const bySize = { '24"': 0, '43"': 0, '50"': 0 } as Record<keyof typeof DOLPHIN_PRICE_KEY, number>;
+  for (const screen of installed) {
+    if (!screen.is_dolphin_screen) continue;
+    const size = (screen.screen_size in DOLPHIN_PRICE_KEY ? screen.screen_size : '24"') as keyof typeof DOLPHIN_PRICE_KEY;
+    bySize[size] += 1;
+  }
+  const missing: string[] = [];
+  if (installed.length && costs.stick === null) missing.push("stick");
+  let total = installed.length * (costs.stick ?? 0);
+  const lines = [{ label: "Sticks", count: installed.length, price: costs.stick }];
+  for (const size of Object.keys(DOLPHIN_PRICE_KEY) as (keyof typeof DOLPHIN_PRICE_KEY)[]) {
+    if (!bySize[size]) continue;
+    const price = costs[DOLPHIN_PRICE_KEY[size]];
+    if (price === null) missing.push(`${size} screen`);
+    total += bySize[size] * (price ?? 0);
+    lines.push({ label: `${size} Dolphin TVs`, count: bySize[size], price });
+  }
+  return { total: missing.length ? null : total, installed: installed.length, lines, missing };
+}
+
+export const money = (value: number) => value.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+
+/** The whole project's installed hardware cost, from the header counts: a stick per installed screen, plus each
+ *  installed Dolphin TV at its size's price. `total` is null while a needed price is not set. */
+export function projectHardwareCost(
+  kpi: { installed_screens: number; installed_dolphin_by_size: Record<string, number> },
+  costs: HardwareCosts,
+) {
+  const sizes = Object.keys(DOLPHIN_PRICE_KEY) as (keyof typeof DOLPHIN_PRICE_KEY)[];
+  const lines = [
+    { label: "Sticks", count: kpi.installed_screens, price: costs.stick },
+    ...sizes.map((size) => ({ label: `${size} Dolphin TVs`, count: kpi.installed_dolphin_by_size[size] ?? 0, price: costs[DOLPHIN_PRICE_KEY[size]] })),
+  ].filter((line) => line.count > 0);
+  const missing = lines.filter((line) => line.price === null).map((line) => line.label);
+  const total = missing.length ? null : lines.reduce((sum, line) => sum + line.count * (line.price ?? 0), 0);
+  const dolphinTvs = sizes.reduce((sum, size) => sum + (kpi.installed_dolphin_by_size[size] ?? 0), 0);
+  return { total, lines, missing, sticks: kpi.installed_screens, dolphinTvs };
+}

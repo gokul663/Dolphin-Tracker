@@ -3,6 +3,7 @@
 Its own module so `kpi.py` can use it without importing `models.py` (which imports `kpi.py`)."""
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable
 from enum import StrEnum
 from typing import Any
@@ -201,3 +202,14 @@ def visit_state(screen_ids: list[str], screen_visits: dict[str, str], since: str
     if counted == 0:
         return VisitState.NONE
     return VisitState.VISITED if counted == len(screen_ids) else VisitState.PARTLY
+
+
+DOLPHIN_SCREEN_SIZES = (24, 43, 50)  # what a Dolphin TV comes in; store TVs can be any size
+DOLPHIN_SCREEN_SIZE = '24"'  # the default
+
+
+def dolphin_screen_size(value: str) -> str:
+    """A Dolphin TV's size: 24", 43" or 50" as written ("43", "43in", '43"'); anything else is the 24-inch one."""
+    match = re.match(r"\s*(\d{2})", value or "")
+    inches = int(match.group(1)) if match else 0
+    return f'{inches}"' if inches in DOLPHIN_SCREEN_SIZES else DOLPHIN_SCREEN_SIZE

@@ -22,6 +22,7 @@ from dolphin_tracker.domain.statuses import (
     ScreenStatus,
     StatusBucket,
     VisitState,
+    dolphin_screen_size,
     store_assignment,
     visit_state,
 )
@@ -77,6 +78,9 @@ class Kpi(ApiModel):
     # On the wall (Completed = online, Offline, Needs More Work): the header's "Completed", online and offline together.
     installed_screens: int = 0
     installed_stores: int = 0  # stores with at least one installed screen
+    # Installed Dolphin TVs by size ('24"', '43"', '50"'): with installed_screens (one stick each) and the project's
+    # prices, the hardware cost.
+    installed_dolphin_by_size: dict[str, int] = Field(default_factory=lambda: {'24"': 0, '43"': 0, '50"': 0})
     actual_dolphin_screens: int = 0  # screen rows with is_dolphin_screen
     actual_store_tvs: int = 0  # the other screen rows
     by_installer: dict[str, int] = Field(default_factory=dict)
@@ -144,6 +148,9 @@ def kpi_summary(rows: Iterable[Mapping[str, Any]]) -> Kpi:
             kpi.screens_total += 1
             if _status(screen.get("status")) in INSTALLED_STATUSES:
                 kpi.installed_screens += 1
+                if screen.get("is_dolphin_screen", True):
+                    size = dolphin_screen_size(str(screen.get("screen_size") or ""))
+                    kpi.installed_dolphin_by_size[size] = kpi.installed_dolphin_by_size.get(size, 0) + 1
             screen_status = _status(screen.get("status"))
             kpi.screens_by_status[screen_status.value] += 1
             bucket = BUCKET_OF[screen_status]

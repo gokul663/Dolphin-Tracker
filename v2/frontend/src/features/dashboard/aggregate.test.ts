@@ -17,6 +17,7 @@ function project(id: string, overrides: Partial<ProjectSummary["kpi"]> & { insta
   return {
     id, name, pa, device_pa: "", device_sync: null, project_type: "offline", installers, field_agent: "", partner_account: "",
     pa_percentage: 40, dolphin_percentage: 60, store_percentage: null, fa_percentage: null, stops_per_day: 8,
+    hardware_costs: { stick: null, screen_24: null, screen_43: null, screen_50: null },
     field_schema: [], routing_status: "ready", routing_job_id: "", stop_count: 0, version: 1,
     created_at: "", updated_at: "",
     import_mappings: {},

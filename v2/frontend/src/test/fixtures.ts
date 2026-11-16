@@ -6,7 +6,7 @@ export function makeProject(overrides: Partial<Project> = {}): Project {
   return {
     id: "p1", name: "Atlanta refresh", pa: "North", device_pa: "", device_sync: null, project_type: "new_installation", installers: ["Ann", "Bo"],
     field_agent: "Fay", partner_account: "Acme", pa_percentage: 40, dolphin_percentage: 60, store_percentage: null,
-    fa_percentage: null, stops_per_day: 8, field_schema: DEFAULT_SCHEMA_FOR_TESTS, import_mappings: {},
+    fa_percentage: null, hardware_costs: { stick: null, screen_24: null, screen_43: null, screen_50: null }, stops_per_day: 8, field_schema: DEFAULT_SCHEMA_FOR_TESTS, import_mappings: {},
     routing_status: "ready", routing_job_id: "", stop_count: 3, version: 1, created_at: "2026-10-01T00:00:00+00:00",
     updated_at: "2026-10-01T00:00:00+00:00", ...overrides,
   };
@@ -21,7 +21,7 @@ export function makeKpi(overrides: Partial<Kpi> = {}): Kpi {
     by_status: statusCounts({ Upcoming: 5, Completed: 4, Offline: 1 }),
     screens_total: 12, screens_by_status: statusCounts({ Upcoming: 6, Completed: 5, Offline: 1 }),
     committed_dolphin_screens: 11, committed_store_tvs: 3, actual_dolphin_screens: 10, actual_store_tvs: 2,
-    committed_stores: 9, installed_screens: 6, installed_stores: 5,
+    committed_stores: 9, installed_screens: 6, installed_stores: 5, installed_dolphin_by_size: { '24"': 4, '43"': 1, '50"': 0 },
     by_installer: { Ann: 6, Bo: 4 }, by_dma: {}, by_venue_type: {},
     address_status: { total: 10, complete: 4, pending: 6 },
     by_visit: { none: 7, partly: 1, visited: 2 },

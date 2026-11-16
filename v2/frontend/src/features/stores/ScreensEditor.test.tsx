@@ -37,14 +37,17 @@ describe("ScreensEditor", () => {
     expect(draft.latest()[0]?.screen_size).toBe('98"');
   });
 
-  it("a Dolphin screen is always 24 inch: no size to pick; a store TV gets the tiles", async () => {
+  it("a Dolphin TV is 24, 43 or 50 inch (24 by default); a store TV gets the full size tiles", async () => {
     mockApi({});
     const draft = draftScreens(makeProject(), makeStop({ screens: [makeScreen({ id: "s1", is_dolphin_screen: false, screen_size: '55"' })] }));
     renderWithProviders(draft.element);
-    expect(screen.getByRole("radiogroup", { name: "Size of screen 1" })).toBeTruthy();
-    await userEvent.click(screen.getByRole("checkbox", { name: "Dolphin screen, screen 1" }));
-    expect(screen.queryByRole("radiogroup", { name: "Size of screen 1" })).toBeNull();
-    expect(screen.getByLabelText("Size of screen 1").textContent).toContain("24″");
+    expect(within(screen.getByRole("radiogroup", { name: "Size of screen 1" })).getByRole("radio", { name: "Other size" })).toBeTruthy();
+    await userEvent.click(screen.getByRole("checkbox", { name: "Dolphin TV, screen 1" }));
+    const sizes = screen.getByRole("radiogroup", { name: "Size of screen 1" });
+    expect(within(sizes).getAllByRole("radio").map((radio) => radio.getAttribute("aria-label"))).toEqual(["24 inch", "43 inch", "50 inch"]);
     expect(draft.latest()[0]).toMatchObject({ is_dolphin_screen: true, screen_size: '24"' });
+    await userEvent.click(within(sizes).getByRole("radio", { name: "50 inch" }));
+    expect(draft.latest()[0]?.screen_size).toBe('50"');
   });
+
 });

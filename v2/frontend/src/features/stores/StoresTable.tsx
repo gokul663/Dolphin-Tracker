@@ -20,7 +20,7 @@ import {
 import { useRoutePlans } from "@/features/planner/api";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { visitState } from "@/features/visits/visitForm";
-import { addressLine, fulfillment } from "@/features/stores/details";
+import { addressLine, fulfillment, hardwareCost, money } from "@/features/stores/details";
 import { STORE_PAGE_SIZES } from "@/features/stores/api";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { Project, Stop } from "@/lib/api/types";
@@ -114,6 +114,24 @@ function TotalCount({ screens, tvs, label, tone, suffix }: { screens: number | n
         </span>
       </TooltipContent>
     </Tooltip>
+  );
+}
+
+/** A store's hardware cost, the sticks and screens behind it on hover; prices not set yet in Settings say so. */
+function HardwareCostCell({ cost }: { cost: ReturnType<typeof hardwareCost> }) {
+  if (cost.installed === 0) return dash;
+  const breakdown = cost.lines.map((line) => `${line.count} × ${line.label}${line.price === null ? " (no price)" : ` @ ${money(line.price)}`}`).join("\n");
+  if (cost.total === null) {
+    return (
+      <span className="text-xs text-amber-700" title={`Set the ${cost.missing.join(", ")} price in Settings\n${breakdown}`}>
+        Set prices
+      </span>
+    );
+  }
+  return (
+    <span className="font-mono text-sm tabular-nums text-slate-800" title={breakdown} aria-label={`Hardware cost ${money(cost.total)}`}>
+      {money(cost.total)}
+    </span>
   );
 }
 
@@ -321,8 +339,14 @@ export function StoresTable(props: Props) {
           );
         },
       }),
+      helper.accessor((stop) => String(hardwareCost(stop.screens, project.hardware_costs).total ?? ""), {
+        id: "hardware",
+        header: "Hardware cost",
+        size: 110,
+        cell: (info) => <HardwareCostCell cost={hardwareCost(info.row.original.screens, project.hardware_costs)} />,
+      }),
     ],
-    [project.pa, onOpen, planNames, hidePa], // the mutation object is stable per project
+    [project.pa, project.hardware_costs, onOpen, planNames, hidePa], // the mutation object is stable per project
   );
 
   const table = useReactTable({ data: stops, columns, getCoreRowModel: getCoreRowModel(), manualSorting: true, getRowId: (stop) => stop.uid });

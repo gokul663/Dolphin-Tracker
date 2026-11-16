@@ -63,6 +63,15 @@ export function useStoresByState(projectId: string, filters: StoreFilters, unit:
   });
 }
 
+/** Installed hardware under the filters, for the Hardware cost chart (every filter applies, State included). */
+export function useStoreHardware(projectId: string, filters: StoreFilters) {
+  return useQuery({
+    queryKey: keys.hardware(projectId, filters),
+    queryFn: () => storesApi.hardware(projectId, filters),
+    placeholderData: keepPreviousData,
+  });
+}
+
 export function useStore(projectId: string, uid: string | null) {
   return useQuery({
     queryKey: keys.store(projectId, uid ?? ""),

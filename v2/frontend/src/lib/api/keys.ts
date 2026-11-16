@@ -23,6 +23,7 @@ export const keys = {
   pins: (id: string, filters: StoreFilters) => ["projects", id, "stores", "pins", filters] as const,
   storeFacets: (id: string, filters: StoreFilters) => ["projects", id, "stores", "facets", filters] as const,
   byState: (id: string, filters: StoreFilters) => ["projects", id, "stores", "by-state", filters] as const,
+  hardware: (id: string, filters: StoreFilters) => ["projects", id, "stores", "hardware", filters] as const,
   store: (id: string, uid: string) => ["projects", id, "stores", "one", uid] as const,
   visits: (id: string, uid: string) => ["projects", id, "stores", "visits", uid] as const,
   routePlans: ["route-plans"] as const,

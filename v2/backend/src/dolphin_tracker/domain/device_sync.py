@@ -155,9 +155,11 @@ def overwrite_changes(stop: Stop, fields: Iterable[str]) -> dict[str, Any]:
                 changes.update(lat=device.lat, lng=device.lng, route_stale=True)
                 if device.address:
                     changes["geocoded"] = device.address
-                reasons = [reason for reason in stop.needs_attention if reason != NeedsAttention.ADDRESS]
-                if reasons != list(stop.needs_attention):
-                    changes["needs_attention"] = [str(reason) for reason in reasons]
+                # From what an earlier field already cleared (store_name), not from the stored list again.
+                current = changes.get("needs_attention", [str(reason) for reason in stop.needs_attention])
+                reasons = [reason for reason in current if reason != NeedsAttention.ADDRESS.value]
+                if reasons != current:
+                    changes["needs_attention"] = reasons
         elif name in OVERWRITABLE:
             value = getattr(device, name)
             if value and value != getattr(stop, name):
@@ -175,6 +177,20 @@ def shown_location(stop: Stop) -> tuple[float | None, float | None]:
     if stop.device and stop.device.lat is not None and stop.device.lng is not None:
         return stop.device.lat, stop.device.lng
     return stop.lat, stop.lng
+
+
+def store_with_code(code: object, stops: Iterable[Stop], *, exclude_uid: str = "") -> Stop | None:
+    """The store that already has this DD code on a screen (alone or inside a packed entry), if any. A DD code is
+    one device, so it belongs to one store of the project."""
+    key = venue_code_key(code)
+    if not key:
+        return None
+    for stop in stops:
+        if stop.uid == exclude_uid:
+            continue
+        if any(venue_code_key(part) == key for screen in stop.screens for part in split_codes(screen.venue_id)):
+            return stop
+    return None
 
 
 def store_for_record(record: DeviceRecord, stops: Iterable[Stop]) -> Stop | None:

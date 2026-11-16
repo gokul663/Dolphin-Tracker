@@ -10,7 +10,14 @@ import json
 from typing import Any, Protocol
 
 from dolphin_tracker.config import Settings, resolve_mongo_uri
-from dolphin_tracker.domain.device import DeviceRecord, DeviceSnapshot, report_date_iso, utc_iso
+from dolphin_tracker.domain.device import (
+    DeviceLog,
+    DeviceRecord,
+    DeviceSnapshot,
+    code_variants,
+    report_date_iso,
+    utc_iso,
+)
 
 DATABASE = "dolphin_venue_vision"
 COLLECTION = "dolphin-internal-report"
@@ -20,6 +27,9 @@ FIELDS = (
     "DMA", "OOH Category", "ingested_at_utc",
 )
 QUERY_MS = 20_000
+LOGS_COLLECTION = "logs"  # servicing log entries, one per visit to a device; `dd_code` is indexed
+LOG_FIELDS = tuple(name for name in DeviceLog.model_fields)
+MAX_LOGS = 500  # per store: far above what one store's devices collect
 
 
 class DeviceDataUnavailable(RuntimeError):
@@ -35,6 +45,9 @@ class DeviceDataSource(Protocol):
         ...
     def snapshot(self, pa: str) -> DeviceSnapshot:
         """Every record of `pa` for the newest day."""
+        ...
+    def logs(self, codes: list[str]) -> list[DeviceLog]:
+        """The servicing log entries of these DD codes, newest first (at most MAX_LOGS)."""
         ...
 
 
@@ -54,6 +67,25 @@ class MongoDeviceData:
                 appname="dolphin-tracker", readPreference="secondaryPreferred",
             )
         return self._client[DATABASE][COLLECTION]
+
+    def logs(self, codes: list[str]) -> list[DeviceLog]:
+        wanted = code_variants(codes)
+        if not wanted:
+            return []
+        self._collection()  # connects (or says why not)
+        try:
+            docs = list(
+                self._client[DATABASE][LOGS_COLLECTION]
+                .find({"dd_code": {"$in": wanted}}, dict.fromkeys(LOG_FIELDS, 1) | {"_id": 0})
+                .sort("date", -1)  # so the cap keeps the newest
+                .max_time_ms(QUERY_MS)
+                .limit(MAX_LOGS)
+            )
+        except Exception as exc:
+            raise DeviceDataUnavailable(f"Device logs unreachable: {type(exc).__name__}") from exc
+        logs = [DeviceLog.from_log(doc) for doc in docs]
+        logs.sort(key=lambda log: (log.date, log.created_at), reverse=True)
+        return logs
 
     def _newest_raw_date(self) -> tuple[str, str]:
         """(the stored MM-DD-YYYY text, its ISO date). `Date` is text, so the newest is found by parsing every
@@ -124,6 +156,11 @@ class LambdaDeviceData:
 
     def snapshot(self, pa: str) -> DeviceSnapshot:
         return DeviceSnapshot.model_validate(self._call({"op": "snapshot", "pa": pa})["snapshot"])
+
+    def logs(self, codes: list[str]) -> list[DeviceLog]:
+        if not codes:
+            return []
+        return [DeviceLog.model_validate(log) for log in self._call({"op": "logs", "codes": codes})["logs"]]
 
 
 def make_device_data(settings: Settings) -> DeviceDataSource | None:

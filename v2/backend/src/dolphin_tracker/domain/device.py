@@ -5,6 +5,7 @@ Value shapes only, so `models.py` can hold them without importing the sync rules
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 from datetime import UTC, datetime
 from typing import Any
 
@@ -144,6 +145,37 @@ class DeviceSnapshot(ApiModel):
     date: str  # YYYY-MM-DD
     ingested_at: str = ""  # when the CMS loaded that day; a status set after this is newer than the report
     records: list[DeviceRecord] = Field(default_factory=list)
+
+
+class DeviceLog(ApiModel):
+    """One servicing log entry from the CMS (`dolphin_venue_vision.logs`): what was found at a device on a day and
+    who dealt with it. Read-only here; text is "" when the CMS has no value."""
+
+    id: str = ""
+    date: str = ""  # the day of the work, YYYY-MM-DD
+    dd_code: str = ""
+    venue_name: str = ""
+    store_name: str = ""
+    address: str = ""
+    pa: str = ""
+    installer: str = ""
+    stick_number: str = ""
+    stick_model: str = ""
+    dolphin_manager: str = ""
+    category: str = ""
+    detailed_comments: str = ""
+    created_at: str = ""
+
+    @classmethod
+    def from_log(cls, doc: dict[str, Any]) -> DeviceLog:
+        return cls(**{name: _text(doc.get(name)) for name in cls.model_fields if name != "created_at"},
+                   created_at=utc_iso(doc.get("created_at")))
+
+
+def code_variants(codes: Iterable[object]) -> list[str]:
+    """How a DD code may be written in the CMS: `DD_ABC123` (its own spelling) and `DD-ABC123` (the sheets')."""
+    keys = sorted({key for code in codes if (key := venue_code_key(code))})
+    return [variant for key in keys for variant in dict.fromkeys((key, key.replace("_", "-")))]
 
 
 class ScreenDevice(ApiModel):

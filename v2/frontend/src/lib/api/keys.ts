@@ -31,6 +31,7 @@ export const keys = {
   routePlan: (id: string) => ["route-plans", id] as const,
   devicePas: ["device-data", "pas"] as const,
   deviceReview: (id: string) => ["projects", id, "device-review"] as const,
+  deviceLogs: (id: string, uid: string, code: string) => ["projects", id, "stores", "logs", uid, code] as const,
   storeSearch: ["store-search"] as const,
   storeSearchPins: (filters: PoolFilters) => ["store-search", "pins", filters] as const,
   storeSearchFacets: (filters: PoolFilters) => ["store-search", "facets", filters] as const,

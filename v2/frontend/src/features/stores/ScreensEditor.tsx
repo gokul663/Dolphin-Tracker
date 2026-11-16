@@ -204,9 +204,10 @@ export function ScreensEditor({ project, stop, rows, onChange }: { project: Proj
           <Plus /> Add screen
         </Button>
       </div>
-      <ul className="space-y-2">
+      {/* Rows separated by a rule, not boxed: the section around them is the box. */}
+      <ul className="divide-y divide-slate-100 border-t border-slate-100">
         {rows.map((row, index) => (
-          <li key={row.key} className="space-y-2 rounded-lg border p-2.5" aria-label={`Screen ${index + 1}`}>
+          <li key={row.key} className="space-y-2 py-3 last:pb-0" aria-label={`Screen ${index + 1}`}>
             <div className="flex items-center gap-2">
               <span className="font-mono text-[10px] uppercase tracking-wider text-slate-500">#{index + 1}</span>
               <Select value={row.status} onValueChange={(value) => patch(row.key, { status: value as ScreenStatus })}>
@@ -365,9 +366,10 @@ export function ScreensView({ project, stop, rows }: { project: Project; stop: S
         {rows.length} {rows.length === 1 ? "screen" : "screens"} · {counts.dolphin} Dolphin · {counts.tvs} store TVs · store status{" "}
         <span className={cn("rounded border px-1.5 py-0.5 font-medium", STATUS_META[derived].chip)}>{STATUS_META[derived].label}</span>
       </p>
-      <div className="overflow-x-auto rounded-lg border">
-        <table className="w-full text-sm" aria-label="Screens">
-          <thead className="border-b bg-slate-50">
+      {/* Edge to edge in its section (which is the box): no second border around the table. */}
+      <div className="-mx-4 -mb-4 overflow-x-auto border-t border-slate-100">
+        <table className="w-full text-sm font-medium text-slate-900 [&_td:first-child]:pl-4 [&_td:last-child]:pr-4 [&_th:first-child]:pl-4 [&_th:last-child]:pr-4" aria-label="Screens">
+          <thead className="border-b bg-slate-50/70">
             <tr>
               <th className={head}>#</th>
               <th className={head}>Status</th>

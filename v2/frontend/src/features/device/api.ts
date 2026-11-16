@@ -1,4 +1,4 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
 import { keys } from "@/lib/api/keys";
 import { deviceSyncApi } from "@/lib/api/resources";
@@ -72,6 +72,19 @@ export function useOverwriteFromDevice(projectId: string) {
     mutationFn: ({ uid, fields }: { uid?: string; fields: OverwriteField[] }) =>
       uid ? deviceSyncApi.overwriteStore(projectId, uid, fields) : deviceSyncApi.overwriteAll(projectId, fields),
     onSuccess: () => refresh(),
+  });
+}
+
+/** The CMS's servicing log entries for a store's DD codes (or one of them), newest first, a page at a time. */
+export function useStoreLogs(projectId: string, uid: string, ddCode: string) {
+  return useInfiniteQuery({
+    queryKey: keys.deviceLogs(projectId, uid, ddCode),
+    queryFn: ({ pageParam }) => deviceSyncApi.logs(projectId, uid, { ddCode, limit: 50, cursor: pageParam }),
+    initialPageParam: null as string | null,
+    getNextPageParam: (last) => last.next_cursor ?? undefined,
+    placeholderData: keepPreviousData,
+    staleTime: 5 * 60_000,
+    retry: 1,
   });
 }
 

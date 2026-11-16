@@ -7,7 +7,14 @@ from typing import Any
 
 from dolphin_tracker.domain.base import ApiModel
 from dolphin_tracker.domain.cursors import encode_cursor, offset_from_cursor
-from dolphin_tracker.domain.device import DeviceSnapshot, DeviceSyncState, ReviewItem, venue_code_key
+from dolphin_tracker.domain.device import (
+    DeviceLog,
+    DeviceSnapshot,
+    DeviceSyncState,
+    ReviewItem,
+    split_codes,
+    venue_code_key,
+)
 from dolphin_tracker.domain.device_sync import (
     OVERWRITABLE,
     add_record_changes,
@@ -15,6 +22,7 @@ from dolphin_tracker.domain.device_sync import (
     overwrite_changes,
     review_items,
     store_for_record,
+    store_with_code,
     sync_stop,
 )
 from dolphin_tracker.domain.errors import ConflictError, NotFoundError, ValidationFailed
@@ -50,6 +58,13 @@ class ReviewPage(ApiModel):
     next_cursor: str | None = None
     total: int
     snoozed: int  # hidden by "Not now" until the next report day
+
+
+class LogPage(ApiModel):
+    items: list[DeviceLog]
+    next_cursor: str | None = None
+    total: int
+    codes: list[str]  # the store's DD codes, as written on its screens (the filter's choices)
 
 
 class OverwriteResult(ApiModel):
@@ -202,15 +217,19 @@ class DeviceSyncService:
         project = self._project(project_id)
         item = self._review_item(project_id, key)
         stops = self._stores.list_all(project_id)
-        existing = store_for_record(item, stops)
-        if existing is None:
+        holder = store_with_code(item.key, stops)
+        if holder is not None:
+            # The list is as of the last sync: the code was put on a store since (typed in, imported). Never a
+            # second copy: that store is the answer, and the record is applied to its screen.
+            stop = holder
+        elif (existing := store_for_record(item, stops)) is None:
             located = self._locate(item, address, place, add_anyway)
             item_at = item.model_copy(update=located) if located else item
             existing = store_for_record(item_at, stops) if located else None  # the address joins a known store
-            stop = self._add_screen(project_id, existing, item) if existing else self._create_store(
+            stop = self._add_screen(project_id, existing, item, stops) if existing else self._create_store(
                 project_id, item_at, verified=bool(located))
         else:
-            stop = self._add_screen(project_id, existing, item)
+            stop = self._add_screen(project_id, existing, item, stops)
 
         state = project.device_sync
         snapshot = DeviceSnapshot(
@@ -258,10 +277,10 @@ class DeviceSyncService:
                    if line else "The report has no address for this store. Enter one, search Google, or add it anyway.")
         raise ValidationFailed(message, suggestions=suggestions, address=line)
 
-    def _add_screen(self, project_id: str, stop: Stop, item: ReviewItem) -> Stop:
+    def _add_screen(self, project_id: str, stop: Stop, item: ReviewItem, stops: list[Stop]) -> Stop:
         rows = [ScreenInput(**screen.model_dump(exclude={"device", "status_changed_at"})) for screen in stop.screens]
         rows.append(ScreenInput(venue_id=item.venue_id, stick_number=item.serial_number))
-        return self._store_service.update_screens(project_id, stop.uid, rows, updated_by="Dolphin data")
+        return self._store_service.update_screens(project_id, stop.uid, rows, updated_by="Dolphin data", stops=stops)
 
     def _create_store(self, project_id: str, item: ReviewItem, *, verified: bool) -> Stop:
         located = verified and item.lat is not None and item.lng is not None and bool(item.addr)
@@ -295,6 +314,27 @@ class DeviceSyncService:
         )
 
     # ---- per store --------------------------------------------------------------------------------------
+
+    def logs(
+        self, project_id: str, stop_uid: str, *, dd_code: str = "", limit: int = 50, cursor: str | None = None
+    ) -> LogPage:
+        """The CMS's servicing log entries for the store's DD codes, newest first; `dd_code` narrows to one of
+        them. Matched by DD code only: a store without one has no logs here."""
+        self._project(project_id)
+        stop = self._store_service.get(project_id, stop_uid)
+        codes = list(dict.fromkeys(
+            code.strip() for screen in stop.screens for code in split_codes(screen.venue_id) if venue_code_key(code)
+        ))
+        wanted = codes
+        if dd_code.strip():
+            key = venue_code_key(dd_code)
+            wanted = [code for code in codes if venue_code_key(code) == key]
+            if not wanted:
+                raise ValidationFailed(f"{dd_code.strip()} is not a DD code of this store")
+        logs = self._require_source().logs(wanted) if wanted else []
+        start = offset_from_cursor(cursor)
+        next_cursor = encode_cursor({"offset": start + limit}) if start + limit < len(logs) else None
+        return LogPage(items=logs[start : start + limit], next_cursor=next_cursor, total=len(logs), codes=codes)
 
     def ignore_alert(self, project_id: str, stop_uid: str) -> Stop:
         """Hide "not in Dolphin data" for this store until the next report day."""

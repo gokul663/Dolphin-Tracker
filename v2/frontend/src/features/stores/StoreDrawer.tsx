@@ -17,6 +17,7 @@ import { GoogleSearchPicker } from "@/features/places/GoogleSearchPicker";
 import type { PlaceHit } from "@/lib/api/types";
 import { screensChanged, ScreensEditor, ScreensView, toInputs, toRows, type ScreenRow } from "@/features/stores/ScreensEditor";
 import { deviceDifferences, StoreDeviceSection } from "@/features/device/StoreDeviceSection";
+import { StoreLogs } from "@/features/device/StoreLogs";
 import { reportDay, splitCodes } from "@/features/device/DeviceBits";
 import { StoreLocationMap } from "@/components/map/StoreLocationMap";
 import { COUNT_KEYS, NO_TECHNICIAN, StoreSummary, type SummaryDraft } from "@/features/stores/StoreSummary";
@@ -33,7 +34,7 @@ import {
 } from "@/features/stores/details";
 import { ApiError, type OverwriteField, type ProgressUpdate, type Project, type Stop, type StoreFieldSpec } from "@/lib/api/types";
 import { STATUS_META } from "@/lib/status";
-import { cn } from "@/lib/utils";
+import { cn, SURFACE } from "@/lib/utils";
 import { urlTokens } from "@/lib/validation/storeFields";
 
 interface Props {
@@ -45,9 +46,9 @@ interface Props {
 
 type Group = StoreFieldSpec["group"];
 /** The collapsible sections on the left; the right-hand details are always shown as line items. */
-const SECTIONS = ["Identity & address", "Screens", "Progress"] as const;
+const SECTIONS = ["Identity & address", "Screens", "Notes"] as const;
 type SectionName = (typeof SECTIONS)[number];
-const DEFAULT_OPEN: SectionName[] = ["Identity & address", "Screens"];
+const DEFAULT_OPEN: SectionName[] = ["Identity & address", "Screens", "Notes"];
 /** The right-hand column: reference material, still editable but out of the way of address and screens. */
 const ASIDE_GROUPS: Group[] = ["WiFi", "Contacts", "Installation", "Site notes", "Site checklist"];
 
@@ -57,9 +58,9 @@ interface Sections {
 }
 
 /** Full editor for one store in a large modal, in two columns like the visit log: on the left what gets edited on
- *  site (address, then the screens right under it, then progress); on the right the
+ *  site (address, then the screens right under it, then the manager's notes); on the right the
  *  reference material (pictures, WiFi, Dolphin data, contacts, installation, site notes and checklist, other
- *  imported data, servicing history). Every section stays collapsible and editable. */
+ *  imported data), which a switch swaps for the logs (the CMS's servicing log and the visits logged here). Every section stays collapsible and editable. */
 export function StoreDrawer({ project, stopId, open, onClose }: Props) {
   const store = useStore(project.id, open ? stopId : null);
   const specs = useStoreFields();
@@ -84,8 +85,8 @@ export function StoreDrawer({ project, stopId, open, onClose }: Props) {
   const planNames = new Map((plans.data ?? []).map((plan) => [plan.id, plan.name]));
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
-      <DialogContent className="flex max-h-[94vh] w-[90vw] max-w-[90vw] flex-col gap-0 p-0 sm:max-w-[90vw]">
-        <DialogHeader className="border-b px-6 pt-5 pb-3 pr-12">
+      <DialogContent className="flex max-h-[94vh] w-[90vw] max-w-[90vw] flex-col gap-0 overflow-hidden rounded-2xl border-0 bg-slate-100 p-0 shadow-2xl ring-1 ring-slate-900/10 sm:max-w-[90vw]">
+        <DialogHeader className="border-b border-slate-200/70 bg-white px-6 pt-5 pb-3 pr-12">
           <DialogTitle className="font-mono uppercase tracking-wider text-brand">
             {stop ? `${stop.external_id || stop.display_id} · ${stop.store_name}` : "Store"}
           </DialogTitle>
@@ -137,11 +138,14 @@ export function StoreDrawer({ project, stopId, open, onClose }: Props) {
               aside={
                 <>
                   <OtherData project={project} stop={stop} />
-                  <section aria-label="Servicing history" className="rounded-lg border p-3">
-                    <h3 className="mb-2 font-mono text-[11px] uppercase tracking-wider text-slate-600">Servicing history</h3>
-                    <VisitHistory projectId={project.id} stop={stop} bare />
-                  </section>
                 </>
+              }
+              logs={
+                // Under Logs, after the CMS's entries: the visits logged in this app for the store.
+                <section aria-label="Servicing history" className="border-t border-slate-100 pt-4">
+                  <h3 className="mb-2 font-mono text-[11px] uppercase tracking-wider text-slate-600">Visits logged here</h3>
+                  <VisitHistory projectId={project.id} stop={stop} bare />
+                </section>
               }
             />
           )}
@@ -219,7 +223,7 @@ function Section({
   const open = forceOpen || sections.isOpen(title);
   const bodyId = `store-section-${title.replace(/\W+/g, "-").toLowerCase()}`;
   return (
-    <section className={cn("rounded-lg border", className)} aria-label={title}>
+    <section className={cn(SURFACE, "overflow-hidden", className)} aria-label={title}>
       <div className="flex items-center gap-2 pr-3">
         <h3 className="min-w-0 flex-1">
           <button
@@ -227,7 +231,7 @@ function Section({
             aria-expanded={open}
             aria-controls={bodyId}
             onClick={() => sections.toggle(title)}
-            className="flex w-full items-center gap-2 px-3 py-2 text-left font-mono text-[11px] uppercase tracking-wider text-slate-600 hover:bg-slate-50"
+            className="flex w-full items-center gap-2 px-4 py-2.5 text-left font-mono text-[11px] uppercase tracking-wider text-slate-600 hover:bg-slate-50"
           >
             <ChevronRight size={14} className={cn("transition-transform", open && "rotate-90")} />
             {icon}
@@ -237,7 +241,7 @@ function Section({
         </h3>
         {action}
       </div>
-      <div id={bodyId} hidden={!open} className="space-y-3 border-t p-3">
+      <div id={bodyId} hidden={!open} className="space-y-3 border-t border-slate-100 p-4">
         {children}
       </div>
     </section>
@@ -247,7 +251,7 @@ function Section({
 /** A value as a line item: Yes/No for checks, links for URLs, dots for the WiFi password (with a reveal). */
 function DetailValue({ spec, value }: { spec: StoreFieldSpec; value: unknown }) {
   const [shown, setShown] = useState(false);
-  if (value === null || value === undefined || value === "") return <span className="text-slate-300">—</span>;
+  if (value === null || value === undefined || value === "") return <span className="font-normal text-slate-300">—</span>;
   if (spec.kind === "bool" || spec.kind === "tristate") return <span>{value ? "Yes" : "No"}</span>;
   if (spec.name === "store_ssid_password") {
     return (
@@ -282,11 +286,14 @@ function DetailPanel({
   specs,
   editing,
   forced = false,
+  flat = false,
   values,
   onEdit,
   onView,
   children,
 }: {
+  /** In the right-hand column: no box of its own, the column's dividers separate the sections. */
+  flat?: boolean;
   group: Group;
   stop: Stop;
   project: Project;
@@ -306,9 +313,16 @@ function DetailPanel({
   const editable = specs.some((spec) => spec.editable);
   const pictures = group === "Pictures" ? urlTokens(String(values.image_url ?? stop.image_url)) : [];
   return (
-    <section aria-label={group} className={cn("rounded-lg border p-3", group === "WiFi" && "border-sky-200 bg-sky-50/40", editing && "border-brand/40 ring-1 ring-brand/20")}>
+    <section
+      aria-label={group}
+      className={cn(
+        flat ? "py-3.5" : cn(SURFACE, "p-4"),
+        // Being edited: a card gets a brand ring, a flat section an accent bar down its left.
+        editing && (flat ? "border-l-2 border-l-brand pl-3" : "ring-2 ring-brand/30"),
+      )}
+    >
       <div className="mb-2 flex items-center gap-2">
-        {group === "WiFi" && <Wifi size={13} className="text-slate-500" />}
+        {group === "WiFi" && <Wifi size={13} className="text-sky-600" />}
         <h3 className="font-mono text-[11px] uppercase tracking-wider text-slate-600">{group}</h3>
         {editable && (
           <span className="ml-auto">
@@ -325,7 +339,7 @@ function DetailPanel({
           {specs.map((spec) => (
             <div key={spec.name} className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] gap-3">
               <dt className="text-slate-500">{spec.label}</dt>
-              <dd className="min-w-0 break-words text-slate-800" aria-label={spec.label}>
+              <dd className="min-w-0 break-words font-medium text-slate-900" aria-label={spec.label}>
                 <DetailValue spec={spec} value={valueOf(spec)} />
               </dd>
             </div>
@@ -353,13 +367,13 @@ function IdentityMeta({ stop, project, specs }: { stop: Stop; project: Project; 
   const record = stop as unknown as Record<string, unknown>;
   const fixed = specs.filter((spec) => !spec.editable && !(spec.name === "external_id" && !stop.external_id));
   return (
-    <dl className="flex flex-wrap gap-x-5 gap-y-1 rounded-md bg-slate-50 px-3 py-2 text-xs">
+    <dl className="flex flex-wrap gap-x-5 gap-y-1 border-b border-slate-100 pb-3 text-xs">
       {fixed.map((spec) => {
         const value = spec.name === "pa" ? stop.pa || project.pa : String(record[spec.name] ?? "");
         return (
           <div key={spec.name} className="flex items-baseline gap-1.5">
             <dt className="font-mono text-[10px] uppercase tracking-wider text-slate-500">{spec.label}</dt>
-            <dd className="font-medium text-slate-800" aria-label={spec.label}>
+            <dd className="font-semibold text-slate-900" aria-label={spec.label}>
               {value || <span className="text-slate-300">—</span>}
               {spec.name === "pa" && !stop.pa && project.pa && <span className="ml-1 font-normal text-slate-400">(project)</span>}
             </dd>
@@ -490,6 +504,7 @@ function DetailsEditor({
   sections,
   technicians,
   aside,
+  logs,
 }: {
   project: Project;
   stop: Stop;
@@ -499,9 +514,12 @@ function DetailsEditor({
   technicians: string[];
   /** At the end of the right-hand column. */
   aside: React.ReactNode;
+  /** Under the CMS's log entries, in the column's Logs view. */
+  logs: React.ReactNode;
 }) {
   const [form, setForm] = useState<DetailsForm>(() => detailsFormFrom(stop, specs));
   const [touched, setTouched] = useState(false);
+  const [asideView, setAsideView] = useState<"details" | "logs">("details");
   const [serverErrors, setServerErrors] = useState<Record<string, string>>({});
   const [geoProblem, setGeoProblem] = useState<{ message: string; suggestions: string[] } | null>(null);
   const update = useUpdateStoreDetails(project.id);
@@ -509,12 +527,11 @@ function DetailsEditor({
   const screensSave = useUpdateScreens(project.id);
   const validate = useValidateAddress();
   // Everything in the window is one draft, sent by the single Save at the bottom: the store details (counts and
-  // install type included), the technician, the progress note and the screen rows.
+  // install type included), the technician, the manager's notes and the screen rows.
   const [rows, setRows] = useState<ScreenRow[]>(() => toRows(stop));
   const [editingScreens, setEditingScreens] = useState(false);
   const [technician, setTechnician] = useState(stop.installer_name);
   const [comment, setComment] = useState(stop.comment);
-  const [additionalTask, setAdditionalTask] = useState(stop.additional_task);
   // The Dolphin data's pin, taken with Overwrite "Map location": saved with the rest (as a picked place, so it is not
   // looked up with Google again).
   const [deviceLocation, setDeviceLocation] = useState(false);
@@ -525,7 +542,6 @@ function DetailsEditor({
   const assigned = noTechnician ? "" : technician.trim();
   if (assigned !== stop.installer_name) progressPatch.installer_name = assigned;
   if (comment !== stop.comment) progressPatch.comment = comment;
-  if (additionalTask !== stop.additional_task) progressPatch.additional_task = additionalTask;
   const rowsDirty = screensChanged(stop, rows);
   const dirty = Object.keys(patch).length > 0 || Object.keys(progressPatch).length > 0 || rowsDirty || deviceLocation;
   /** Fields Overwrite has taken into the draft: the draft holds the Dolphin data's value but the store does not yet. */
@@ -550,7 +566,6 @@ function DetailsEditor({
     setRows(toRows(stop));
     setTechnician(stop.installer_name);
     setComment(stop.comment);
-    setAdditionalTask(stop.additional_task);
     setDeviceLocation(false);
     setServerErrors({});
     setEditing(new Set());
@@ -658,9 +673,10 @@ function DetailsEditor({
   };
 
   /** A right-hand style section: its values as line items, Edit turns them into controls. */
-  const detailPanel = (group: Group) => (
+  const detailPanel = (group: Group, flat = false) => (
     <DetailPanel
       key={group}
+      flat={flat}
       group={group}
       stop={stop}
       project={project}
@@ -728,8 +744,8 @@ function DetailsEditor({
             ].map(([label, value]) => (
               <div key={label} className="grid grid-cols-[minmax(0,1fr)_minmax(0,3fr)] gap-3">
                 <dt className="text-slate-500">{label}</dt>
-                <dd className="min-w-0 break-words text-slate-800" aria-label={label}>
-                  {value || <span className="text-slate-300">—</span>}
+                <dd className="min-w-0 break-words font-medium text-slate-900" aria-label={label}>
+                  {value || <span className="font-normal text-slate-300">—</span>}
                 </dd>
               </div>
             ))}
@@ -848,31 +864,60 @@ function DetailsEditor({
           {/* Pictures on the left, with the store on a small map under them. */}
           {detailPanel("Pictures")}
           <StoreLocationMap stop={stop} />
-          <Section title="Progress" sections={sections}>
-            <div className="flex items-center gap-2">
-              <Checkbox id="additional-task" checked={additionalTask} onCheckedChange={(checked) => setAdditionalTask(checked === true)} />
-              <Label htmlFor="additional-task">Additional task done</Label>
-            </div>
+          {/* The project manager's own notes (stored as the store's `comment`). Installation and site notes come
+              from the sheet and the people on site, and sit under Other details. */}
+          <Section title="Notes" sections={sections}>
             <div className="space-y-1.5">
-              <Label htmlFor="comment">Comment</Label>
-              <Textarea id="comment" value={comment} onChange={(event) => setComment(event.target.value)} rows={3} />
+              <Textarea
+                aria-label="Manager notes"
+                value={comment}
+                onChange={(event) => setComment(event.target.value)}
+                rows={4}
+                placeholder="Your notes on this store: follow-ups, decisions, anything to remember"
+              />
+              <p className="text-xs text-slate-500">For whoever manages the project. Installation and site notes are under Other details.</p>
             </div>
           </Section>
         </div>
         <aside
-          className="min-w-0 space-y-3 lg:sticky lg:top-4 lg:max-h-[calc(94vh-12rem)] lg:self-start lg:overflow-y-auto lg:border-l lg:pl-4"
+          className={cn(SURFACE, "min-w-0 space-y-2 p-4 lg:sticky lg:top-4 lg:max-h-[calc(94vh-12rem)] lg:self-start lg:overflow-y-auto")}
           aria-label="Store details"
         >
-          <p className="font-mono text-[10px] uppercase tracking-[2px] text-slate-500">Other details</p>
-          {ASIDE_GROUPS.flatMap((group) => {
-            const panel = detailPanel(group);
-            // The Dolphin data's values sit right after WiFi, as before.
-            return group === "WiFi" ? [panel, <StoreDeviceSection key="device" project={project} stop={stop} pending={overwritten} onOverwrite={takeFromDevice} />] : [panel];
-          })}
-          {aside}
+          {/* The column shows the store's other details, or the CMS's servicing logs for its DD codes. */}
+          <div role="tablist" aria-label="Right column" className="inline-flex rounded-lg bg-slate-100 p-0.5 text-xs font-medium">
+            {(["details", "logs"] as const).map((view) => (
+              <button
+                key={view}
+                type="button"
+                role="tab"
+                aria-selected={asideView === view}
+                onClick={() => setAsideView(view)}
+                className={cn("rounded-md px-3 py-1 transition-colors", asideView === view ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800")}
+              >
+                {view === "details" ? "Other details" : "Logs"}
+              </button>
+            ))}
+          </div>
+          {/* Hidden, not unmounted, while the logs show: a section being edited keeps its place. */}
+          <div hidden={asideView !== "details"} className="divide-y divide-slate-100">
+            {ASIDE_GROUPS.flatMap((group) => {
+              const panel = detailPanel(group, true);
+              // The Dolphin data's values sit right after WiFi, as before.
+              return group === "WiFi"
+                ? [panel, <div key="device" className="py-3 empty:hidden"><StoreDeviceSection project={project} stop={stop} pending={overwritten} onOverwrite={takeFromDevice} /></div>]
+                : [panel];
+            })}
+            {aside}
+          </div>
+          {asideView === "logs" && (
+            <>
+              <StoreLogs projectId={project.id} stopUid={stop.uid} />
+              {logs}
+            </>
+          )}
         </aside>
       </div>
-      <div className="sticky bottom-0 -mx-6 mt-3 flex justify-end gap-2 border-t bg-white px-6 py-3">
+      <div className="sticky bottom-0 -mx-6 mt-3 flex justify-end gap-2 border-t border-white/60 bg-white/70 px-6 py-3 shadow-[0_-8px_24px_-12px_rgb(15_23_42/0.18)] backdrop-blur-xl backdrop-saturate-150">
         {dirty && <span className="mr-auto self-center text-xs text-amber-700">Unsaved changes</span>}
         <Button variant="ghost" disabled={!dirty || saving} onClick={discard}>
           Discard
@@ -1004,7 +1049,7 @@ function OtherData({ project, stop }: { project: Project; stop: Stop }) {
   const labels = new Map(project.field_schema.map((field) => [field.key, field.label]));
   const entries = Object.entries(stop.fields).filter(([, value]) => value !== null && value !== undefined && value !== "");
   return (
-    <section aria-label="Other imported data" className="rounded-lg border p-3">
+    <section aria-label="Other imported data" className="py-3">
       <h3 className="mb-2 flex items-center font-mono text-[11px] uppercase tracking-wider text-slate-600">
         Other imported data
         {entries.length > 0 && <span className="ml-auto font-sans text-xs normal-case tracking-normal text-slate-400">{entries.length} values</span>}
@@ -1016,7 +1061,7 @@ function OtherData({ project, stop }: { project: Project; stop: Stop }) {
           {entries.map(([key, value]) => (
             <div key={key} className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] gap-3">
               <dt className="text-slate-500">{labels.get(key) ?? key.replace(/_/g, " ")}</dt>
-              <dd className="whitespace-pre-wrap break-words text-slate-800">{String(value)}</dd>
+              <dd className="whitespace-pre-wrap break-words font-medium text-slate-900">{String(value)}</dd>
             </div>
           ))}
         </dl>

@@ -204,6 +204,15 @@ class SyncRuleTests(unittest.TestCase):
         self.assertEqual(changes["needs_attention"], [])
         self.assertEqual(overwrite_changes(store.model_copy(update={"device": None}), ["store_name"]), {})
 
+    def test_overwriting_name_and_location_together_clears_both_flags(self):
+        store = stop("a", Screen(venue_id="DD-HFN64S"), needs_attention=["store_name", "address"])
+        store = store.model_copy(update={"store_name": "", "lat": None, "lng": None})
+        snap = snapshot(report_row("DD_HFN64S"))
+        store = Stop.model_validate({**store.model_dump(), **sync_stop(store, index_records(snap.records), snap,
+                                                                       self.NOW)})
+        for fields in (["store_name", "location"], ["location", "store_name"]):
+            self.assertEqual(overwrite_changes(store, fields)["needs_attention"], [], fields)
+
 
 class ServiceTestCase(unittest.TestCase):
     def setUp(self):
@@ -341,6 +350,32 @@ class ServiceTests(ServiceTestCase):
         self.assertEqual(added.screens[0].device.status, "Online")  # the other stick keeps its sync values
         self.assertEqual(len(self.stores.list_all("p1")), 3)
 
+    def test_add_never_puts_a_dd_code_in_a_second_store(self):
+        # After the sync, someone types the reviewed code into store "c" by hand; the review list still has it.
+        self.service.sync("p1")
+        store_service = StoreService(self.stores, self.projects)
+        store_service.update_screens("p1", "c", [
+            *(ScreenInput(**screen.model_dump(exclude={"device", "status_changed_at"}))
+              for screen in self.stores.get("p1", "c").screens),
+            ScreenInput(venue_id="dd-new001"),
+        ])
+        added = self.service.add_from_review("p1", "DD_NEW001")  # by address it would have joined store "a"
+        self.assertEqual(added.uid, "c")
+        holders = [store.uid for store in self.stores.list_all("p1")
+                   if any(venue_code_key(screen.venue_id) == "DD_NEW001" for screen in store.screens)]
+        self.assertEqual(holders, ["c"])
+        self.assertEqual(added.screens[-1].device.status, "Online")  # the record is applied to that screen
+        self.assertIsNone(self.reviews.get("p1", "DD_NEW001"))
+
+    def test_a_dd_code_of_another_store_cannot_be_typed_in(self):
+        store_service = StoreService(self.stores, self.projects)
+        rows = [ScreenInput(**screen.model_dump(exclude={"device", "status_changed_at"}))
+                for screen in self.stores.get("p1", "a").screens]
+        with self.assertRaises(ValidationFailed) as raised:
+            store_service.update_screens("p1", "a", [*rows, ScreenInput(venue_id="dd_off001")])  # store "b" has it
+        self.assertIn("Sheet b", str(raised.exception.detail))
+        store_service.update_screens("p1", "a", rows)  # its own codes sent back are fine
+
     def test_two_sticks_of_a_new_store_become_one_store(self):
         self.source.rows = [report_row("DD_NEW00A", Address="9 Elm St, Macon, GA 31201", City="Macon",
                                        **{"State Code": "GA", "Zip Code": "31201"}),
@@ -420,6 +455,29 @@ class ApiTests(ServiceTestCase):
         pins = {pin["uid"]: pin for pin in self.client.get("/api/projects/p1/stores/pins").json()}
         self.assertEqual(pins["a"]["lat"], 42.2675)  # the report's location
         self.assertEqual(pins["c"]["lat"], 33.7)
+
+    def test_store_logs_by_dd_code(self):
+        def log(code: str, date: str, category: str) -> dict:
+            return {"id": f"{code}-{date}", "date": date, "dd_code": code, "store_name": "Opa Locka",
+                    "installer": "Marlin", "dolphin_manager": "Momina", "category": category,
+                    "detailed_comments": "checked", "created_at": "2026-02-14T15:25:30+00:00",
+                    "wifi_password": "secret"}
+
+        self.source.log_rows = [
+            log("DD_HFN64S", "2025-07-05", "HDMI / Cable Fault"), log("DD_HFN64S", "2025-09-01", "Loose Connection"),
+            log("DD_OFF001", "2025-08-01", "TV Turned Off"),
+        ]
+        page = self.client.get("/api/projects/p1/stores/a/device-logs").json()  # store "a" has DD-HFN64S (a dash)
+        self.assertEqual(page["codes"], ["DD-HFN64S"])
+        self.assertEqual([item["date"] for item in page["items"]], ["2025-09-01", "2025-07-05"])  # newest first
+        self.assertEqual(page["items"][0]["category"], "Loose Connection")
+        self.assertNotIn("wifi_password", page["items"][0])
+        first = self.client.get("/api/projects/p1/stores/a/device-logs", params={"limit": 1}).json()
+        self.assertEqual((len(first["items"]), first["total"], bool(first["next_cursor"])), (1, 2, True))
+        one = self.client.get("/api/projects/p1/stores/a/device-logs", params={"dd_code": "dd_hfn64s"}).json()
+        self.assertEqual(one["total"], 2)
+        other = self.client.get("/api/projects/p1/stores/a/device-logs", params={"dd_code": "DD_OFF001"})
+        self.assertEqual(other.status_code, 422)  # another store's code
 
     def test_overwrite_and_ignore(self):
         self.client.post("/api/projects/p1/device-sync")

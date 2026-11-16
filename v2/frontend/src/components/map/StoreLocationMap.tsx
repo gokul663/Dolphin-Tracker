@@ -20,7 +20,7 @@ export function StoreLocationMap({ stop, className }: { stop: Stop; className?: 
   const key = config.data?.google_maps_browser_key ?? "";
   const at = shownLocation(stop);
   return (
-    <section aria-label="Location" className={cn("rounded-lg border p-3", className)}>
+    <section aria-label="Location" className={cn("rounded-xl bg-white p-4 shadow-sm ring-1 ring-slate-900/5", className)}>
       <div className="mb-2 flex items-center gap-2">
         <h3 className="flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-wider text-slate-600">
           <MapPin size={13} /> Location
@@ -45,7 +45,7 @@ export function StoreLocationMap({ stop, className }: { stop: Stop; className?: 
       ) : !key ? (
         <p className="flex h-24 items-center justify-center rounded-md bg-slate-50 text-sm text-slate-400">Map unavailable (no Google Maps key).</p>
       ) : (
-        <div className="relative h-64 overflow-hidden rounded-md">
+        <div className="relative h-64 overflow-hidden rounded-lg">
           <APIProvider apiKey={key}>
             {/* Keyed by position, so a verified or overwritten location recentres the map. */}
             <Map

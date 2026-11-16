@@ -9,7 +9,6 @@ import { cn } from "@/lib/utils";
 const HEADER_BUCKETS: [StatusBucket, string][] = [
   ["Completed", "Online"],
   ["Offline", "Offline"],
-  ["In Progress", "In Progress"],
   ["Upcoming", "Upcoming"],
   ["Cancelled", "Cancelled"],
 ];

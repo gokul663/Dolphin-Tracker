@@ -1112,6 +1112,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{project_id}/stores/{stop_uid}/device-logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Store Logs
+         * @description The CMS's servicing log entries for the store's DD codes, newest first.
+         */
+        get: operations["list_store_logs_api_projects__project_id__stores__stop_uid__device_logs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects/{project_id}/stores/{stop_uid}/device-alert/ignore": {
         parameters: {
             query?: never;
@@ -1232,6 +1252,83 @@ export interface components {
             locked: boolean;
             /** Version */
             version?: number | null;
+        };
+        /**
+         * DeviceLog
+         * @description One servicing log entry from the CMS (`dolphin_venue_vision.logs`): what was found at a device on a day and
+         *     who dealt with it. Read-only here; text is "" when the CMS has no value.
+         */
+        DeviceLog: {
+            /**
+             * Id
+             * @default
+             */
+            id: string;
+            /**
+             * Date
+             * @default
+             */
+            date: string;
+            /**
+             * Dd Code
+             * @default
+             */
+            dd_code: string;
+            /**
+             * Venue Name
+             * @default
+             */
+            venue_name: string;
+            /**
+             * Store Name
+             * @default
+             */
+            store_name: string;
+            /**
+             * Address
+             * @default
+             */
+            address: string;
+            /**
+             * Pa
+             * @default
+             */
+            pa: string;
+            /**
+             * Installer
+             * @default
+             */
+            installer: string;
+            /**
+             * Stick Number
+             * @default
+             */
+            stick_number: string;
+            /**
+             * Stick Model
+             * @default
+             */
+            stick_model: string;
+            /**
+             * Dolphin Manager
+             * @default
+             */
+            dolphin_manager: string;
+            /**
+             * Category
+             * @default
+             */
+            category: string;
+            /**
+             * Detailed Comments
+             * @default
+             */
+            detailed_comments: string;
+            /**
+             * Created At
+             * @default
+             */
+            created_at: string;
         };
         /**
          * DeviceOverwrite
@@ -1902,6 +1999,17 @@ export interface components {
                 [key: string]: components["schemas"]["Breakdown"];
             };
             address_status: components["schemas"]["Breakdown"];
+        };
+        /** LogPage */
+        LogPage: {
+            /** Items */
+            items: components["schemas"]["DeviceLog"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+            /** Total */
+            total: number;
+            /** Codes */
+            codes: string[];
         };
         /** MapsConfig */
         MapsConfig: {
@@ -3070,7 +3178,10 @@ export interface components {
         };
         /**
          * StatusBucket
-         * @description The five groups the UI shows (KPI bubbles, filter chips, map colours). Stored statuses keep all nine.
+         * @description The groups the UI shows (KPI bubbles, filter chips, map colours). Stored statuses keep all nine.
+         *
+         *     In Progress is not shown for now: its statuses (Invitation Email Sent, Shipped, Delivered, Serviced - Needs More
+         *     Work) count as Upcoming. To bring it back, point them at IN_PROGRESS in BUCKET_OF and add it to BUCKET_ORDER.
          * @enum {string}
          */
         StatusBucket: "Completed" | "Upcoming" | "In Progress" | "Offline" | "Cancelled";
@@ -6437,6 +6548,43 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OverwriteResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_store_logs_api_projects__project_id__stores__stop_uid__device_logs_get: {
+        parameters: {
+            query?: {
+                /** @description One of the store's DD codes; all when empty */
+                dd_code?: string;
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+                stop_uid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LogPage"];
                 };
             };
             /** @description Validation Error */

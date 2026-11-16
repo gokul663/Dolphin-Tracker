@@ -13,7 +13,7 @@ describe("ProjectKpis", () => {
     render(<ProjectKpis kpi={makeKpi()} />);
     const order = screen.getAllByLabelText(/screens|TVs/).map((element) => element.getAttribute("aria-label"));
     expect(order).toEqual([
-      "Committed screens and TVs", "Completed screens", "Online screens", "Offline screens", "In Progress screens",
+      "Committed screens and TVs", "Completed screens", "Online screens", "Offline screens",
       "Upcoming screens", "Cancelled screens",
     ]);
     expect(bubble("Committed screens and TVs")).toEqual({
@@ -22,7 +22,7 @@ describe("ProjectKpis", () => {
     expect(bubble("Completed screens").text).toBe("6Completed5 stores"); // installed
     expect(bubble("Online screens").text).toBe("5Online4 stores"); // the Completed status
     expect(bubble("Upcoming screens").text).toBe("6Upcoming5 stores");
-    expect(bubble("In Progress screens").text).toBe("0In Progress0 stores"); // every group always shows
+    expect(screen.queryByLabelText("In Progress screens")).toBeNull(); // not shown for now: counted as Upcoming
     expect(bubble("Cancelled screens").note).toContain("Cancelled, Archived");
     expect(bubble("Offline screens").note).toMatch(/^8.3% of screens/);
   });

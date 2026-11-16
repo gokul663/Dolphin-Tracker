@@ -268,7 +268,7 @@ class ExportTests(StoresApiTestCase):
         self.assertEqual([row[0] for row in rows[1:]], ["S1", "S10"])
         a = dict(zip(header, rows[1], strict=True))
         self.assertEqual((a["IBC#"], a["PA"], a["Status"], a["Screens"]), ("IBC-1", "North", "Completed", "1"))
-        self.assertEqual(a["Comment"], "'=HYPERLINK(\"x\")")  # formula neutralised
+        self.assertEqual(a["Notes"], "'=HYPERLINK(\"x\")")  # formula neutralised
         self.assertEqual((a["Spot visible from most of store"], a["Power outlet within 6 ft"]), ("yes", ""))
         self.assertEqual(a["Screen rows"], '— / V1 / 24" / Dolphin screen / wall mount (none yet) / Completed')
         self.assertEqual((a["Dolphin screens (committed)"], a["Dolphin screens (actual)"]), ("2", "1"))

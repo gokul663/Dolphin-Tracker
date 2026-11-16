@@ -18,7 +18,8 @@ from typing import Any
 
 from dolphin_tracker.domain.base import ApiModel
 from dolphin_tracker.domain.cursors import encode_cursor, offset_from_cursor
-from dolphin_tracker.domain.device_sync import packed_screens, shown_location
+from dolphin_tracker.domain.device import split_codes, venue_code_key
+from dolphin_tracker.domain.device_sync import packed_screens, shown_location, store_with_code
 from dolphin_tracker.domain.errors import ConflictError, NotFoundError, ValidationFailed
 from dolphin_tracker.domain.import_mapping import clean_mapping, split_duplicates
 from dolphin_tracker.domain.models import (
@@ -434,7 +435,7 @@ class StoreService:
         header = [
             "ID", *[spec.label for spec in STORE_FIELDS], "Lat", "Lng", "Status", "Screens",
             "Dolphin screens (actual)", "Store TVs (actual)", "Screen rows", "Installer", "Day", "Seq",
-            "Completed by", "Additional task", "Comment", *[f.label for f in schema], "Updated by", "Updated at",
+            "Completed by", "Notes", *[f.label for f in schema], "Updated by", "Updated at",
         ]
         buffer = io.StringIO()
         writer = csv.writer(buffer)
@@ -448,7 +449,7 @@ class StoreService:
                 "" if stop.lat is None else stop.lat, "" if stop.lng is None else stop.lng,
                 stop.status.value, len(stop.screens), dolphin, len(stop.screens) - dolphin,
                 "; ".join(screen_summary(screen) for screen in stop.screens),
-                stop.installer, stop.day, stop.seq, stop.installer_name, "yes" if stop.additional_task else "no",
+                stop.installer, stop.day, stop.seq, stop.installer_name,
                 stop.comment, *[stop.fields.get(f.key, "") for f in schema], stop.updated_by, stop.updated_at,
             ]
             writer.writerow([_csv_cell(value) for value in row])
@@ -517,13 +518,27 @@ class StoreService:
         return self._stores.update_fields(project_id, stop_uid, update)
 
     def update_screens(
-        self, project_id: str, stop_uid: str, screens: list[ScreenInput], *, updated_by: str = ""
+        self, project_id: str, stop_uid: str, screens: list[ScreenInput], *, updated_by: str = "",
+        stops: list[Stop] | None = None,
     ) -> Stop:
         """Replace a store's screen rows (full list, ≥ 1). Rows sent back with the id of one of this store's
-        screens keep it; any other row gets a new server-minted id. The derived status follows."""
+        screens keep it; any other row gets a new server-minted id. The derived status follows. A DD code new to
+        this store is refused when another store of the project already has it (`stops`: the project's stores when
+        the caller has just read them)."""
         current = self.get(project_id, stop_uid)
         if not screens:
             raise ValidationFailed("A store needs at least one screen")
+        had = {venue_code_key(code) for screen in current.screens for code in split_codes(screen.venue_id)}
+        new_codes = [code for screen in screens for code in split_codes(screen.venue_id)
+                     if venue_code_key(code) and venue_code_key(code) not in had]
+        if new_codes:
+            others = stops if stops is not None else self._stores.list_all(project_id)
+            for code in new_codes:
+                holder = store_with_code(code, others, exclude_uid=stop_uid)
+                if holder is not None:
+                    names = [part for part in (holder.store_name, holder.external_id) if part]
+                    where = " · ".join(names) or "another store"
+                    raise ValidationFailed(f"DD code {code} is already on {where}. A DD code belongs to one store.")
         known = {screen.id: screen for screen in current.screens}
         now = now_iso()
         rows = []

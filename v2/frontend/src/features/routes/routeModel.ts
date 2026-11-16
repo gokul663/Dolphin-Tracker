@@ -236,7 +236,7 @@ function stopColumns(stop: Stop, schema: FieldDef[]): Cell[] {
     STATUS_META[stop.status].label, stop.screens.length,
     stop.screens.map((screen) => [screen.stick_number || "—", screen.venue_id || "—", STATUS_META[screen.status].label].join(" / ")).join("; "),
     stop.onsite_contact_name, stop.onsite_contact_phone, stop.best_contact_time, stop.preferred_install_datetime,
-    stop.blocked_dates_notes, stop.installation_notes, stop.comment, stop.additional_task ? "Yes" : "No",
+    stop.blocked_dates_notes, stop.installation_notes, stop.comment,
     ...schema.map((field) => fieldText(stop, field.key)),
     stop.geocoded, stop.lat ?? "", stop.lng ?? "",
   ];
@@ -245,7 +245,7 @@ function stopColumns(stop: Stop, schema: FieldDef[]): Cell[] {
 const STOP_HEADERS = (schema: FieldDef[]) => [
   "IBC#", "Store Name", "Address", "City", "State", "ZIP", "PA", "DMA", "Venue Type", "Status", "Screens", "Screen Rows",
   "On-site Contact", "On-site Phone", "Best Contact Time", "Preferred Install Date/Time", "Blocked Dates / Notes",
-  "Installation Comments", "Comment", "Additional Task", ...schema.map((field) => field.label), "Geocoded Address", "Lat", "Lng",
+  "Installation Comments", "Notes", ...schema.map((field) => field.label), "Geocoded Address", "Lat", "Lng",
 ];
 
 export function dayCsvRows(installer: string, day: number, stops: Stop[], schema: FieldDef[]): Cell[][] {

@@ -1,7 +1,8 @@
 """Lambda entry point for the device report: the only function that holds the Mongo secret.
 
 Invoked synchronously by the API and the worker (`repositories/device_data.LambdaDeviceData`), never from the
-internet. Events: {"op": "latest_date"} | {"op": "list_pas"} | {"op": "snapshot", "pa": "..."}.
+internet. Events: {"op": "latest_date"} | {"op": "list_pas"} | {"op": "snapshot", "pa": "..."} |
+{"op": "logs", "codes": ["DD_...", ...]}.
 Answers {"ok": true, ...} or {"ok": false, "error": "..."}.
 """
 from __future__ import annotations
@@ -36,6 +37,9 @@ def dispatch(event: dict[str, Any], source: DeviceDataSource | None = None) -> d
             if not pa:
                 return {"ok": False, "error": "pa is required"}
             return {"ok": True, "snapshot": source.snapshot(pa).model_dump(mode="json")}
+        if op == "logs":
+            codes = [str(code) for code in event.get("codes") or []]
+            return {"ok": True, "logs": [log.model_dump(mode="json") for log in source.logs(codes)]}
     except DeviceDataUnavailable as exc:
         logger.warning("Device report unavailable", extra={"op": op, "detail": str(exc)})
         return {"ok": False, "error": str(exc)}

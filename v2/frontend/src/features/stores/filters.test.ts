@@ -15,7 +15,7 @@ const OPTIONS: StoreFilterOptions = {
   screen_size: [],
   route: [{ value: "Not in route", count: 3 }],
   visit: [{ value: "Not visited", count: 3 }],
-  bucket: [{ value: "Upcoming", count: 2 }, { value: "In Progress", count: 1 }],
+  bucket: [{ value: "Upcoming", count: 2 }, { value: "Offline", count: 1 }],
   install_type: [],
   mount: [{ value: "No mount needed", count: 3 }],
   fulfilled: [{ value: "No commitment", count: 3 }],

@@ -28,7 +28,7 @@ class BucketTests(unittest.TestCase):
         self.assertEqual(set(BUCKET_OF), set(ScreenStatus))
         self.assertEqual(BUCKET_OF[ScreenStatus.ARCHIVED], StatusBucket.CANCELLED)
         for status in ("Invitation Email Sent", "Shipped", "Delivered", "Serviced - Needs More Work"):
-            self.assertEqual(BUCKET_OF[ScreenStatus(status)], StatusBucket.IN_PROGRESS)
+            self.assertEqual(BUCKET_OF[ScreenStatus(status)], StatusBucket.UPCOMING)  # no In Progress group for now
 
     def test_cancelled_location_is_cancelled(self):
         self.assertEqual(normalize_screen_status("Cancelled Location"), (ScreenStatus.CANCELLED, True))
@@ -40,10 +40,9 @@ class BucketTests(unittest.TestCase):
             stop("c", "Archived").model_dump(mode="json"),
             stop("d", "Offline", install_type="Rep install").model_dump(mode="json"),
         ])
-        self.assertEqual(kpi.by_bucket, {"Completed": 1, "Upcoming": 1, "In Progress": 0, "Offline": 1,
-                                         "Cancelled": 1})
+        self.assertEqual(kpi.by_bucket, {"Completed": 1, "Upcoming": 1, "Offline": 1, "Cancelled": 1})
         self.assertEqual(kpi.screens_by_bucket["Completed"], 2)
-        self.assertEqual(kpi.screens_by_bucket["In Progress"], 1)
+        self.assertEqual(kpi.screens_by_bucket["Upcoming"], 2)  # Upcoming and Shipped
         self.assertEqual(kpi.by_technician["Murugan"].model_dump(), {"done": 2, "upcoming": 2})
         self.assertEqual(kpi.install_types, {"Technician": 2, "": 1, "Rep install": 1})  # a name implies Technician
         # Completed in the header = installed: online (Completed) and Offline screens together.

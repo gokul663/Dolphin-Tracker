@@ -10,7 +10,8 @@ import type { StoreFilters } from "@/lib/api/resources";
 import type { Project, Stop } from "@/lib/api/types";
 import { useShallow } from "zustand/react/shallow";
 import { useStoresUi } from "@/stores/ui";
-import { anyFacet } from "@/features/stores/filters";
+import { anyFacet, FACET_LABELS, optionLabel } from "@/features/stores/filters";
+import type { Facet } from "@/stores/ui";
 import { cn } from "@/lib/utils";
 
 /** "Only stores in map view" and the CSV export, for the status line above the search and filters. */
@@ -34,8 +35,8 @@ export function StoresListActions({ project, filters }: { project: Project; filt
   );
 }
 
-/** One row: the search (IBC#, name, address, with the closest stores as you type), the filter dropdowns
- *  (`children`), then Needs attention and Clear. */
+/** The search (IBC#, name, address, with the closest stores as you type) and the filter dropdowns (`children`);
+ *  under them, while anything narrows the list, one chip per active filter (each with its own ×) and Clear all. */
 export function StoresToolbar({
   project,
   filters: _filters,
@@ -58,6 +59,7 @@ export function StoresToolbar({
       needsAttention: state.needsAttention,
       setNeedsAttention: state.setNeedsAttention,
       setOnlyInView: state.setOnlyInView,
+      toggleFacet: state.toggleFacet,
       clearFilters: state.clearFilters,
     })),
   );
@@ -69,10 +71,37 @@ export function StoresToolbar({
   }, [draft]); // only the draft drives the debounce; `ui` is the stable store
   const active = ui.search || anyFacet(ui.facets) || ui.onlyInView || ui.needsAttention;
 
+  // Everything narrowing the list, one chip each: the search text, every picked filter value (also the ones
+  // without a drop-down, set from a link or a header bubble), and the two switches.
+  const chips: { key: string; label: string; onRemove: () => void }[] = [
+    ...(ui.search ? [{ key: "q", label: `Search: ${ui.search}`, onRemove: () => { setDraft(""); ui.setSearch(""); } }] : []),
+    ...(Object.keys(ui.facets) as Facet[]).flatMap((facet) =>
+      ui.facets[facet].map((value) => ({
+        key: `${facet}:${value}`,
+        label: `${FACET_LABELS[facet]}: ${optionLabel(facet, value) || "(blank)"}`,
+        onRemove: () => ui.toggleFacet(facet, value),
+      })),
+    ),
+    ...(ui.onlyInView ? [{ key: "view", label: "Only stores in map view", onRemove: () => ui.setOnlyInView(false) }] : []),
+  ];
+
   return (
+    <div className="space-y-2">
     <div className="flex flex-wrap items-center gap-1.5">
       <StoreSearch projectId={project.id} value={draft} onChange={setDraft} onPick={(stop) => (onPick ? onPick(stop.uid) : setDraft(stop.store_name))} />
       {children}
+    </div>
+    {active ? (
+    <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Active filters">
+      <span className="font-mono text-[11px] uppercase tracking-wider text-slate-500">Filtered by</span>
+      {chips.map((chip) => (
+        <span key={chip.key} className="inline-flex items-center gap-1 rounded-full border border-brand/30 bg-brand/10 py-0.5 pl-2.5 pr-1 text-xs font-medium text-brand">
+          {chip.label}
+          <button type="button" aria-label={`Remove ${chip.label}`} onClick={chip.onRemove} className="rounded-full p-0.5 hover:bg-brand/20">
+            <X size={12} />
+          </button>
+        </span>
+      ))}
       {ui.needsAttention && (
         <Button
           size="sm"
@@ -85,11 +114,11 @@ export function StoresToolbar({
           <AlertTriangle /> Needs attention <X />
         </Button>
       )}
-      {active ? (
-        <Button variant="ghost" size="sm" onClick={ui.clearFilters}>
-          <X /> Clear
-        </Button>
-      ) : null}
+      <Button variant="ghost" size="sm" className="h-7" onClick={ui.clearFilters}>
+        <X /> Clear all
+      </Button>
+    </div>
+    ) : null}
     </div>
   );
 }

@@ -46,7 +46,7 @@ import type {
   RoutePlanCreate,
   RoutePlanUpdate,
   Visit,
-  VisitInput, OverwriteField, ReviewAdd, OverwriteResult, PaList, ReviewItem, ReviewPage, SyncResult, DayInsert, DayLockSet, InsertOptions, InsertQuery, StorePage, PlaceHit } from "@/lib/api/types";
+  VisitInput, OverwriteField, ReviewAdd, OverwriteResult, PaList, ReviewItem, ReviewPage, LogPage, SyncResult, DayInsert, DayLockSet, InsertOptions, InsertQuery, StorePage, PlaceHit } from "@/lib/api/types";
 import type { StorePageParams } from "@/lib/api/keys";
 import type { StatusBucket } from "@/lib/status";
 
@@ -290,6 +290,10 @@ export const deviceSyncApi = {
     api<OverwriteResult>(`/projects/${enc(projectId)}/device-sync/overwrite`, { method: "POST", body: { fields } }),
   overwriteStore: (projectId: string, uid: string, fields: OverwriteField[]) =>
     api<OverwriteResult>(`/projects/${enc(projectId)}/stores/${enc(uid)}/device-overwrite`, { method: "POST", body: { fields } }),
+  logs: (projectId: string, uid: string, params: { ddCode?: string; limit: number; cursor?: string | null }) =>
+    api<LogPage>(`/projects/${enc(projectId)}/stores/${enc(uid)}/device-logs`, {
+      query: { dd_code: params.ddCode || undefined, limit: params.limit, cursor: params.cursor ?? undefined },
+    }),
   ignoreAlert: (projectId: string, uid: string) =>
     api<Stop>(`/projects/${enc(projectId)}/stores/${enc(uid)}/device-alert/ignore`, { method: "POST" }),
 };

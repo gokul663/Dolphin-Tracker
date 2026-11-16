@@ -65,7 +65,7 @@ export function StoreSummary({
   );
   return (
     <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,1.3fr)]" aria-label="Store summary">
-      <section aria-label="Committed" className="flex flex-col gap-2 rounded-lg border bg-white p-3">
+      <section aria-label="Committed" className="flex flex-col gap-2 rounded-xl bg-white p-4 shadow-sm ring-1 ring-slate-900/5">
         <CardTitle title="Committed" right={<Total value={sum(toNumber(counts.committed_dolphin_screens), toNumber(counts.committed_store_tvs))} label="Committed total" />} />
         <div className="grid grid-cols-2 gap-2">
           {count("committed_dolphin_screens", "Screens", <Monitor size={13} />)}
@@ -83,7 +83,7 @@ export function StoreSummary({
         fulfilled={done.fulfilled}
         cost={hardwareCost(draft.rows, costs)}
       />
-      <section aria-label="Mounts needed" className="flex flex-col gap-2 rounded-lg border bg-white p-3">
+      <section aria-label="Mounts needed" className="flex flex-col gap-2 rounded-xl bg-white p-4 shadow-sm ring-1 ring-slate-900/5">
         <CardTitle
           title="Mounts needed"
           icon={<Wrench size={13} />}
@@ -176,7 +176,7 @@ function InstalledCard({
   cost: ReturnType<typeof hardwareCost>;
 }) {
   return (
-    <section aria-label="Installed" className={cn("flex flex-col gap-2 rounded-lg border bg-white p-3", fulfilled && "border-green-300 bg-green-50/60")}>
+    <section aria-label="Installed" className={cn("flex flex-col gap-2 rounded-xl bg-white p-4 shadow-sm ring-1 ring-slate-900/5", fulfilled && "bg-green-50 ring-green-300")}>
       <CardTitle
         title="Installed"
         right={
@@ -262,7 +262,7 @@ function AssignmentCard({
   const type = NO_TECHNICIAN.has(installType) ? installType : "Technician";
   const options = [...new Set(technicians.filter(Boolean))].sort((a, b) => a.localeCompare(b));
   return (
-    <section aria-label="Assignment" className="flex flex-col gap-2 rounded-lg border bg-white p-3">
+    <section aria-label="Assignment" className="flex flex-col gap-2 rounded-xl bg-white p-4 shadow-sm ring-1 ring-slate-900/5">
       <h3 className="flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-wider text-slate-500">
         <HardHat size={13} /> Installed by
       </h3>

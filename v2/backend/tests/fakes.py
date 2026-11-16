@@ -118,7 +118,9 @@ def report_row(venue_id: str, status: str = "Online", **extra) -> dict:
 class FakeDeviceData:
     """Stands in for the device report: `rows` are report documents for the newest day, any PA."""
 
-    def __init__(self, rows: list[dict] | None = None, date: str = "2026-11-09") -> None:
+    def __init__(self, rows: list[dict] | None = None, date: str = "2026-11-09",
+                 log_rows: list[dict] | None = None) -> None:
+        self.log_rows = log_rows or []  # `logs` documents
         self.rows = rows or []
         self.date = date
         self.snapshots: list[str] = []
@@ -128,6 +130,13 @@ class FakeDeviceData:
 
     def list_pas(self) -> tuple[str, list[str]]:
         return self.date, sorted({row["PA Name"] for row in self.rows})
+
+    def logs(self, codes: list[str]):
+        from dolphin_tracker.domain.device import DeviceLog, code_variants
+
+        wanted = set(code_variants(codes))
+        logs = [DeviceLog.from_log(row) for row in self.log_rows if row.get("dd_code") in wanted]
+        return sorted(logs, key=lambda log: (log.date, log.created_at), reverse=True)
 
     def snapshot(self, pa: str):
         from dolphin_tracker.domain.device import DeviceRecord, DeviceSnapshot, utc_iso

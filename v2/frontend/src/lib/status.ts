@@ -27,17 +27,18 @@ export const PROJECT_TYPE_LABELS: Record<string, string> = {
   new_installation_and_offline: "New Installation + Offline",
 };
 
-/** The five groups the UI shows (backend `StatusBucket`): KPI bubbles, filter chips, map pins and cluster bubbles.
- *  Stored statuses keep all nine; Archived reads as Cancelled. */
+/** The groups the UI shows (backend `StatusBucket`): KPI bubbles, filter chips, map pins and cluster bubbles.
+ *  Stored statuses keep all nine; Archived reads as Cancelled. In Progress is not shown for now: its statuses count as
+ *  Upcoming (to bring it back, add it to BUCKETS and point them at it in BUCKET_OF, as in the backend). */
 export type StatusBucket = components["schemas"]["StatusBucket"];
-export const BUCKETS: readonly StatusBucket[] = ["Completed", "Upcoming", "In Progress", "Offline", "Cancelled"];
+export const BUCKETS: readonly StatusBucket[] = ["Completed", "Upcoming", "Offline", "Cancelled"];
 
 export const BUCKET_OF: Record<ScreenStatus, StatusBucket> = {
   Upcoming: "Upcoming",
-  "Invitation Email Sent": "In Progress",
-  Shipped: "In Progress",
-  Delivered: "In Progress",
-  "Serviced - Needs More Work": "In Progress",
+  "Invitation Email Sent": "Upcoming",
+  Shipped: "Upcoming",
+  Delivered: "Upcoming",
+  "Serviced - Needs More Work": "Upcoming",
   Completed: "Completed",
   Offline: "Offline",
   Archived: "Cancelled",
@@ -54,8 +55,10 @@ export const BUCKET_META: Record<StatusBucket, { color: string; light: string; d
   },
   Upcoming: {
     color: "#eab308", light: "#fef08a", dark: "#a16207",
-    chip: "bg-yellow-50 text-yellow-800 border-yellow-300", members: "Upcoming",
+    chip: "bg-yellow-50 text-yellow-800 border-yellow-300",
+    members: "Upcoming, Invitation Email Sent, Shipped, Delivered, Serviced - Needs More Work",
   },
+  // Not shown for now (not in BUCKETS); kept so the group can come back.
   "In Progress": {
     color: "#7c3aed", light: "#c4b5fd", dark: "#4c1d95",
     chip: "bg-violet-50 text-violet-700 border-violet-200",

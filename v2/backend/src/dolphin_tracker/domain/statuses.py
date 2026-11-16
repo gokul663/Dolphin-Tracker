@@ -69,7 +69,10 @@ STATUS_ALIASES: dict[str, ScreenStatus] = {
 
 
 class StatusBucket(StrEnum):
-    """The five groups the UI shows (KPI bubbles, filter chips, map colours). Stored statuses keep all nine."""
+    """The groups the UI shows (KPI bubbles, filter chips, map colours). Stored statuses keep all nine.
+
+    In Progress is not shown for now: its statuses (Invitation Email Sent, Shipped, Delivered, Serviced - Needs More
+    Work) count as Upcoming. To bring it back, point them at IN_PROGRESS in BUCKET_OF and add it to BUCKET_ORDER."""
 
     COMPLETED = "Completed"
     UPCOMING = "Upcoming"
@@ -80,10 +83,10 @@ class StatusBucket(StrEnum):
 
 BUCKET_OF: dict[ScreenStatus, StatusBucket] = {
     ScreenStatus.UPCOMING: StatusBucket.UPCOMING,
-    ScreenStatus.INVITATION_EMAIL_SENT: StatusBucket.IN_PROGRESS,
-    ScreenStatus.SHIPPED: StatusBucket.IN_PROGRESS,
-    ScreenStatus.DELIVERED: StatusBucket.IN_PROGRESS,
-    ScreenStatus.NEEDS_MORE_WORK: StatusBucket.IN_PROGRESS,
+    ScreenStatus.INVITATION_EMAIL_SENT: StatusBucket.UPCOMING,
+    ScreenStatus.SHIPPED: StatusBucket.UPCOMING,
+    ScreenStatus.DELIVERED: StatusBucket.UPCOMING,
+    ScreenStatus.NEEDS_MORE_WORK: StatusBucket.UPCOMING,
     ScreenStatus.COMPLETED: StatusBucket.COMPLETED,
     ScreenStatus.OFFLINE: StatusBucket.OFFLINE,
     ScreenStatus.ARCHIVED: StatusBucket.CANCELLED,
@@ -92,7 +95,6 @@ BUCKET_OF: dict[ScreenStatus, StatusBucket] = {
 BUCKET_ORDER: tuple[StatusBucket, ...] = (
     StatusBucket.COMPLETED,
     StatusBucket.UPCOMING,
-    StatusBucket.IN_PROGRESS,
     StatusBucket.OFFLINE,
     StatusBucket.CANCELLED,
 )

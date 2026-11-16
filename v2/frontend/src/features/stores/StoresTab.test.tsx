@@ -417,7 +417,7 @@ describe("StoresTab", () => {
     await waitFor(() => expect(within(chart).getByLabelText("Hardware cost total").textContent).toBe("$860"));
     expect(chart.textContent).toContain("Completed screens only");
     const items = within(within(chart).getByRole("list", { name: "Hardware cost by item" })).getAllByRole("listitem").map((item) => item.textContent);
-    expect(items).toEqual(["5 × Sticks @ $40$200", '3 × 24" Dolphin TVs @ $120$360', '1 × 43" Dolphin TVs @ $300$300']);
+    expect(items).toEqual(["5 × Sticks @ $40$20023%", '3 × 24" Dolphin TVs @ $120$36042%', '1 × 43" Dolphin TVs @ $300$30035%']);
     // Under the Top states chart, in the same column.
     const states = screen.getByRole("region", { name: "Top states by stores" });
     expect(states.parentElement?.parentElement?.contains(chart)).toBe(true);
@@ -455,11 +455,15 @@ describe("StoresTab", () => {
       // Top: committed and installed (screens and TVs apart), mounts to bring, and who is assigned.
       "Committed", "Installed", "Mounts needed", "Assignment",
       // Left: what gets edited on site, the screens right under the address.
-      "Identity & address", "Screens", "Screen list", "Pictures", "Location", "Progress",
+      "Identity & address", "Screens", "Screen list", "Pictures", "Location", "Notes",
       // Right: the other details.
       "WiFi", "Contacts", "Installation", "Site notes", "Site checklist", "Other imported data",
-      "Servicing history",
     ]);
+    // The servicing history is not at the bottom of the details any more: it comes up under Logs.
+    await userEvent.click(within(drawer).getByRole("tab", { name: "Logs" }));
+    expect(await within(drawer).findByRole("region", { name: "Servicing history" })).toBeTruthy();
+    expect(within(drawer).getByRole("region", { name: "Logs" })).toBeTruthy();
+    await userEvent.click(within(drawer).getByRole("tab", { name: "Other details" }));
     const details = within(drawer).getByRole("complementary", { name: "Store details" });
     // Right-hand details are line items, every field shown without expanding anything.
     expect(within(details).queryAllByRole("button", { expanded: false })).toEqual([]);
@@ -615,15 +619,34 @@ describe("StoresTab", () => {
     });
   });
 
-  it("saves progress with the one Save, without touching details", async () => {
+  it("shows each active filter as a chip that can be removed on its own, with Clear all", async () => {
+    renderTab();
+    await screen.findByText("Alpha Mart");
+    expect(screen.queryByRole("group", { name: "Active filters" })).toBeNull(); // nothing filtered: no row
+    await userEvent.click(within(screen.getByRole("group", { name: "Filters" })).getByRole("button", { name: "City" }));
+    await userEvent.click(await screen.findByRole("menuitemcheckbox", { name: /Decatur/ }));
+    await userEvent.keyboard("{Escape}");
+    await userEvent.type(screen.getByLabelText("Search stores"), "mart");
+    const active = await screen.findByRole("group", { name: "Active filters" });
+    await within(active).findByText("Search: mart");
+    expect(within(active).getByText("City: Decatur")).toBeTruthy();
+    await userEvent.click(within(active).getByRole("button", { name: "Remove City: Decatur" }));
+    expect(within(active).queryByText("City: Decatur")).toBeNull();
+    expect(within(active).getByText("Search: mart")).toBeTruthy(); // the other filter stays
+    await userEvent.click(within(active).getByRole("button", { name: /Clear all/ }));
+    await waitFor(() => expect(screen.queryByRole("group", { name: "Active filters" })).toBeNull());
+    expect((screen.getByLabelText("Search stores") as HTMLInputElement).value).toBe("");
+  });
+
+  it("saves the manager's notes with the one Save, without touching details", async () => {
     const { calls } = renderTab();
     const drawer = await openDrawer();
-    await userEvent.click(within(drawer).getByLabelText("Additional task done"));
-    await userEvent.type(within(drawer).getByLabelText("Comment"), "Left a note");
+    expect(within(drawer).queryByLabelText("Additional task done")).toBeNull();
+    await userEvent.type(within(drawer).getByLabelText("Manager notes"), "Left a note");
     expect(calls.some((call) => call.url.pathname.endsWith("/progress"))).toBe(false); // nothing until Save
     await userEvent.click(within(drawer).getByRole("button", { name: "Save details" }));
     await waitFor(() => expect(calls.filter((call) => call.url.pathname.endsWith("/progress")).length).toBe(1));
-    expect(calls.find((call) => call.url.pathname.endsWith("/progress"))?.body).toEqual({ additional_task: true, comment: "Left a note" });
+    expect(calls.find((call) => call.url.pathname.endsWith("/progress"))?.body).toEqual({ comment: "Left a note" });
     expect(calls.some((call) => call.method === "PATCH" && call.url.pathname === "/api/projects/p1/stores/u1")).toBe(false);
   });
 

@@ -47,7 +47,8 @@ export function FilterBar({ options, facets, onToggle }: Props) {
                 size="sm"
                 aria-label={disabled ? `${facetSummary(facet, selected)} (no values)` : facetSummary(facet, selected)}
                 title={disabled ? "No store in this project has a value for this filter" : undefined}
-                className={cn("max-w-52 font-mono text-xs", selected.length > 0 && "border-slate-800 bg-slate-800 text-white hover:bg-slate-700 hover:text-white")}
+                className={cn("max-w-52 font-mono text-xs", // Tinted, not inverted: it stays readable when the filter has nothing else to offer (disabled).
+                  selected.length > 0 && "border-brand/40 bg-brand/10 text-brand hover:bg-brand/15 hover:text-brand disabled:opacity-100")}
               >
                 <span className="truncate">{facetSummary(facet, selected)}</span>
                 {disabled ? <span className="text-[11px] text-slate-400">no values</span> : <ChevronDown />}

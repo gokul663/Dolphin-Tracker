@@ -12,6 +12,7 @@ from dolphin_tracker.domain.device import ReviewItem
 from dolphin_tracker.domain.models import Stop
 from dolphin_tracker.services.device_sync import (
     DeviceSyncService,
+    LogPage,
     OverwriteResult,
     PaList,
     ReviewPage,
@@ -75,6 +76,19 @@ def overwrite_all(project_id: str, body: DeviceOverwrite, service: ServiceDep) -
 @router.post("/projects/{project_id}/stores/{stop_uid}/device-overwrite", response_model=OverwriteResult)
 def overwrite_store(project_id: str, stop_uid: str, body: DeviceOverwrite, service: ServiceDep) -> OverwriteResult:
     return service.overwrite(project_id, body.fields, stop_uid)
+
+
+@router.get("/projects/{project_id}/stores/{stop_uid}/device-logs", response_model=LogPage)
+def list_store_logs(
+    project_id: str,
+    stop_uid: str,
+    service: ServiceDep,
+    dd_code: Annotated[str, Query(max_length=200, description="One of the store's DD codes; all when empty")] = "",
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    cursor: str | None = None,
+) -> LogPage:
+    """The CMS's servicing log entries for the store's DD codes, newest first."""
+    return service.logs(project_id, stop_uid, dd_code=dd_code, limit=limit, cursor=cursor)
 
 
 @router.post("/projects/{project_id}/stores/{stop_uid}/device-alert/ignore", response_model=Stop)

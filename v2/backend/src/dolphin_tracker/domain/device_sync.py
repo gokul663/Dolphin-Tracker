@@ -1,8 +1,10 @@
 """Device sync rules: what one report day does to a project's stores. Pure.
 
 - A screen whose DD code is in the report gets the report's values (`Screen.device`); its work status follows the
-  report (Online → Completed, Offline → Offline, Archived → Archived) unless the tracker has it Cancelled or
-  Archived. Other report statuses (Not Registered, Testing, Unclassified) only show.
+  report: Online → Completed, Offline → Offline, Not Registered → Not Registered. A device with no first and no
+  latest registered date never registered, so (unless it is Online) it is Not Registered whatever else the report
+  says. Archived → Archived when it ever registered (it ran for a while), Cancelled when it never did.
+  A screen the tracker has Cancelled or Archived only moves between those two. Testing and Unclassified only show.
 - The store gets the report's name, address and location from its first matched screen (`Stop.device`), shown
   over the sheet values. Nothing overwrites the sheet values except an explicit Overwrite.
 - A Completed screen with a DD code the report lacks flags the store "not in Dolphin data", unless it became
@@ -29,18 +31,22 @@ from dolphin_tracker.domain.import_mapping import dedupe_key_address
 from dolphin_tracker.domain.models import NeedsAttention, Screen, ScreenStatus, Stop, derive_store_status
 from dolphin_tracker.domain.validation import normalize_external_id
 
-STATUS_FROM_DEVICE: dict[str, ScreenStatus] = {
-    "online": ScreenStatus.COMPLETED,
-    "offline": ScreenStatus.OFFLINE,
-    "archived": ScreenStatus.ARCHIVED,
-}
-KEEP_STATUSES = frozenset({ScreenStatus.CANCELLED, ScreenStatus.ARCHIVED})  # the report never changes these
+# Closed in the tracker: the report only says which of the two it is (did the device ever register).
+KEEP_STATUSES = frozenset({ScreenStatus.CANCELLED, ScreenStatus.ARCHIVED})
 NOT_REVIEWED = frozenset({"archived"})
 OVERWRITABLE = ("store_name", "addr", "city", "state", "zip", "location")
 
 
 def device_status(record: DeviceRecord) -> ScreenStatus | None:
-    return STATUS_FROM_DEVICE.get(record.status.strip().lower())
+    """The work status one report record stands for; None when the report does not decide it."""
+    status = record.status.strip().lower()
+    if status == "online":  # reporting now, whatever the registered dates say
+        return ScreenStatus.COMPLETED
+    if status == "archived":
+        return ScreenStatus.ARCHIVED if record.registered else ScreenStatus.CANCELLED
+    if status == "not registered" or not record.registered:
+        return ScreenStatus.NOT_REGISTERED
+    return ScreenStatus.OFFLINE if status == "offline" else None
 
 
 def index_records(records: Iterable[DeviceRecord]) -> dict[str, DeviceRecord]:
@@ -57,6 +63,7 @@ def screen_device(record: DeviceRecord) -> ScreenDevice:
     return ScreenDevice(
         status=record.status, last_seen=record.last_seen, offline_days=record.offline_days,
         serial_number=record.serial_number, venue_name=record.venue_name, date=record.date,
+        first_registered=record.first_registered, last_registered=record.last_registered,
     )
 
 
@@ -73,7 +80,8 @@ def sync_screen(screen: Screen, record: DeviceRecord | None, now: str) -> Screen
         return screen.model_copy(update={"device": None})
     update: dict[str, Any] = {"device": screen_device(record)}
     target = device_status(record)
-    if target is not None and screen.status not in KEEP_STATUSES and target != screen.status:
+    closed = screen.status in KEEP_STATUSES and target not in KEEP_STATUSES
+    if target is not None and not closed and target != screen.status:
         update.update(status=target, status_changed_at=now)
     return screen.model_copy(update=update)
 

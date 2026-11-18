@@ -1,7 +1,7 @@
 /** Filter bar logic (STORE-MODEL §5). Pure. */
 import type { StoreFilters } from "@/lib/api/resources";
 import type { FilterOption, ScreenStatus, StoreFilterOptions } from "@/lib/api/types";
-import { STATUS_META, type StatusBucket } from "@/lib/status";
+import { BUCKET_LABEL, STATUS_META, storeStatusLabel, type StatusBucket } from "@/lib/status";
 import type { Facet, FacetSelection } from "@/stores/ui";
 
 export const FACET_LABELS: Record<Facet, string> = {
@@ -23,7 +23,8 @@ export const FACET_LABELS: Record<Facet, string> = {
 };
 
 export function optionLabel(facet: Facet, value: string): string {
-  if (facet === "status") return STATUS_META[value as ScreenStatus]?.label ?? value;
+  if (facet === "status") return value in STATUS_META ? storeStatusLabel(value as ScreenStatus) : value; // a store's status
+  if (facet === "bucket") return BUCKET_LABEL[value as StatusBucket] ?? value;
   if (facet === "technician" && value === "") return "No technician";
   return value;
 }

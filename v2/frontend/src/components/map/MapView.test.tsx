@@ -19,16 +19,18 @@ describe("MapView", () => {
     expect(screen.getByText("3 records · 2 pins · 2 at 1 shared addresses")).toBeTruthy();
   });
 
-  it("the legend only explains the colours: one entry per status group with stores, no toggles", async () => {
+  it("the legend only explains the colours: every status group has its tag, in one order, no toggles", async () => {
     mockApi({ "GET /api/config/maps": () => ({ google_maps_browser_key: "" }) });
     renderWithProviders(<MapView pins={pins} />);
     await screen.findByText(/no Google Maps browser key/);
     const legend = screen.getByRole("list", { name: "Status colours" });
-    expect(within(legend).getAllByRole("listitem").map((item) => item.textContent)).toEqual(["Completed 1", "Upcoming 1", "Cancelled 1"]);
+    expect(within(legend).getAllByRole("listitem").map((item) => item.textContent)).toEqual([
+      "Upcoming 1", "Online 1", "Offline 0", "Archived 1", "Cancelled 0", "In Progress 0", // stores: In Progress
+    ]);
     expect(within(screen.getByRole("group", { name: "Map legend" })).queryAllByRole("button")).toEqual([]);
     // Each status has its own light → dark bubble scale right under its name.
     for (const item of within(legend).getAllByRole("listitem")) {
-      const bucket = item.textContent!.split(" ")[0]!;
+      const bucket = item.textContent!.replace(/ \d+$/, "");
       expect(within(item).getByLabelText(`${bucket} clusters, light to dark`)).toBeTruthy();
     }
   });

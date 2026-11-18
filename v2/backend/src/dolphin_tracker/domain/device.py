@@ -102,6 +102,13 @@ class DeviceRecord(ApiModel):
     external_id: str = ""  # the CMS's "PK External ID" (e.g. an IBC#), when it has one
     dma: str = ""  # the CMS's "DMA" name, e.g. "Atlanta"
     venue_type: str = ""  # the CMS's "OOH Category" as a label: retail.convenience_store → "Convenience Store"
+    # When the device first registered with the CMS and when it last did (ISO, UTC). Both "" = it never registered.
+    first_registered: str = ""
+    last_registered: str = ""
+
+    @property
+    def registered(self) -> bool:
+        return bool(self.first_registered or self.last_registered)
 
     @classmethod
     def from_report(cls, doc: dict[str, Any]) -> DeviceRecord:
@@ -135,6 +142,8 @@ class DeviceRecord(ApiModel):
             external_id=_text(doc.get("PK External ID")),
             dma=_text(doc.get("DMA")),
             venue_type=venue_type_label(doc.get("OOH Category")),
+            first_registered=utc_iso(doc.get("First Registered Time Stamp")),
+            last_registered=utc_iso(doc.get("Latest Registered Time Stamp")),
         )
 
 
@@ -187,6 +196,8 @@ class ScreenDevice(ApiModel):
     serial_number: str = ""
     venue_name: str = ""
     date: str = ""
+    first_registered: str = ""  # ISO, UTC; both "" = the device never registered
+    last_registered: str = ""
 
 
 class StoreDevice(ApiModel):

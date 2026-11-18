@@ -32,8 +32,8 @@ class DerivedStatusTests(unittest.TestCase):
     def test_precedence_matches_the_spec(self):
         self.assertEqual(
             [status.value for status in STATUS_PRECEDENCE],
-            ["Upcoming", "Invitation Email Sent", "Shipped", "Delivered", "Serviced - Needs More Work", "Offline",
-             "Completed", "Archived", "Cancelled"],
+            ["Upcoming", "Invitation Email Sent", "Shipped", "Delivered", "Serviced - Needs More Work",
+             "Not Registered", "Offline", "Completed", "Archived", "Cancelled"],
         )
         self.assertEqual(set(STATUS_PRECEDENCE), set(ScreenStatus))
 

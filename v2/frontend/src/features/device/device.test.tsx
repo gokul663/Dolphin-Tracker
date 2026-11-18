@@ -18,7 +18,7 @@ const STATE: DeviceSyncState = {
 const ITEM: ReviewItem = {
   venue_id: "DD_NEW001", date: "2026-11-09", status: "Online", last_seen: "", offline_days: 0, serial_number: "SN1",
   venue_name: "CMS_NEW", store_name: "New Gas", address: "1 Elm St, Kalamazoo, MI 49009", addr: "1 Elm St",
-  city: "Kalamazoo", state: "MI", zip: "49009", lat: 42.2, lng: -85.6, pa_name: "IBC", external_id: "", dma: "", venue_type: "", key: "DD_NEW001",
+  city: "Kalamazoo", state: "MI", zip: "49009", lat: 42.2, lng: -85.6, pa_name: "IBC", external_id: "", dma: "", venue_type: "", first_registered: "", last_registered: "", key: "DD_NEW001",
   snoozed_date: "",
 };
 
@@ -42,7 +42,7 @@ describe("Device sync in the project", () => {
       "GET /api/projects/p1/device-sync/review": () => ({ items: [ITEM], next_cursor: null, total: 1, snoozed: 0 }),
     });
     renderProject("stores");
-    const chip = await screen.findByRole("button", { name: "1 screens in the Dolphin data need review" });
+    const chip = await screen.findByRole("button", { name: "1 screens need review" });
     await waitFor(() =>
       expect(calls.find((call) => call.method === "POST" && call.url.pathname === "/api/projects/p1/device-sync")?.url.searchParams.get("only_if_stale")).toBe("true"),
     );
@@ -55,7 +55,8 @@ describe("Device sync in the project", () => {
     renderProject("stores");
     await screen.findByText("stores tab");
     expect(calls.some((call) => call.url.pathname.endsWith("/device-sync"))).toBe(false);
-    expect(screen.queryByText(/Needs review/)).toBeNull();
+    // Nothing to review: the bubble keeps its place, at 0 and inert.
+    expect((screen.getByRole("button", { name: "0 screens need review" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it("Settings saves the PA and syncs", async () => {

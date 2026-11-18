@@ -24,7 +24,7 @@ import { addressLine, fulfillment, hardwareCost, money } from "@/features/stores
 import { STORE_PAGE_SIZES } from "@/features/stores/api";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { Project, Stop } from "@/lib/api/types";
-import { STATUS_META } from "@/lib/status";
+import { STATUS_META, storeStatusLabel } from "@/lib/status";
 import { DEVICE_TONE } from "@/features/device/DeviceBits";
 import { cn } from "@/lib/utils";
 
@@ -54,7 +54,8 @@ const helper = createColumnHelper<Stop>();
 const SORT_KEYS: Record<string, string> = {
   external_id: "external_id",
   store_name: "store_name",
-  place: "city",
+  city: "city",
+  state: "state",
   status: "status",
   screens: "screens",
   pa: "pa",
@@ -86,7 +87,7 @@ const dash = <span className="text-slate-300">—</span>;
 
 /** How much of the spare width each column takes when the table is wider than its columns: the store name and DMA
  *  the most, the short fixed ones (status, counts) little. Header and rows use the same, so they stay aligned. */
-const GROW: Record<string, number> = { store_name: 4, dma: 1, place: 2, installer_name: 1.5, servicing: 1, pa: 1 };
+const GROW: Record<string, number> = { store_name: 4, dma: 1, city: 1.5, installer_name: 1.5, servicing: 1, pa: 1 };
 const columnStyle = (id: string, size: number) => ({ flex: `${GROW[id] ?? 0.4} 0 ${size}px`, minWidth: size });
 
 /** A total of Dolphin screens + store TVs; hovering shows the two apart. Unknown (no count in the sheet) is a dash. */
@@ -248,10 +249,11 @@ export function StoresTable(props: Props) {
           );
         },
       }),
-      helper.accessor((stop) => [stop.device?.city || stop.city, stop.device?.state || stop.state].filter(Boolean).join(", "), {
-        id: "place",
-        header: "City, state",
-        size: 145,
+      // City, DMA, State: as shown everywhere (the Dolphin data's, else the verified address's; never a typed spelling).
+      helper.accessor((stop) => stop.place_city, {
+        id: "city",
+        header: "City",
+        size: 120,
         cell: (info) => (
           <button
             type="button"
@@ -263,13 +265,17 @@ export function StoresTable(props: Props) {
             }}
           >
             {info.row.original.route_stale && info.row.original.route_plan_id && <AlertTriangle size={12} className="shrink-0 text-amber-600" aria-label="Route may be stale" />}
-            <span className={cn("truncate", (info.row.original.device?.city || info.row.original.device?.state) && DEVICE_TONE.text)}>
-              {info.getValue() || "—"}
-            </span>
+            <span className={cn("truncate", info.row.original.device?.city && DEVICE_TONE.text)}>{info.getValue() || "—"}</span>
           </button>
         ),
       }),
       helper.accessor("dma", { header: "DMA", size: 130, cell: (info) => info.getValue() || dash }),
+      helper.accessor((stop) => stop.place_state, {
+        id: "state",
+        header: "State",
+        size: 62,
+        cell: (info) => <span className={cn("font-mono text-xs", info.row.original.device?.state && DEVICE_TONE.text)}>{info.getValue() || dash}</span>,
+      }),
       helper.accessor((stop): string => stop.status, {
         id: "status",
         header: "Status",
@@ -277,11 +283,11 @@ export function StoresTable(props: Props) {
         cell: (info) => (
           <span
             aria-label={`Status of ${info.row.original.external_id || info.row.original.display_id}`}
-            title={STATUS_META[info.row.original.status].label}
+            title={storeStatusLabel(info.row.original.status)}
             // One width for every status, so the column lines up; long labels are cut with an ellipsis.
             className={cn("inline-block w-[92px] truncate rounded border px-1.5 py-0.5 text-center text-xs font-medium", STATUS_META[info.row.original.status].chip)}
           >
-            {STATUS_META[info.row.original.status].label}
+            {storeStatusLabel(info.row.original.status)}
           </span>
         ),
       }),

@@ -46,7 +46,7 @@ import type {
   RoutePlanCreate,
   RoutePlanUpdate,
   Visit,
-  VisitInput, OverwriteField, ReviewAdd, OverwriteResult, PaList, ReviewItem, ReviewPage, LogPage, SyncResult, DayInsert, DayLockSet, InsertOptions, InsertQuery, StorePage, PlaceHit } from "@/lib/api/types";
+  VisitInput, OverwriteField, ReviewAdd, OverwriteResult, PaList, ReviewItem, ReviewPage, LogPage, UploadList, SyncResult, DayInsert, DayLockSet, InsertOptions, InsertQuery, StorePage, PlaceHit } from "@/lib/api/types";
 import type { StorePageParams } from "@/lib/api/keys";
 import type { StatusBucket } from "@/lib/status";
 
@@ -135,6 +135,8 @@ export const projectsApi = {
     api<Page<ProjectSummary>>("/projects", { query: { limit: params.limit, cursor: params.cursor } }),
   get: (id: string) => api<ProjectSummary>(`/projects/${enc(id)}`),
   create: (body: ProjectCreate) => api<ProjectCreated>("/projects", { method: "POST", body }),
+  /** Every sheet imported into the project (kept for good), newest first, each with a download link. */
+  uploads: (id: string) => api<UploadList>(`/projects/${enc(id)}/uploads`),
   update: (id: string, body: ProjectUpdate) => api<Project>(`/projects/${enc(id)}`, { method: "PATCH", body }),
   remove: (id: string, confirm: string) =>
     api<void>(`/projects/${enc(id)}`, { method: "DELETE", query: { confirm } }),

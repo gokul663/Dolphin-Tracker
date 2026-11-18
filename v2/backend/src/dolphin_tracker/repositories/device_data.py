@@ -24,7 +24,7 @@ COLLECTION = "dolphin-internal-report"
 FIELDS = (
     "Venue ID", "Date", "Status", "Last Seen (UTC)", "Offline Days", "Serial Number", "Venue Name", "Store Name",
     "Address", "City", "State", "State Code", "Zip Code", "Latitude", "Longitude", "PA Name", "PK External ID",
-    "DMA", "OOH Category", "ingested_at_utc",
+    "DMA", "OOH Category", "First Registered Time Stamp", "Latest Registered Time Stamp", "ingested_at_utc",
 )
 QUERY_MS = 20_000
 LOGS_COLLECTION = "logs"  # servicing log entries, one per visit to a device; `dd_code` is indexed

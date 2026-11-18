@@ -3,18 +3,11 @@ import { money, projectHardwareCost, type HardwareCosts } from "@/features/store
 import type { HardwareCounts } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
 
-/** One colour per item, fixed by its label so a filter that drops an item never recolours the rest: sticks in slate,
- *  Dolphin TVs in a light → dark indigo scale by size. */
-const TONES: Record<string, string> = {
-  Sticks: "#334155",
-  '24" Dolphin TVs': "#a5b4fc",
-  '43" Dolphin TVs': "#6366f1",
-  '50" Dolphin TVs': "#3730a3",
-};
-const tone = (label: string) => TONES[label] ?? "#94a3b8";
+/** Sticks in slate; the screen models in a light → dark indigo scale, in the order listed (sizes ascending). */
+const SCREEN_TONES = ["#a5b4fc", "#818cf8", "#6366f1", "#4f46e5", "#3730a3", "#1e1b4b"];
 
 /** What the completed (installed) hardware of the filtered stores cost: one bar split by item (sticks, then Dolphin
- *  TVs by size), each segment the item's share of the priced total, with the count × price behind it listed below.
+ *  screens by model), each segment the item's share of the priced total, with the count × price behind it listed below.
  *  Upcoming screens are not counted. */
 export function HardwareCostChart({
   counts,
@@ -30,6 +23,8 @@ export function HardwareCostChart({
   const cost = counts ? projectHardwareCost(counts, costs) : null;
   // The sum of the priced lines (`cost.total` is null when a price is missing, but the priced lines still compare).
   const priced = cost ? cost.lines.reduce((sum, line) => sum + line.count * (line.price ?? 0), 0) : 0;
+  const screenLines = cost ? cost.lines.filter((line) => line.label !== "Sticks").map((line) => line.label) : [];
+  const tone = (label: string) => (label === "Sticks" ? "#334155" : SCREEN_TONES[Math.min(screenLines.indexOf(label), SCREEN_TONES.length - 1)] ?? "#94a3b8");
   const shareOf = (line: { count: number; price: number | null }) =>
     line.price === null || priced <= 0 ? null : ((line.count * line.price) / priced) * 100;
   return (

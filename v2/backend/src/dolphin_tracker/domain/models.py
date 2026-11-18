@@ -6,8 +6,9 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any, Generic, Self, TypeVar
 
-from pydantic import ConfigDict, Field, field_validator, model_validator
+from pydantic import ConfigDict, Field, computed_field, field_validator, model_validator
 
+from dolphin_tracker.domain.addresses import parse_us_formatted_address, state_code
 from dolphin_tracker.domain.base import ApiModel
 from dolphin_tracker.domain.device import DeviceSyncState, ScreenDevice, StoreDevice, split_codes, venue_code_key
 from dolphin_tracker.domain.kpi import Kpi
@@ -16,6 +17,7 @@ from dolphin_tracker.domain.statuses import (  # re-exported: callers import sta
     ScreenStatus,
     derive_store_status,
     dolphin_screen_size,
+    screen_size_label,
     store_assignment,
 )
 from dolphin_tracker.domain.statuses import (
@@ -55,7 +57,9 @@ class Screen(ApiModel):
     stick_number: str = Field(default="", max_length=200)
     venue_id: str = Field(default="", max_length=200)  # the "DD code"
     screen_size: str = Field(default="", max_length=50)
-    is_dolphin_screen: bool = True
+    is_dolphin_screen: bool = True  # owned by Dolphin (False: the store's own TV)
+    # Which Dolphin-owned model it is ("Dolphin", "Dell"...), from the project's price list; "" = not chosen.
+    screen_type: str = Field(default="", max_length=100)
     has_mount: bool = False
     has_ceiling_mount: bool = False  # False: wall mount, the default
     needs_mount: bool = False  # a mount still has to be brought and fitted (independent of has_mount)
@@ -74,6 +78,8 @@ class Screen(ApiModel):
     def _dolphin_screen_size(self) -> Self:
         if self.is_dolphin_screen:
             self.screen_size = dolphin_screen_size(self.screen_size)
+        else:
+            self.screen_type = ""  # a store TV is not one of our models
         return self
 
 
@@ -117,14 +123,61 @@ class FieldDef(ApiModel):
     source_column: str | None = None
 
 
+class ScreenPrice(ApiModel):
+    """One Dolphin-owned screen model and what it costs: a size ('24"') and a type ("Dolphin", "Dell")."""
+
+    size: str = Field(max_length=10)
+    type: str = Field(default="", max_length=100)
+    cost: float | None = Field(default=None, ge=0)
+
+    @model_validator(mode="after")
+    def _clean(self) -> Self:
+        self.size = screen_size_label(self.size)
+        self.type = " ".join(self.type.split())
+        if not self.size:
+            raise ValueError("A screen price needs a size in inches")
+        return self
+
+
 class HardwareCosts(ApiModel):
     """What the hardware costs Dolphin, per project (dollars; None = not set). Every installed screen has a stick; a
-    Dolphin TV also costs its screen, by size."""
+    Dolphin screen also costs the screen itself, by size and type (`screens`, the price list the store window offers
+    when a Dolphin screen's size is picked)."""
 
     stick: float | None = Field(default=None, ge=0)
-    screen_24: float | None = Field(default=None, ge=0)
-    screen_43: float | None = Field(default=None, ge=0)
-    screen_50: float | None = Field(default=None, ge=0)
+    screens: list[ScreenPrice] = Field(default_factory=list, max_length=100)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _from_size_prices(cls, value: Any) -> Any:
+        """Prices saved before the list existed (one per size: screen_24, screen_43, screen_50) become list rows."""
+        if not isinstance(value, dict) or value.get("screens"):
+            return value
+        old = [(size, value.get(f"screen_{size}")) for size in (24, 43, 50)]
+        rows = [{"size": f'{size}"', "type": "Dolphin", "cost": cost} for size, cost in old if cost is not None]
+        return {**value, "screens": rows} if rows else value
+
+    @model_validator(mode="after")
+    def _one_row_per_model(self) -> Self:
+        keys = [(row.size, row.type.lower()) for row in self.screens]
+        if len(set(keys)) != len(keys):
+            raise ValueError("The same screen size and type is priced twice")
+        return self
+
+
+class ProjectUpload(ApiModel):
+    """One sheet uploaded into the project (on create or append), kept for good: the file itself is in the file
+    store under `key`."""
+
+    id: str  # the import job that read it
+    filename: str
+    key: str
+    uploaded_at: str = Field(default_factory=now_iso)
+    kind: str = "append"  # "create" (the project's first sheet) or "append"
+    size: int = 0  # bytes
+    submitted: int = 0  # stores sent from the sheet's review
+    added: int = 0
+    skipped: int = 0  # duplicates of stores already there (same IBC# or address)
 
 
 class Project(ApiModel):
@@ -147,6 +200,7 @@ class Project(ApiModel):
     # The column → field mapping the last import confirmed, by normalised header (STORE-MODEL §6); the next
     # sheet of the same shape starts from it.
     import_mappings: dict[str, str] = Field(default_factory=dict)
+    uploads: list[ProjectUpload] = Field(default_factory=list)  # every sheet imported, newest last
     routing_status: RoutingStatus = RoutingStatus.READY
     routing_job_id: str = ""  # the routing job allowed to finish the current build (§3.2 fence); "" when idle
     stop_count: int = 0  # informational: incremented on create/append, never decremented; KPIs are authoritative
@@ -267,6 +321,27 @@ class Stop(StoreDetails):
         self.installer_name, self.install_type = store_assignment(self.installer_name, self.install_type)
         return self
 
+    def _place(self) -> tuple[str, str]:
+        """(city, state) as lists, filters and charts show them: the Dolphin data's when the store has it, else the
+        verified address's (so "texas" typed in the sheet reads TX), else what was typed, the state as its code ("" when
+        it is not one).""" 
+        verified = parse_us_formatted_address(self.geocoded)
+        device = self.device
+        city = (device.city if device else "") or verified.get("city") or self.city.strip()
+        state = (device.state if device else "") or verified.get("state") or self.state
+        code = state_code(state)
+        return city, code if len(code) == 2 and code.isalpha() else ""  # "#N/A" and the like are not a state
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def place_city(self) -> str:
+        return self._place()[0]
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def place_state(self) -> str:
+        return self._place()[1]
+
 
 def merge_same_code(screens: list[Screen]) -> list[Screen]:
     """One row per DD code. `DD-H5036X` and `DD_H5036X` are the same screen, so rows that share a code (a sheet row and
@@ -297,6 +372,7 @@ def merge_same_code(screens: list[Screen]) -> list[Screen]:
         merged.append(base.model_copy(update={
             "stick_number": next((row.stick_number for row in group if row.stick_number.strip()), ""),
             "screen_size": next((row.screen_size for row in group if row.screen_size.strip()), ""),
+            "screen_type": next((row.screen_type for row in group if row.screen_type.strip()), ""),
             "has_mount": any(row.has_mount for row in group),
             "has_ceiling_mount": any(row.has_ceiling_mount for row in group),
             "needs_mount": any(row.needs_mount for row in group),
@@ -328,6 +404,7 @@ class ScreenInput(ApiModel):
     venue_id: str = Field(default="", max_length=200)
     screen_size: str = Field(default="", max_length=50)
     is_dolphin_screen: bool = True
+    screen_type: str = Field(default="", max_length=100)
     has_mount: bool = False
     has_ceiling_mount: bool = False
     needs_mount: bool = False
@@ -382,6 +459,7 @@ class ProjectCreate(ApiModel):
     field_schema: list[FieldDef] | None = None  # None → DEFAULT_FIELD_SCHEMA
     stops: list[StopInput] = Field(default_factory=list, max_length=5000)
     import_mapping: dict[str, str] = Field(default_factory=dict)  # the import's mapping, saved on the project
+    import_job_id: str = Field(default="", max_length=64)  # the import job the stops came from: its sheet is kept
 
 
 class Job(ApiModel):

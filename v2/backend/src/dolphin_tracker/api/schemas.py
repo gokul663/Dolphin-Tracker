@@ -228,11 +228,11 @@ class StateCount(ApiModel):
 
 
 class HardwareCounts(ApiModel):
-    """Installed hardware under the filters: one stick per installed screen; Dolphin TVs by size."""
+    """Installed hardware under the filters: one stick per installed screen; Dolphin screens by model."""
 
     installed_screens: int
     installed_stores: int
-    installed_dolphin_by_size: dict[str, int]
+    installed_dolphin_by_model: dict[str, int]
 
 
 class ProjectUpdate(ApiModel):
@@ -284,6 +284,7 @@ class AppendStops(ApiModel):
     stops: list[StopInput] = Field(min_length=1, max_length=5000)
     pa: str = Field(default="", max_length=500)
     import_mapping: dict[str, str] = Field(default_factory=dict)  # merged into project.import_mappings
+    import_job_id: str = Field(default="", max_length=64)  # the import job the stops came from: its sheet is kept
 
 
 class AppendResult(ApiModel):

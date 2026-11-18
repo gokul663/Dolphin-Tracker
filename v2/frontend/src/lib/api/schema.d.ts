@@ -170,6 +170,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{project_id}/uploads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Uploads
+         * @description Every sheet imported into the project, newest first, each with a link to the file.
+         */
+        get: operations["list_uploads_api_projects__project_id__uploads_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{project_id}/uploads/{upload_id}/file": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download Upload Local
+         * @description Local mode only (DT_FILES_BUCKET empty): the file. In AWS, follow `download_url` from the list.
+         */
+        get: operations["download_upload_local_api_projects__project_id__uploads__upload_id__file_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects/{project_id}": {
         parameters: {
             query?: never;
@@ -1178,6 +1218,11 @@ export interface components {
             import_mapping?: {
                 [key: string]: string;
             };
+            /**
+             * Import Job Id
+             * @default
+             */
+            import_job_id?: string;
         };
         /** Breakdown */
         Breakdown: {
@@ -1507,44 +1552,38 @@ export interface components {
         /**
          * HardwareCosts
          * @description What the hardware costs Dolphin, per project (dollars; None = not set). Every installed screen has a stick; a
-         *     Dolphin TV also costs its screen, by size.
+         *     Dolphin screen also costs the screen itself, by size and type (`screens`, the price list the store window offers
+         *     when a Dolphin screen's size is picked).
          */
         "HardwareCosts-Input": {
             /** Stick */
             stick?: number | null;
-            /** Screen 24 */
-            screen_24?: number | null;
-            /** Screen 43 */
-            screen_43?: number | null;
-            /** Screen 50 */
-            screen_50?: number | null;
+            /** Screens */
+            screens?: components["schemas"]["ScreenPrice-Input"][];
         };
         /**
          * HardwareCosts
          * @description What the hardware costs Dolphin, per project (dollars; None = not set). Every installed screen has a stick; a
-         *     Dolphin TV also costs its screen, by size.
+         *     Dolphin screen also costs the screen itself, by size and type (`screens`, the price list the store window offers
+         *     when a Dolphin screen's size is picked).
          */
         "HardwareCosts-Output": {
             /** Stick */
             stick: number | null;
-            /** Screen 24 */
-            screen_24: number | null;
-            /** Screen 43 */
-            screen_43: number | null;
-            /** Screen 50 */
-            screen_50: number | null;
+            /** Screens */
+            screens: components["schemas"]["ScreenPrice-Output"][];
         };
         /**
          * HardwareCounts
-         * @description Installed hardware under the filters: one stick per installed screen; Dolphin TVs by size.
+         * @description Installed hardware under the filters: one stick per installed screen; Dolphin screens by model.
          */
         HardwareCounts: {
             /** Installed Screens */
             installed_screens: number;
             /** Installed Stores */
             installed_stores: number;
-            /** Installed Dolphin By Size */
-            installed_dolphin_by_size: {
+            /** Installed Dolphin By Model */
+            installed_dolphin_by_model: {
                 [key: string]: number;
             };
         };
@@ -1956,10 +1995,20 @@ export interface components {
              * @default 0
              */
             installed_stores: number;
-            /** Installed Dolphin By Size */
-            installed_dolphin_by_size: {
+            /** Installed Dolphin By Model */
+            installed_dolphin_by_model: {
                 [key: string]: number;
             };
+            /**
+             * Review Stores
+             * @default 0
+             */
+            review_stores: number;
+            /**
+             * Review Screens
+             * @default 0
+             */
+            review_screens: number;
             /**
              * Actual Dolphin Screens
              * @default 0
@@ -2517,6 +2566,8 @@ export interface components {
             import_mappings: {
                 [key: string]: string;
             };
+            /** Uploads */
+            uploads: components["schemas"]["ProjectUpload"][];
             /** @default ready */
             routing_status: components["schemas"]["RoutingStatus"];
             /**
@@ -2578,6 +2629,11 @@ export interface components {
             import_mapping?: {
                 [key: string]: string;
             };
+            /**
+             * Import Job Id
+             * @default
+             */
+            import_job_id?: string;
         };
         /** ProjectCreated */
         ProjectCreated: {
@@ -2638,6 +2694,8 @@ export interface components {
             import_mappings: {
                 [key: string]: string;
             };
+            /** Uploads */
+            uploads: components["schemas"]["ProjectUpload"][];
             /** @default ready */
             routing_status: components["schemas"]["RoutingStatus"];
             /**
@@ -2698,6 +2756,46 @@ export interface components {
              * @description 409 if the project has moved past this version
              */
             expected_version?: number | null;
+        };
+        /**
+         * ProjectUpload
+         * @description One sheet uploaded into the project (on create or append), kept for good: the file itself is in the file
+         *     store under `key`.
+         */
+        ProjectUpload: {
+            /** Id */
+            id: string;
+            /** Filename */
+            filename: string;
+            /** Key */
+            key: string;
+            /** Uploaded At */
+            uploaded_at: string;
+            /**
+             * Kind
+             * @default append
+             */
+            kind: string;
+            /**
+             * Size
+             * @default 0
+             */
+            size: number;
+            /**
+             * Submitted
+             * @default 0
+             */
+            submitted: number;
+            /**
+             * Added
+             * @default 0
+             */
+            added: number;
+            /**
+             * Skipped
+             * @default 0
+             */
+            skipped: number;
         };
         /** Reassign */
         Reassign: {
@@ -2824,6 +2922,16 @@ export interface components {
              * @default
              */
             venue_type: string;
+            /**
+             * First Registered
+             * @default
+             */
+            first_registered: string;
+            /**
+             * Last Registered
+             * @default
+             */
+            last_registered: string;
             /** Key */
             key: string;
             /**
@@ -3002,6 +3110,11 @@ export interface components {
              */
             is_dolphin_screen: boolean;
             /**
+             * Screen Type
+             * @default
+             */
+            screen_type: string;
+            /**
              * Has Mount
              * @default false
              */
@@ -3057,6 +3170,16 @@ export interface components {
              * @default
              */
             date: string;
+            /**
+             * First Registered
+             * @default
+             */
+            first_registered: string;
+            /**
+             * Last Registered
+             * @default
+             */
+            last_registered: string;
         };
         /**
          * ScreenInput
@@ -3086,6 +3209,11 @@ export interface components {
              */
             is_dolphin_screen?: boolean;
             /**
+             * Screen Type
+             * @default
+             */
+            screen_type?: string;
+            /**
              * Has Mount
              * @default false
              */
@@ -3104,11 +3232,41 @@ export interface components {
             status?: components["schemas"]["ScreenStatus"];
         };
         /**
+         * ScreenPrice
+         * @description One Dolphin-owned screen model and what it costs: a size ('24"') and a type ("Dolphin", "Dell").
+         */
+        "ScreenPrice-Input": {
+            /** Size */
+            size: string;
+            /**
+             * Type
+             * @default
+             */
+            type?: string;
+            /** Cost */
+            cost?: number | null;
+        };
+        /**
+         * ScreenPrice
+         * @description One Dolphin-owned screen model and what it costs: a size ('24"') and a type ("Dolphin", "Dell").
+         */
+        "ScreenPrice-Output": {
+            /** Size */
+            size: string;
+            /**
+             * Type
+             * @default
+             */
+            type: string;
+            /** Cost */
+            cost: number | null;
+        };
+        /**
          * ScreenStatus
          * @description Per-screen status (STORE-MODEL §4.2). A store's status is derived from its screens.
          * @enum {string}
          */
-        ScreenStatus: "Upcoming" | "Invitation Email Sent" | "Shipped" | "Delivered" | "Serviced - Needs More Work" | "Completed" | "Offline" | "Archived" | "Cancelled";
+        ScreenStatus: "Upcoming" | "Invitation Email Sent" | "Shipped" | "Delivered" | "Serviced - Needs More Work" | "Completed" | "Offline" | "Not Registered" | "Archived" | "Cancelled";
         /**
          * ScreensUpdate
          * @description The full list of a store's screen rows (PUT replaces it). Send `id` back to keep a row's identity.
@@ -3180,11 +3338,12 @@ export interface components {
          * StatusBucket
          * @description The groups the UI shows (KPI bubbles, filter chips, map colours). Stored statuses keep all nine.
          *
-         *     In Progress is not shown for now: its statuses (Invitation Email Sent, Shipped, Delivered, Serviced - Needs More
-         *     Work) count as Upcoming. To bring it back, point them at IN_PROGRESS in BUCKET_OF and add it to BUCKET_ORDER.
+         *     Not Registered is a screen's group only. A store is never "not registered": one whose least-progressed screen
+         *     is Not Registered reads In Progress (STORE_BUCKET_OF), a group only stores have. The in-between work statuses
+         *     (Invitation Email Sent, Shipped, Delivered, Serviced - Needs More Work) still count as Upcoming.
          * @enum {string}
          */
-        StatusBucket: "Completed" | "Upcoming" | "In Progress" | "Offline" | "Cancelled";
+        StatusBucket: "Completed" | "Upcoming" | "In Progress" | "Offline" | "Not Registered" | "Cancelled" | "Archived";
         /**
          * Stop
          * @description Planning data, store details, screens and field progress for one store, stored as one item.
@@ -3460,6 +3619,10 @@ export interface components {
              * @default
              */
             updated_by: string;
+            /** Place City */
+            readonly place_city: string;
+            /** Place State */
+            readonly place_state: string;
         };
         /**
          * StopInput
@@ -3923,6 +4086,49 @@ export interface components {
              */
             stores_updated: number;
         };
+        /** UploadList */
+        UploadList: {
+            /** Items */
+            items: components["schemas"]["UploadView"][];
+        };
+        /** UploadView */
+        UploadView: {
+            /** Id */
+            id: string;
+            /** Filename */
+            filename: string;
+            /** Key */
+            key: string;
+            /** Uploaded At */
+            uploaded_at: string;
+            /**
+             * Kind
+             * @default append
+             */
+            kind: string;
+            /**
+             * Size
+             * @default 0
+             */
+            size: number;
+            /**
+             * Submitted
+             * @default 0
+             */
+            submitted: number;
+            /**
+             * Added
+             * @default 0
+             */
+            added: number;
+            /**
+             * Skipped
+             * @default 0
+             */
+            skipped: number;
+            /** Download Url */
+            download_url: string;
+        };
         /** ValidationError */
         ValidationError: {
             /** Location */
@@ -4343,6 +4549,67 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ProjectCreated"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_uploads_api_projects__project_id__uploads_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UploadList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_upload_local_api_projects__project_id__uploads__upload_id__file_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                upload_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

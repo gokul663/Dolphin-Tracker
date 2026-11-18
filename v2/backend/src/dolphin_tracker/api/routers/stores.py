@@ -4,7 +4,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
-from dolphin_tracker.api.deps import get_store_service
+from dolphin_tracker.api.deps import get_store_service, get_upload_service
 from dolphin_tracker.api.schemas import (
     AppendResult,
     AppendStops,
@@ -20,9 +20,11 @@ from dolphin_tracker.api.schemas import (
 from dolphin_tracker.domain.models import ScreenStatus, Stop
 from dolphin_tracker.domain.statuses import StatusBucket
 from dolphin_tracker.services.stores import Bounds, StorePage, StoreQuery, StoreService
+from dolphin_tracker.services.uploads import UploadService
 
 router = APIRouter(prefix="/projects/{project_id}/stores", tags=["stores"])
 ServiceDep = Annotated[StoreService, Depends(get_store_service)]
+UploadDep = Annotated[UploadService, Depends(get_upload_service)]
 
 
 ListParam = Annotated[list[str] | None, Query(description="Repeatable; a store matches any of the values")]
@@ -158,8 +160,11 @@ def export_csv(project_id: str, service: ServiceDep, query: QueryDep) -> Respons
 
 
 @router.post("/append", response_model=AppendResult)
-def append_stores(project_id: str, body: AppendStops, service: ServiceDep) -> dict:
-    return service.append(project_id, body.stops, body.pa, body.import_mapping)
+def append_stores(project_id: str, body: AppendStops, service: ServiceDep, uploads: UploadDep) -> dict:
+    result = service.append(project_id, body.stops, body.pa, body.import_mapping)
+    uploads.record(project_id, body.import_job_id, kind="append", submitted=len(body.stops),
+                   added=result["appended"], skipped=len(result["skipped"]))
+    return result
 
 
 @router.get("/{stop_uid}", response_model=Stop)

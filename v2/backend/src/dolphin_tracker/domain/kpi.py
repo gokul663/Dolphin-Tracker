@@ -19,10 +19,12 @@ from dolphin_tracker.domain.statuses import (
     INSTALLED_STATUSES,
     LEGACY_STATUSES,
     PENDING_STATUSES,
+    STORE_BUCKET_OF,
+    STORE_BUCKET_ORDER,
     ScreenStatus,
     StatusBucket,
     VisitState,
-    dolphin_screen_size,
+    dolphin_model_key,
     store_assignment,
     visit_state,
 )
@@ -34,6 +36,14 @@ KPI_ATTRIBUTES = (
     "committed_dolphin_screens", "committed_store_tvs", "addr", "city", "state", "zip", "install_type",
     "screen_visits", "last_planned_at", "needs_attention",
 )
+# A store whose screen rows are all on the wall: nothing more is planned there.
+DONE_STORE = frozenset({ScreenStatus.COMPLETED, ScreenStatus.OFFLINE})
+
+
+def missing_screens(status: ScreenStatus, committed: int, rows: int) -> int:
+    """Committed screens with no screen row at a store that reads as done (Completed or Offline): the sheet promised
+    more than was put in, so someone has to look ("needs review"). 0 for any other store."""
+    return max(0, committed - rows) if status in DONE_STORE else 0
 
 
 def _zeroes() -> dict[str, int]:
@@ -42,6 +52,10 @@ def _zeroes() -> dict[str, int]:
 
 def _bucket_zeroes() -> dict[str, int]:
     return dict.fromkeys((bucket.value for bucket in BUCKET_ORDER), 0)
+
+
+def _store_bucket_zeroes() -> dict[str, int]:
+    return dict.fromkeys((bucket.value for bucket in STORE_BUCKET_ORDER), 0)
 
 
 def _visit_zeroes() -> dict[str, int]:
@@ -67,24 +81,28 @@ class Kpi(ApiModel):
     complete: int = 0  # Completed
     offline: int = 0  # Offline: shown on its own, not routed (STORE-MODEL §7 #2)
     other: int = 0  # Archived + Cancelled
-    by_status: dict[str, int] = Field(default_factory=_zeroes)  # stores by derived status, all eight
+    by_status: dict[str, int] = Field(default_factory=_zeroes)  # stores by derived status, every one
     by_visit: dict[str, int] = Field(default_factory=_visit_zeroes)  # stores by visit state since their latest plan
     needs_attention: int = 0  # stores added without a name or a verified address, not fixed yet
     screens_total: int = 0
     screens_by_status: dict[str, int] = Field(default_factory=_zeroes)
     committed_dolphin_screens: int = 0  # sum of the sheet's committed values
     committed_store_tvs: int = 0
-    committed_stores: int = 0  # stores with a committed screen or TV count
+    committed_stores: int = 0  # every store; a blank committed count is 0 screens, the store still counts
     # On the wall (Completed = online, Offline, Needs More Work): the header's "Completed", online and offline together.
     installed_screens: int = 0
     installed_stores: int = 0  # stores with at least one installed screen
-    # Installed Dolphin TVs by size ('24"', '43"', '50"'): with installed_screens (one stick each) and the project's
-    # prices, the hardware cost.
-    installed_dolphin_by_size: dict[str, int] = Field(default_factory=lambda: {'24"': 0, '43"': 0, '50"': 0})
+    # Installed Dolphin screens by model ('24"|Dell'; '24"|' when no type is chosen): with installed_screens (one
+    # stick each) and the project's prices, the hardware cost.
+    installed_dolphin_by_model: dict[str, int] = Field(default_factory=dict)
+    # Done stores (Completed or Offline) with fewer screen rows than the sheet committed, and how many are missing.
+    review_stores: int = 0
+    review_screens: int = 0
     actual_dolphin_screens: int = 0  # screen rows with is_dolphin_screen
     actual_store_tvs: int = 0  # the other screen rows
     by_installer: dict[str, int] = Field(default_factory=dict)
-    by_bucket: dict[str, int] = Field(default_factory=_bucket_zeroes)  # stores by their status's group
+    # Stores by their status's group: In Progress where screens have Not Registered (a per-screen status).
+    by_bucket: dict[str, int] = Field(default_factory=_store_bucket_zeroes)
     screens_by_bucket: dict[str, int] = Field(default_factory=_bucket_zeroes)
     by_technician: dict[str, InstallerProgress] = Field(default_factory=dict)  # screens, by the sheet's Technician
     install_types: dict[str, int] = Field(default_factory=dict)  # stores by install type ("" = not set)
@@ -131,7 +149,7 @@ def kpi_summary(rows: Iterable[Mapping[str, Any]]) -> Kpi:
         if row.get("needs_attention"):
             kpi.needs_attention += 1
         kpi.by_status[status.value] += 1
-        kpi.by_bucket[BUCKET_OF[status].value] += 1
+        kpi.by_bucket[STORE_BUCKET_OF[status].value] += 1
         technician, install_type = store_assignment(
             clean_cell(row.get("installer_name") or ""), row.get("install_type") or ""
         )
@@ -142,15 +160,16 @@ def kpi_summary(rows: Iterable[Mapping[str, Any]]) -> Kpi:
         kpi.by_visit[visit.value] += 1
         if any(_status(screen.get("status")) in INSTALLED_STATUSES for screen in screens):
             kpi.installed_stores += 1
-        if row.get("committed_dolphin_screens") is not None or row.get("committed_store_tvs") is not None:
-            kpi.committed_stores += 1
+        # Every store is a line item of the sheet, so every store counts; one with no committed number adds 0
+        # screens to the totals below.
+        kpi.committed_stores += 1
         for screen in screens:
             kpi.screens_total += 1
             if _status(screen.get("status")) in INSTALLED_STATUSES:
                 kpi.installed_screens += 1
                 if screen.get("is_dolphin_screen", True):
-                    size = dolphin_screen_size(str(screen.get("screen_size") or ""))
-                    kpi.installed_dolphin_by_size[size] = kpi.installed_dolphin_by_size.get(size, 0) + 1
+                    model = dolphin_model_key(screen.get("screen_size"), screen.get("screen_type"))
+                    kpi.installed_dolphin_by_model[model] = kpi.installed_dolphin_by_model.get(model, 0) + 1
             screen_status = _status(screen.get("status"))
             kpi.screens_by_status[screen_status.value] += 1
             bucket = BUCKET_OF[screen_status]
@@ -165,6 +184,10 @@ def kpi_summary(rows: Iterable[Mapping[str, Any]]) -> Kpi:
                 kpi.actual_dolphin_screens += 1
             else:
                 kpi.actual_store_tvs += 1
+        committed = (row.get("committed_dolphin_screens") or 0) + (row.get("committed_store_tvs") or 0)
+        missing = missing_screens(status, committed, len(screens))
+        kpi.review_screens += missing
+        kpi.review_stores += bool(missing)
         kpi.committed_dolphin_screens += row.get("committed_dolphin_screens") or 0
         kpi.committed_store_tvs += row.get("committed_store_tvs") or 0
         installer = technician or row.get("installer") or ""

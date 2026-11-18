@@ -20,7 +20,7 @@ import {
 } from "@/components/map/pins";
 import { useMapsConfig } from "@/features/places/api";
 import type { Pin } from "@/lib/api/types";
-import { BUCKET_META, BUCKETS, bucketOf, bucketShade, darkTextUntil, shadeLevel, STATUS_META, type StatusBucket } from "@/lib/status";
+import { BUCKET_LABEL, BUCKET_META, BUCKETS, MAP_BUCKETS, bucketOf, bucketShade, darkTextUntil, shadeLevel, STATUS_META, type StatusBucket } from "@/lib/status";
 import { cn } from "@/lib/utils";
 
 /** Clusters form at this zoom and below; closer in, every location gets its own pin. */
@@ -55,7 +55,7 @@ export function clusterRenderer(bucket: StatusBucket): Renderer {
           scaledSize: new google.maps.Size(size, size),
           anchor: new google.maps.Point(size / 2 - dx, size / 2 - dy),
         },
-        title: `${count} ${bucket}`,
+        title: `${count} ${BUCKET_LABEL[bucket]}`,
         zIndex: Number(google.maps.Marker.MAX_ZINDEX) + count,
       });
     },
@@ -86,8 +86,10 @@ export function MapView({ pins, selectedId, hoveredId, onSelect, onBoundsChange,
   const groups = useMemo(() => groupPins(pins), [pins]);
   const fitSignature = useMemo(() => locationSignature(groups), [groups]);
   const counts = bucketCounts(pins, unit);
-  // Only groups that have stores get a legend entry.
-  const present = BUCKETS.filter((bucket) => counts[bucket] > 0);
+  // Every group has its tag, in one fixed order; a group with nothing on the map is dimmed.
+  const present = MAP_BUCKETS;
+  // Counting stores, the Not Registered group is their In Progress (Not Registered is a screen's status).
+  const tag = (bucket: StatusBucket) => (unit === "locations" && bucket === "Not Registered" ? "In Progress" : BUCKET_LABEL[bucket]);
   const showBadges = pins.some((pin) => pin.route_plan_id || (pin.visit_state && pin.visit_state !== "none"));
   const stacked = groups.filter((group) => group.pins.length > 1);
   const key = config.data?.google_maps_browser_key ?? "";
@@ -100,20 +102,19 @@ export function MapView({ pins, selectedId, hoveredId, onSelect, onBoundsChange,
       <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-4 gap-y-1" role="group" aria-label="Map legend">
         <ul className="flex flex-wrap items-center gap-x-4 gap-y-1" aria-label="Status colours">
           {present.map((bucket) => (
-            <li key={bucket} className="flex flex-col gap-1" title={`${BUCKET_META[bucket].members}. Bubbles go from light (few) to dark (many).`}>
+            <li key={bucket} className={cn("flex flex-col gap-1", counts[bucket] === 0 && "opacity-45")} title={`${BUCKET_META[bucket].members}. Bubbles go from light (few) to dark (many).`}>
               <span className="flex items-center gap-1.5">
                 <span className="size-2.5 rounded-full" style={{ background: BUCKET_META[bucket].color }} aria-hidden />
-                {bucket} <span className="tabular-nums text-slate-400">{counts[bucket]}</span>
+                {tag(bucket)} <span className="tabular-nums text-slate-400">{counts[bucket]}</span>
               </span>
               {/* This status's cluster bubbles, few → many, right under its name. */}
               <span
                 className="h-1.5 w-full min-w-12 rounded-full"
-                aria-label={`${bucket} clusters, light to dark`}
+                aria-label={`${tag(bucket)} clusters, light to dark`}
                 style={{ background: `linear-gradient(to right, ${BUCKET_META[bucket].light}, ${BUCKET_META[bucket].dark})` }}
               />
             </li>
           ))}
-          {present.length === 0 && <li className="text-slate-400">No stores</li>}
         </ul>
         {showBadges && (
           <div className="flex flex-wrap items-center gap-3" aria-label="Marker badges">

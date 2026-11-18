@@ -76,7 +76,7 @@ function renderTab(routes: Parameters<typeof mockApi>[0] = {}, onRender?: () => 
     "GET /api/config/store-fields": () => STORE_FIELDS_FOR_TESTS,
     "GET /api/projects/p1/stores/filters": () => FILTER_OPTIONS,
     "GET /api/projects/p1/stores/by-state": () => [{ state: "GA", count: 2 }, { state: "TN", count: 1 }],
-    "GET /api/projects/p1/stores/hardware": () => ({ installed_screens: 0, installed_stores: 0, installed_dolphin_by_size: { '24"': 0, '43"': 0, '50"': 0 } }),
+    "GET /api/projects/p1/stores/hardware": () => ({ installed_screens: 0, installed_stores: 0, installed_dolphin_by_model: {} }),
     ...routes,
   });
   const { client } = renderWithProviders(
@@ -186,8 +186,10 @@ describe("StoresTab", () => {
     expect(await screen.findByRole("region", { name: "Top states by screens" })).toBeTruthy();
     const totals = screen.getByText((_, element) => element?.getAttribute("aria-live") === "polite" && /^\d+ screens · \d+ records/.test(element.textContent ?? ""));
     expect(totals).toBeTruthy();
-    expect(before).toEqual(["Completed 1", "Upcoming 1"]); // stores, by status group
-    expect(within(legend).getAllByRole("listitem").map((item) => item.textContent)).toEqual(["Completed 2", "Upcoming 1"]); // screens
+    const rest = ["Offline 0", "Archived 0", "Cancelled 0"];
+    // Stores read In Progress where screens read Not Registered (a per-screen status).
+    expect(before).toEqual(["Upcoming 1", "Online 1", ...rest, "In Progress 0"]);
+    expect(within(legend).getAllByRole("listitem").map((item) => item.textContent)).toEqual(["Upcoming 1", "Online 2", ...rest, "Not Registered 0"]);
   });
 
   it("refetches the list when a routing build finishes while Stores is open", async () => {
@@ -247,13 +249,15 @@ describe("StoresTab", () => {
   it("shows the v2 columns and maps filters, search and sort onto the API", async () => {
     const { calls } = renderTab();
     expect(await screen.findByText("Alpha Mart")).toBeTruthy();
-    for (const name of [/IBC#/, /City, state/, /Status/, /^Screens$/, /Route \/ visits/, /PA/, /DMA/, /^Screens committed/, /^Screens installed/, /^Installer/]) {
+    for (const name of [/IBC#/, /^City/, /^State/, /Status/, /^Screens$/, /Route \/ visits/, /PA/, /DMA/, /^Screens committed/, /^Screens installed/, /^Installer/]) {
       expect(screen.getByRole("columnheader", { name })).toBeTruthy();
     }
     const headers = screen.getAllByRole("columnheader").map((header) => header.textContent ?? "");
     const at = (name: string) => headers.findIndex((text) => text.startsWith(name));
-    expect(at("DMA")).toBe(at("City, state") + 1); // DMA right after City, before Status
-    expect(at("Status")).toBe(at("DMA") + 1);
+    expect(at("DMA")).toBe(at("City") + 1); // City, DMA, State, in that order, before Status
+    expect(at("State")).toBe(at("DMA") + 1);
+    expect(at("Status")).toBe(at("State") + 1);
+    expect(screen.queryByRole("columnheader", { name: /Registered/ })).toBeNull(); // per screen: in the store window
     expect(screen.getByLabelText("Project PA").textContent).toBe("PA · North"); // the project's PA, under its name
     expect(headers.filter((text) => text.startsWith("Install"))).toEqual(["Installer"]); // no separate Install column
     expect(headers.some((text) => text.startsWith("Technician"))).toBe(false);
@@ -368,7 +372,7 @@ describe("StoresTab", () => {
   });
 
   it("Stick # shows the Dolphin data's serial number when it has one, else the sheet's", async () => {
-    const device = { status: "Online", last_seen: "", offline_days: null, serial_number: "DD-002-09999", venue_name: "CMS_A", date: "2026-11-15" };
+    const device = { status: "Online", last_seen: "", offline_days: null, serial_number: "DD-002-09999", venue_name: "CMS_A", date: "2026-11-15", first_registered: "2026-10-12T14:35:34+00:00", last_registered: "" };
     renderTab({
       "GET /api/projects/p1/stores/u1": () => ({
         ...STOPS[0],
@@ -384,6 +388,9 @@ describe("StoresTab", () => {
     expect(fromDolphin.textContent).toBe("DD-002-09999");
     expect(fromDolphin.getAttribute("title")).toContain("sheet: DD-002-01111");
     expect(within(list).getByLabelText("Stick number").textContent).toBe("DD-002-02222");
+    // Registered is per screen: the device's last registered date, or its first when it registered only once.
+    expect(within(list).getByLabelText("Registered, screen 1").textContent).toBe("2026-10-12");
+    expect(within(list).queryByLabelText("Registered, screen 2")).toBeNull(); // no Dolphin data for it
   });
 
   it("Overwrite from the Dolphin data waits for Save details, then goes with the rest", async () => {
@@ -408,8 +415,8 @@ describe("StoresTab", () => {
 
   it("hardware cost sits under Top states: completed screens only, priced from Settings, following the filters", async () => {
     const { calls } = renderTab({
-      "GET /api/projects/p1": () => makeSummary({ hardware_costs: { stick: 40, screen_24: 120, screen_43: 300, screen_50: null } }),
-      "GET /api/projects/p1/stores/hardware": () => ({ installed_screens: 5, installed_stores: 4, installed_dolphin_by_size: { '24"': 3, '43"': 1, '50"': 0 } }),
+      "GET /api/projects/p1": () => makeSummary({ hardware_costs: { stick: 40, screens: [{ size: '24"', type: "Dolphin", cost: 120 }, { size: '43"', type: "Dolphin", cost: 300 }] } }),
+      "GET /api/projects/p1/stores/hardware": () => ({ installed_screens: 5, installed_stores: 4, installed_dolphin_by_model: { '24"|': 3, '43"|Dolphin': 1 } }),
     });
     await screen.findByText("Alpha Mart");
     const chart = await screen.findByRole("region", { name: "Hardware cost" });
@@ -417,7 +424,7 @@ describe("StoresTab", () => {
     await waitFor(() => expect(within(chart).getByLabelText("Hardware cost total").textContent).toBe("$860"));
     expect(chart.textContent).toContain("Completed screens only");
     const items = within(within(chart).getByRole("list", { name: "Hardware cost by item" })).getAllByRole("listitem").map((item) => item.textContent);
-    expect(items).toEqual(["5 × Sticks @ $40$20023%", '3 × 24" Dolphin TVs @ $120$36042%', '1 × 43" Dolphin TVs @ $300$30035%']);
+    expect(items).toEqual(["5 × Sticks @ $40$20023%", '3 × 24" Dolphin screens @ $120$36042%', '1 × 43" Dolphin screens @ $300$30035%']);
     // Under the Top states chart, in the same column.
     const states = screen.getByRole("region", { name: "Top states by stores" });
     expect(states.parentElement?.parentElement?.contains(chart)).toBe(true);
@@ -475,7 +482,7 @@ describe("StoresTab", () => {
     expect(within(drawer).getByLabelText("Address").textContent).toBe("1 Main St, Atlanta, GA 30303");
     expect(within(drawer).queryByRole("region", { name: "Screen rows" })).toBeNull();
     const screenTable = within(within(drawer).getByRole("region", { name: "Screen list" })).getByRole("table", { name: "Screens" });
-    expect(within(screenTable).getByLabelText("Has mount, screen 1").textContent).toBe("No"); // a value, not "No mount"
+    expect(within(screenTable).getByLabelText("Mount, screen 1").textContent).toBe("None"); // Wall, Ceiling or None
     expect(within(screenTable).getByText('24"')).toBeTruthy(); // a Dolphin screen is 24 inch
     expect(within(drawer).getByLabelText("PA").textContent).toContain("North"); // project fallback
     expect(within(drawer).queryByRole("textbox", { name: "IBC#" })).toBeNull();
@@ -522,9 +529,12 @@ describe("StoresTab", () => {
 
     await userEvent.click(within(rows).getByRole("button", { name: "Add screen" }));
     const second = within(rows).getByRole("listitem", { name: "Screen 2" });
-    expect(within(second).getByRole("checkbox", { name: "Dolphin TV, screen 2" }).getAttribute("aria-checked")).toBe("true");
+    // A new row asks for its size first; then it is a Dolphin screen unless told otherwise.
+    expect(within(second).queryByRole("group", { name: "Owner of screen 2" })).toBeNull();
+    await userEvent.click(within(second).getByRole("radio", { name: "55 inch" }));
+    expect(within(second).getByRole("button", { name: "Dolphin screen" }).getAttribute("aria-pressed")).toBe("true");
     await userEvent.type(within(second).getByLabelText("DD code"), "V9");
-    await userEvent.click(within(second).getByRole("checkbox", { name: "Dolphin TV, screen 2" }));
+    await userEvent.click(within(second).getByRole("button", { name: "Store TV" }));
     await userEvent.click(within(rows).getByRole("combobox", { name: "Status of screen 1" }));
     await userEvent.click(await screen.findByRole("option", { name: "Completed" }));
     expect(within(rows).getByTestId("derived-status").textContent).toBe("Upcoming"); // the new row is still Upcoming
@@ -715,12 +725,12 @@ describe("StoresTab", () => {
     await screen.findByText("Alpha Mart");
     const chips = screen.getByRole("group", { name: "Status filter" });
     expect(within(chips).getByRole("button", { name: /Offline/ }).hasAttribute("disabled")).toBe(true); // none
-    await userEvent.click(within(chips).getByRole("button", { name: /Completed/ }));
+    await userEvent.click(within(chips).getByRole("button", { name: /Online/ }));
     await waitFor(() => expect(lastList(calls)?.searchParams.getAll("bucket")).toEqual(["Completed"]));
     const last = (suffix: string) => [...calls].reverse().find((call) => call.url.pathname.endsWith(suffix))?.url;
     expect(last("/pins")?.searchParams.getAll("bucket")).toEqual(["Completed"]);
     expect(last("/by-state")?.searchParams.getAll("bucket")).toEqual(["Completed"]);
-    expect(within(chips).getByRole("button", { name: /Completed/ }).getAttribute("aria-pressed")).toBe("true");
+    expect(within(chips).getByRole("button", { name: /Online/ }).getAttribute("aria-pressed")).toBe("true");
   });
 
   it("top states here: every state in a scrolling panel, read only (filtering by state is on the full-page chart)", async () => {

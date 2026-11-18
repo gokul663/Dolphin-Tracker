@@ -16,6 +16,7 @@ export const keys = {
   projects: ["projects"] as const,
   projectList: (limit: number) => ["projects", "list", limit] as const,
   project: (id: string) => ["projects", id] as const,
+  projectUploads: (id: string) => ["projects", id, "uploads"] as const,
   routes: (id: string) => ["projects", id, "routes"] as const,
   stores: (id: string) => ["projects", id, "stores"] as const,
   storeList: (id: string, filters: StoreFilters, page: StorePageParams = { offset: 0, limit: 20, bounds: null }) =>

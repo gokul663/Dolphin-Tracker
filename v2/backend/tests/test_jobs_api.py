@@ -9,6 +9,7 @@ from dolphin_tracker.api.deps import (
     get_job_repository,
     get_project_repository,
     get_settings,
+    get_store_repository,
     get_worker_invoker,
 )
 from dolphin_tracker.config import Settings
@@ -145,3 +146,48 @@ class WorkerDispatchTests(unittest.TestCase):
     def test_unknown_job_type(self):
         self.assertEqual(dispatch({"job_id": "j", "job_type": "nope"})["ok"], False)
         self.assertEqual(dispatch({"job_id": "j"})["error"], "unknown job_type")
+
+
+class KeptUploadTests(ImportJobFlowTests):
+    """A sheet imported into a project is kept with it and listed with a download."""
+
+    def setUp(self):
+        super().setUp()
+        self.stores = InMemoryStoreRepository()
+        self.app.dependency_overrides[get_store_repository] = lambda: self.stores
+
+    def _upload(self) -> str:
+        job_id = self._create(project_id="p1")["job_id"]
+        self.assertEqual(self.client.put(f"/api/jobs/{job_id}/upload", content=CSV).status_code, 204)
+        return job_id
+
+    def _stop(self, name: str, addr: str) -> dict:
+        return {"store_name": name, "addr": addr, "city": "Atlanta", "state": "GA", "lat": 33.7, "lng": -84.4,
+                "external_id": f"IBC-{name}"}
+
+    def test_append_keeps_the_sheet_and_lists_it(self):
+        job_id = self._upload()
+        body = {"stops": [self._stop("A", "1 Main St"), self._stop("B", "2 Main St")], "import_job_id": job_id}
+        self.assertEqual(self.client.post("/api/projects/p1/stores/append", json=body).json()["appended"], 2)
+        again = self._upload()  # the same stores again: nothing added, the sheet is still kept
+        body = {"stops": [self._stop("A", "1 Main St")], "import_job_id": again}
+        self.assertEqual(self.client.post("/api/projects/p1/stores/append", json=body).json()["appended"], 0)
+
+        items = self.client.get("/api/projects/p1/uploads").json()["items"]
+        self.assertEqual([(item["id"], item["added"], item["skipped"]) for item in items],
+                         [(again, 0, 1), (job_id, 2, 0)])  # newest first
+        self.assertEqual((items[1]["filename"], items[1]["size"], items[1]["kind"]), ("sites.csv", len(CSV), "append"))
+        self.assertTrue(items[1]["key"].startswith(f"projects/p1/uploads/{job_id}/"))
+        download = self.client.get(items[1]["download_url"])
+        self.assertEqual((download.status_code, download.content), (200, CSV))
+        self.assertIn("sites.csv", download.headers["content-disposition"])
+
+    def test_no_job_or_a_repeat_records_nothing_twice(self):
+        self.client.post("/api/projects/p1/stores/append", json={"stops": [self._stop("A", "1 Main St")]})
+        self.assertEqual(self.client.get("/api/projects/p1/uploads").json()["items"], [])
+        job_id = self._upload()
+        for name in ("B", "C"):
+            self.client.post("/api/projects/p1/stores/append",
+                             json={"stops": [self._stop(name, f"{name} Elm St")], "import_job_id": job_id})
+        self.assertEqual(len(self.client.get("/api/projects/p1/uploads").json()["items"]), 1)
+        self.assertEqual(self.client.get("/api/projects/p1/uploads/nope/file").status_code, 404)

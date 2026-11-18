@@ -22,6 +22,7 @@ from dolphin_tracker.domain.device import split_codes, venue_code_key
 from dolphin_tracker.domain.device_sync import packed_screens, shown_location, store_with_code
 from dolphin_tracker.domain.errors import ConflictError, NotFoundError, ValidationFailed
 from dolphin_tracker.domain.import_mapping import clean_mapping, split_duplicates
+from dolphin_tracker.domain.kpi import missing_screens
 from dolphin_tracker.domain.models import (
     PENDING_STATUSES,
     PROGRESS_FIELDS,
@@ -40,7 +41,13 @@ from dolphin_tracker.domain.models import (
 from dolphin_tracker.domain.parsing import clean_cell
 from dolphin_tracker.domain.route_optimizer import state_key
 from dolphin_tracker.domain.schema import coerce_fields, validate_fields, validate_stop_inputs, with_sheet_fields
-from dolphin_tracker.domain.statuses import BUCKET_ORDER, INSTALLED_STATUSES, StatusBucket, bucket_of
+from dolphin_tracker.domain.statuses import (
+    BUCKET_ORDER,
+    INSTALLED_STATUSES,
+    StatusBucket,
+    dolphin_model_key,
+    store_bucket_of,
+)
 from dolphin_tracker.domain.validation import (
     EDITABLE_FIELDS,
     FIELDS_BY_NAME,
@@ -63,14 +70,17 @@ FILTER_FIELDS = (
 )
 NEEDS_MOUNT, NO_MOUNT_NEEDED = "Needs mount", "No mount needed"
 FULFILLED, NOT_FULFILLED, NO_COMMITMENT = "Fulfilled", "Not fulfilled", "No commitment"
+# Reads as done (Completed or Offline) but has fewer screen rows than the sheet committed.
+NEEDS_REVIEW = "Needs review"
 # The Projects-view overlays (ROUTE-PLANNER §6) as filter values.
 IN_ROUTE, NOT_IN_ROUTE = "In route", "Not in route"
 VISIT_LABELS = {VisitState.VISITED: "Visited", VisitState.PARTLY: "Partly visited", VisitState.NONE: "Not visited"}
 OVERLAY_ORDER = {
     value: index
     for index, value in enumerate([
-        IN_ROUTE, NOT_IN_ROUTE, *VISIT_LABELS.values(), NEEDS_MOUNT, NO_MOUNT_NEEDED, FULFILLED, NOT_FULFILLED,
-        NO_COMMITMENT, *(bucket.value for bucket in BUCKET_ORDER),
+        IN_ROUTE, NOT_IN_ROUTE, *VISIT_LABELS.values(), NEEDS_MOUNT, NO_MOUNT_NEEDED, FULFILLED, NEEDS_REVIEW,
+        NOT_FULFILLED,
+        NO_COMMITMENT, *(bucket.value for bucket in BUCKET_ORDER), StatusBucket.IN_PROGRESS.value,
     ])
 }
 SORT_KEYS = frozenset(
@@ -164,11 +174,15 @@ def facet_values(stop: Stop, project: Project, name: str) -> list[str]:
         case "visit":
             return [VISIT_LABELS[stop_visit_state(stop)]]
         case "bucket":
-            return [bucket_of(stop.status).value]
+            return [store_bucket_of(stop.status).value]
         case "mount":
             return [NEEDS_MOUNT if needs_mount(stop) else NO_MOUNT_NEEDED]
         case "fulfilled":
             return [fulfillment(stop)]
+        case "state":  # as shown: the Dolphin data's or the verified address's, never a typed spelling
+            return [stop.place_state] if stop.place_state else []
+        case "city":
+            return [stop.place_city] if stop.place_city else []
         case _:
             value = getattr(stop, name)
             return [value] if value else []
@@ -186,6 +200,8 @@ def fulfillment(stop: Stop) -> str:
     committed = (stop.committed_dolphin_screens or 0) + (stop.committed_store_tvs or 0)
     if committed == 0:
         return NO_COMMITMENT
+    if missing_screens(stop.status, committed, len(stop.screens)):
+        return NEEDS_REVIEW
     installed = sum(1 for screen in stop.screens if screen.status in INSTALLED_STATUSES)
     return FULFILLED if installed >= committed else NOT_FULFILLED
 
@@ -205,6 +221,8 @@ def _sort_value(stop: Stop, sort: str) -> Any:
         value = stop.fields.get(sort.removeprefix("fields."))
     elif sort == "screens":
         value = len(stop.screens)
+    elif sort in ("city", "state"):
+        value = stop.place_city if sort == "city" else stop.place_state
     else:
         value = getattr(stop, sort)
     if value is None or value == "":
@@ -245,7 +263,9 @@ def _csv_value(spec: StoreField, value: Any) -> Any:
 
 def screen_summary(screen: Screen) -> str:
     """One screen row for the CSV: stick / DD code / size / kind / mount / status."""
-    kind = "Dolphin screen" if screen.is_dolphin_screen else "Store TV"
+    kind = "Store TV"
+    if screen.is_dolphin_screen:
+        kind = f"Dolphin screen ({screen.screen_type})" if screen.screen_type else "Dolphin screen"
     mount = f"{'ceiling' if screen.has_ceiling_mount else 'wall'} mount{'' if screen.has_mount else ' (none yet)'}"
     if screen.needs_mount:
         mount += ", needs mount"
@@ -391,22 +411,23 @@ class StoreService:
         stops = self._filter(project, self._stores.list_all(project_id), (query or StoreQuery()).without("state"))
         counts: Counter[str] = Counter()
         for stop in stops:
-            if not stop.state:
+            state = stop.place_state
+            if not state:
                 continue
             if unit == "stores":
-                counts[stop.state] += int(not pending or stop.status in PENDING_STATUSES)
+                counts[state] += int(not pending or stop.status in PENDING_STATUSES)
             else:
                 statuses = [screen.status for screen in stop.screens] or [stop.status]
-                counts[stop.state] += sum(1 for status in statuses if not pending or status in PENDING_STATUSES)
+                counts[state] += sum(1 for status in statuses if not pending or status in PENDING_STATUSES)
         ranked = sorted(((s, c) for s, c in counts.items() if c), key=lambda item: (-item[1], item[0]))[:limit]
         return [{"state": state, "count": count} for state, count in ranked]
 
     def hardware(self, project_id: str, query: StoreQuery | None = None) -> dict[str, Any]:
         """The installed hardware of the stores the filters keep (the "Hardware cost" chart): installed screens (a stick
-        each) and installed Dolphin TVs by size. Prices live on the project; the page multiplies."""
+        each) and installed Dolphin screens by model. Prices live on the project; the page multiplies."""
         project = self._project(project_id)
         stops = self._filter(project, self._stores.list_all(project_id), query or StoreQuery())
-        by_size = {'24"': 0, '43"': 0, '50"': 0}
+        by_model: dict[str, int] = {}
         screens = stores = 0
         for stop in stops:
             installed = [screen for screen in stop.screens if screen.status in INSTALLED_STATUSES]
@@ -414,8 +435,9 @@ class StoreService:
             screens += len(installed)
             for screen in installed:
                 if screen.is_dolphin_screen:
-                    by_size[screen.screen_size] = by_size.get(screen.screen_size, 0) + 1
-        return {"installed_screens": screens, "installed_stores": stores, "installed_dolphin_by_size": by_size}
+                    model = dolphin_model_key(screen.screen_size, screen.screen_type)
+                    by_model[model] = by_model.get(model, 0) + 1
+        return {"installed_screens": screens, "installed_stores": stores, "installed_dolphin_by_model": by_model}
 
     def field_usage(self, project_id: str) -> dict[str, int]:
         """How many stores hold a non-empty value per `fields` key (Settings warns before a field is removed)."""

@@ -1,6 +1,7 @@
 """Uploaded spreadsheets and job results: S3 in AWS, a local directory when DT_FILES_BUCKET is empty.
 
-Key layout (shared by both stores): `uploads/<job_id>/<filename>` and `jobs/<job_id>/result.json`.
+Key layout (shared by both stores): `uploads/<job_id>/<filename>` and `jobs/<job_id>/result.json` (both expire),
+and `projects/<project_id>/uploads/<job_id>/<filename>`: the sheets a project was built from, kept for good.
 """
 from __future__ import annotations
 
@@ -15,12 +16,18 @@ from dolphin_tracker.config import Settings
 
 UPLOAD_PREFIX = "uploads/"
 JOB_PREFIX = "jobs/"
+PROJECT_PREFIX = "projects/"
 _UNSAFE = re.compile(r"[^A-Za-z0-9._-]+")
 
 
 def upload_key(job_id: str, filename: str) -> str:
     safe = _UNSAFE.sub("_", Path(filename).name).strip("._") or "upload"
     return f"{UPLOAD_PREFIX}{job_id}/{safe}"
+
+
+def project_upload_key(project_id: str, job_id: str, filename: str) -> str:
+    safe = _UNSAFE.sub("_", Path(filename).name).strip("._") or "upload"
+    return f"{PROJECT_PREFIX}{project_id}/uploads/{job_id}/{safe}"
 
 
 def result_key(job_id: str) -> str:
@@ -31,7 +38,9 @@ class FileStore(Protocol):
     is_local: bool
 
     def presign_upload(self, key: str, content_type: str, *, expires_in: int = 900) -> str: ...
-    def presign_download(self, key: str, *, expires_in: int = 900) -> str: ...
+    def presign_download(self, key: str, *, expires_in: int = 900, download_name: str = "") -> str:
+        """A link to the file; `download_name` makes the browser save it under that name."""
+        ...
     def exists(self, key: str) -> bool: ...
     def get_bytes(self, key: str) -> bytes: ...
     def put_bytes(self, key: str, data: bytes, *, content_type: str = "application/octet-stream") -> None: ...
@@ -60,10 +69,12 @@ class S3FileStore:
             ExpiresIn=expires_in,
         )
 
-    def presign_download(self, key: str, *, expires_in: int = 900) -> str:
-        return self._client.generate_presigned_url(
-            "get_object", Params={"Bucket": self._bucket, "Key": key}, ExpiresIn=expires_in
-        )
+    def presign_download(self, key: str, *, expires_in: int = 900, download_name: str = "") -> str:
+        params = {"Bucket": self._bucket, "Key": key}
+        if download_name:
+            safe = _UNSAFE.sub("_", download_name) or "download"
+            params["ResponseContentDisposition"] = f'attachment; filename="{safe}"'
+        return self._client.generate_presigned_url("get_object", Params=params, ExpiresIn=expires_in)
 
     def exists(self, key: str) -> bool:
         try:
@@ -113,7 +124,10 @@ class LocalFileStore:
     def presign_upload(self, key: str, content_type: str, *, expires_in: int = 900) -> str:
         return f"/api/jobs/{self._job_id(key, UPLOAD_PREFIX)}/upload"
 
-    def presign_download(self, key: str, *, expires_in: int = 900) -> str:
+    def presign_download(self, key: str, *, expires_in: int = 900, download_name: str = "") -> str:
+        if key.startswith(PROJECT_PREFIX):  # projects/<project_id>/uploads/<job_id>/<filename>
+            _, project_id, _, job_id, *_ = key.split("/")
+            return f"/api/projects/{project_id}/uploads/{job_id}/file"
         return f"/api/jobs/{self._job_id(key, JOB_PREFIX)}/result"
 
     def exists(self, key: str) -> bool:

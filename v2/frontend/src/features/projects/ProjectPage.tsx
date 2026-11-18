@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ArrowLeft, Inbox, Loader2 } from "lucide-react";
+import { ArrowLeft, Loader2 } from "lucide-react";
 import {
   Link,
   NavLink,
@@ -15,7 +15,7 @@ import {
   useProject,
   useRefreshWhenRoutingFinishes,
 } from "@/features/projects/api";
-import { ALERT_BUBBLE_WIDTH, ProjectKpis } from "@/features/projects/ProjectKpis";
+import { ProjectKpis } from "@/features/projects/ProjectKpis";
 import { useAutoDeviceSync } from "@/features/device/api";
 import { DeviceBadge } from "@/features/device/DeviceBits";
 import { ReviewDialog } from "@/features/device/ReviewDialog";
@@ -64,6 +64,14 @@ export function ProjectPage() {
     );
   }
   const project = query.data;
+  // Done stores with fewer screen rows than committed: the "Screens done" filter's "Needs review".
+  const showMissingScreens = () => {
+    useStoresUi.getState().enterProject(project.id);
+    const ui = useStoresUi.getState();
+    if (!ui.facets.fulfilled.includes("Needs review")) ui.toggleFacet("fulfilled", "Needs review");
+    setReviewing(false);
+    navigate("stores");
+  };
   return (
     <section className="space-y-4">
       {/* One row, as in v1: back + name, the KPI strip, then the sections. */}
@@ -88,23 +96,9 @@ export function ProjectPage() {
         <div className="flex min-w-0 flex-1">
           <ProjectKpis
             kpi={project.kpi}
-            // In the same row as the other bubbles, so it gets the same share of the width.
-            leading={
-              project.device_sync && project.device_sync.review_count > 0 ? (
-                <button
-            type="button"
-            onClick={() => setReviewing(true)}
-            className={cn("flex flex-col items-center justify-center rounded-xl border border-cyan-300 bg-cyan-50 px-3 py-2 text-center text-cyan-900 shadow-sm hover:bg-cyan-100", ALERT_BUBBLE_WIDTH)}
-            aria-label={`${project.device_sync.review_count} screens in the Dolphin data need review`}
-            title="Screens the CMS reports for this PA that are in no store here: add them or set them aside"
-          >
-            <span className="flex items-center gap-1 text-2xl font-semibold leading-tight tabular-nums">
-              <Inbox className="size-5" /> {project.device_sync.review_count.toLocaleString()}
-            </span>
-            <span className="text-balance font-mono text-xs uppercase leading-tight tracking-wider">Needs review</span>
-          </button>
-              ) : null
-            }
+            reviewCount={project.device_sync?.review_count ?? 0}
+            onDeviceReview={() => setReviewing(true)}
+            onMissingScreens={showMissingScreens}
             activeBuckets={activeBuckets}
             onBucket={(bucket) => {
               useStoresUi.getState().enterProject(project.id);
@@ -152,7 +146,7 @@ export function ProjectPage() {
         </div>
       </div>
       <Outlet context={{ project }} />
-      {project.device_sync && <ReviewDialog project={project} open={reviewing} onClose={() => setReviewing(false)} />}
+      {project.device_sync && <ReviewDialog project={project} open={reviewing} onClose={() => setReviewing(false)} onMissingScreens={showMissingScreens} />}
     </section>
   );
 }

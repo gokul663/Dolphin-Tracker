@@ -8,14 +8,26 @@ import { DEVICE_TONE, DeviceBadge, reportDay } from "@/features/device/DeviceBit
 import { useAddReviewed, useDeviceReview, useSnoozeReviewed } from "@/features/device/api";
 import { Input } from "@/components/ui/input";
 import { GoogleSearchPicker } from "@/features/places/GoogleSearchPicker";
-import { ApiError, type Project, type ReviewAdd, type ReviewItem } from "@/lib/api/types";
+import { ApiError, type Project, type ProjectSummary, type ReviewAdd, type ReviewItem } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
 
 const PAGE = 25;
 
 /** Report records of the project's PA whose DD code is in no store: add each as a store, or "Not now" (it comes
  *  back with the next report day). */
-export function ReviewDialog({ project, open, onClose }: { project: Project; open: boolean; onClose: () => void }) {
+export function ReviewDialog({
+  project,
+  open,
+  onClose,
+  onMissingScreens,
+}: {
+  project: Project & { kpi?: ProjectSummary["kpi"] };
+  open: boolean;
+  onClose: () => void;
+  /** Show the done stores that have fewer screens than the sheet committed. */
+  onMissingScreens?: () => void;
+}) {
+  const missing = project.kpi?.review_screens ?? 0;
   const [cursors, setCursors] = useState<(string | null)[]>([null]);
   const [includeSnoozed, setIncludeSnoozed] = useState(false);
   const cursor = cursors[cursors.length - 1] ?? null;
@@ -64,6 +76,19 @@ export function ReviewDialog({ project, open, onClose }: { project: Project; ope
             report; Not now hides it until the next report day.
           </DialogDescription>
         </DialogHeader>
+        {missing > 0 && (
+          <div className="flex flex-wrap items-center gap-2 rounded-lg bg-cyan-50 px-3 py-2 text-sm text-cyan-900" role="status">
+            <span className="min-w-0 flex-1">
+              <span className="font-semibold">{missing.toLocaleString()} committed screens</span> are missing at {(project.kpi?.review_stores ?? 0).toLocaleString()} stores
+              that read as done (Completed or Offline, with fewer screens than the sheet committed).
+            </span>
+            {onMissingScreens && (
+              <Button size="sm" variant="outline" onClick={onMissingScreens}>
+                Show these stores
+              </Button>
+            )}
+          </div>
+        )}
         <div className="flex items-center gap-2 text-sm">
           <label className="flex items-center gap-1.5">
             <Checkbox

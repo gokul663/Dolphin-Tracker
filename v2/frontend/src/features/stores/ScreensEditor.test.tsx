@@ -37,17 +37,44 @@ describe("ScreensEditor", () => {
     expect(draft.latest()[0]?.screen_size).toBe('98"');
   });
 
-  it("a Dolphin TV is 24, 43 or 50 inch (24 by default); a store TV gets the full size tiles", async () => {
+  it("size first; then whose screen, which of our types for that size, and the mount (or none)", async () => {
     mockApi({});
-    const draft = draftScreens(makeProject(), makeStop({ screens: [makeScreen({ id: "s1", is_dolphin_screen: false, screen_size: '55"' })] }));
+    const costs = { stick: 40, screens: [{ size: '24"', type: "Dolphin", cost: 120 }, { size: '24"', type: "Dell", cost: 95 }, { size: '43"', type: "Dolphin", cost: 300 }] };
+    const draft = draftScreens(makeProject({ hardware_costs: costs }), makeStop({ screens: [makeScreen({ id: "s1", screen_size: "" })] }));
     renderWithProviders(draft.element);
-    expect(within(screen.getByRole("radiogroup", { name: "Size of screen 1" })).getByRole("radio", { name: "Other size" })).toBeTruthy();
-    await userEvent.click(screen.getByRole("checkbox", { name: "Dolphin TV, screen 1" }));
-    const sizes = screen.getByRole("radiogroup", { name: "Size of screen 1" });
-    expect(within(sizes).getAllByRole("radio").map((radio) => radio.getAttribute("aria-label"))).toEqual(["24 inch", "43 inch", "50 inch"]);
-    expect(draft.latest()[0]).toMatchObject({ is_dolphin_screen: true, screen_size: '24"' });
-    await userEvent.click(within(sizes).getByRole("radio", { name: "50 inch" }));
-    expect(draft.latest()[0]?.screen_size).toBe('50"');
+    // Nothing is asked until a size is picked.
+    expect(screen.queryByRole("group", { name: "Owner of screen 1" })).toBeNull();
+    expect(screen.queryByRole("group", { name: "Mount of screen 1" })).toBeNull();
+    await userEvent.click(within(screen.getByRole("radiogroup", { name: "Size of screen 1" })).getByRole("radio", { name: "24 inch" }));
+    const pressed = (group: string) => within(screen.getByRole("group", { name: group })).getAllByRole("button").filter((button) => button.getAttribute("aria-pressed") === "true").map((button) => button.textContent);
+    expect(pressed("Owner of screen 1")).toEqual(["Dolphin screen"]);
+    // 24 inch has two of our types: neither is assumed.
+    const types = screen.getByRole("group", { name: "Type of screen 1" });
+    expect(within(types).getAllByRole("button").map((button) => button.textContent)).toEqual(["Dolphin", "Dell"]);
+    expect(pressed("Type of screen 1")).toEqual([]);
+    await userEvent.click(within(types).getByRole("button", { name: "Dell" }));
+    expect(draft.latest()[0]).toMatchObject({ screen_size: '24"', is_dolphin_screen: true, screen_type: "Dell" });
+    // 43 inch has one type, so it is taken; a size without any asks nothing.
+    await userEvent.click(within(screen.getByRole("radiogroup", { name: "Size of screen 1" })).getByRole("radio", { name: "43 inch" }));
+    expect(draft.latest()[0]).toMatchObject({ screen_size: '43"', screen_type: "Dolphin" });
+    await userEvent.click(within(screen.getByRole("radiogroup", { name: "Size of screen 1" })).getByRole("radio", { name: "55 inch" }));
+    expect(screen.queryByRole("group", { name: "Type of screen 1" })).toBeNull();
+    expect(draft.latest()[0]?.screen_type).toBe("");
+    // Mount: wall or ceiling, and either can be unpicked again (no mount).
+    const mount = screen.getByRole("group", { name: "Mount of screen 1" });
+    expect(pressed("Mount of screen 1")).toEqual([]);
+    await userEvent.click(within(mount).getByRole("button", { name: "Ceiling mount" }));
+    expect(draft.latest()[0]).toMatchObject({ has_mount: true, has_ceiling_mount: true });
+    await userEvent.click(within(mount).getByRole("button", { name: "Wall mount" }));
+    expect(draft.latest()[0]).toMatchObject({ has_mount: true, has_ceiling_mount: false });
+    await userEvent.click(within(mount).getByRole("button", { name: "Wall mount" }));
+    expect(draft.latest()[0]).toMatchObject({ has_mount: false, has_ceiling_mount: false });
+    // A store TV is none of our types.
+    await userEvent.click(within(screen.getByRole("radiogroup", { name: "Size of screen 1" })).getByRole("radio", { name: "24 inch" }));
+    await userEvent.click(within(screen.getByRole("group", { name: "Type of screen 1" })).getByRole("button", { name: "Dell" }));
+    await userEvent.click(within(screen.getByRole("group", { name: "Owner of screen 1" })).getByRole("button", { name: "Store TV" }));
+    expect(draft.latest()[0]).toMatchObject({ is_dolphin_screen: false, screen_type: "" });
+    expect(screen.queryByRole("group", { name: "Type of screen 1" })).toBeNull();
   });
 
 });

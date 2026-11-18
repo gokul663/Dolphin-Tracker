@@ -5,14 +5,14 @@ from dolphin_tracker.domain.device import DeviceRecord, DeviceSnapshot
 from dolphin_tracker.domain.device_sync import index_records, sync_stop
 from dolphin_tracker.domain.import_mapping import detect_mapping, map_row
 from dolphin_tracker.domain.kpi import kpi_summary
-from dolphin_tracker.domain.models import Screen, ScreenInput, ScreenStatus, Stop
+from dolphin_tracker.domain.models import HardwareCosts, Screen, ScreenInput, ScreenStatus, Stop
 from dolphin_tracker.domain.statuses import (
     BUCKET_OF,
     StatusBucket,
     install_type_from_sheet,
     normalize_screen_status,
 )
-from dolphin_tracker.services.stores import fulfillment
+from dolphin_tracker.services.stores import facet_values, fulfillment
 from tests.fakes import report_row
 from tests.test_stores_api import StoresApiTestCase
 
@@ -26,7 +26,8 @@ def stop(uid: str, *statuses: str, **extra) -> Stop:
 class BucketTests(unittest.TestCase):
     def test_every_status_has_a_group(self):
         self.assertEqual(set(BUCKET_OF), set(ScreenStatus))
-        self.assertEqual(BUCKET_OF[ScreenStatus.ARCHIVED], StatusBucket.CANCELLED)
+        self.assertEqual(BUCKET_OF[ScreenStatus.ARCHIVED], StatusBucket.ARCHIVED)  # its own group, apart from Cancelled
+        self.assertEqual(BUCKET_OF[ScreenStatus.NOT_REGISTERED], StatusBucket.NOT_REGISTERED)
         for status in ("Invitation Email Sent", "Shipped", "Delivered", "Serviced - Needs More Work"):
             self.assertEqual(BUCKET_OF[ScreenStatus(status)], StatusBucket.UPCOMING)  # no In Progress group for now
 
@@ -40,15 +41,21 @@ class BucketTests(unittest.TestCase):
             stop("c", "Archived").model_dump(mode="json"),
             stop("d", "Offline", install_type="Rep install").model_dump(mode="json"),
         ])
-        self.assertEqual(kpi.by_bucket, {"Completed": 1, "Upcoming": 1, "Offline": 1, "Cancelled": 1})
+        self.assertEqual(kpi.by_bucket, {"Completed": 1, "Upcoming": 1, "Offline": 1, "In Progress": 0,
+                                         "Cancelled": 0, "Archived": 1})
+        # Not Registered is a screen's status: its store reads In Progress.
+        waiting = kpi_summary([stop("e", "Not Registered", "Completed").model_dump(mode="json")])
+        self.assertEqual((waiting.by_bucket["In Progress"], waiting.screens_by_bucket["Not Registered"]), (1, 1))
+        self.assertNotIn("Not Registered", waiting.by_bucket)
+        self.assertEqual(facet_values(stop("e", "Not Registered"), None, "bucket"), ["In Progress"])
         self.assertEqual(kpi.screens_by_bucket["Completed"], 2)
         self.assertEqual(kpi.screens_by_bucket["Upcoming"], 2)  # Upcoming and Shipped
         self.assertEqual(kpi.by_technician["Murugan"].model_dump(), {"done": 2, "upcoming": 2})
         self.assertEqual(kpi.install_types, {"Technician": 2, "": 1, "Rep install": 1})  # a name implies Technician
         # Completed in the header = installed: online (Completed) and Offline screens together.
         self.assertEqual((kpi.installed_screens, kpi.installed_stores), (3, 2))  # a: 2 Completed; d: Offline
-        self.assertEqual(kpi.committed_stores, 0)
-        self.assertEqual(kpi.installed_dolphin_by_size, {'24"': 3, '43"': 0, '50"': 0})  # its installed Dolphin TVs
+        self.assertEqual(kpi.committed_stores, 4)  # every store counts, with or without a committed number
+        self.assertEqual(kpi.installed_dolphin_by_model, {'24"|': 3})  # its installed Dolphin screens
 
 
 class InstallTypeTests(unittest.TestCase):
@@ -79,8 +86,16 @@ class InstallTypeTests(unittest.TestCase):
 class FulfilledTests(unittest.TestCase):
     def test_completed_screens_against_committed(self):
         self.assertEqual(fulfillment(stop("a", "Completed")), "No commitment")
+        # Done (every row is on the wall) with fewer rows than committed: someone has to look.
         self.assertEqual(fulfillment(stop("a", "Completed", committed_dolphin_screens=1, committed_store_tvs=1)),
-                         "Not fulfilled")
+                         "Needs review")
+        self.assertEqual(fulfillment(stop("a", "Offline", "Completed", committed_dolphin_screens=3)), "Needs review")
+        kpi = kpi_summary([
+            stop("a", "Completed", committed_dolphin_screens=3).model_dump(mode="json"),  # 2 missing
+            stop("b", "Upcoming", committed_dolphin_screens=3).model_dump(mode="json"),  # not done: still to come
+            stop("c", "Completed", "Completed").model_dump(mode="json"),  # no commitment
+        ])
+        self.assertEqual((kpi.review_stores, kpi.review_screens), (1, 2))
         self.assertEqual(fulfillment(stop("a", "Completed", "Completed", "Upcoming", committed_dolphin_screens=1,
                                           committed_store_tvs=1)), "Fulfilled")
         self.assertEqual(fulfillment(stop("a", "Upcoming", "Shipped", committed_dolphin_screens=2)), "Not fulfilled")
@@ -125,7 +140,7 @@ class RefreshApiTests(StoresApiTestCase):
         self.assertEqual({o["value"] for o in options["bucket"]}, {"Completed", "Upcoming", "Offline"})
         self.assertEqual(self.uids(bucket="Offline"), ["c"])
         self.assertEqual(sorted(self.uids(bucket=["Completed", "Offline"])), ["a", "c"])
-        self.assertEqual(self.uids(fulfilled="Not fulfilled"), ["a"])  # 1 of 2 committed screens done
+        self.assertEqual(self.uids(fulfilled="Needs review"), ["a"])  # Completed with 1 row of 2 committed
         self.assertEqual(self.uids(mount="Needs mount"), [])
 
     def test_install_type_edit_and_needs_mount(self):
@@ -225,21 +240,36 @@ def test_a_store_never_shows_one_code_twice() -> None:
     assert [(screen.venue_id, screen.stick_number) for screen in store.screens] == [("DD-HIYWYB", "DD-002-02155")]
 
 
-def test_a_dolphin_tv_is_24_43_or_50_inches() -> None:
+def test_a_dolphin_screen_keeps_its_size() -> None:
     assert Screen(is_dolphin_screen=True).screen_size == '24"'  # the default
     assert Screen(is_dolphin_screen=True, screen_size="43in").screen_size == '43"'
     assert Screen(is_dolphin_screen=True, screen_size='50"').screen_size == '50"'
-    assert Screen(is_dolphin_screen=True, screen_size='55"').screen_size == '24"'  # not a Dolphin size
+    assert Screen(is_dolphin_screen=True, screen_size='55"').screen_size == '55"'  # any size the price list has
+    assert Screen(is_dolphin_screen=True, screen_size="big").screen_size == '24"'  # no inches: the default
+    assert Screen(is_dolphin_screen=True, screen_type=" Dell ").screen_type == " Dell "
+    assert Screen(is_dolphin_screen=False, screen_type="Dell").screen_type == ""  # a store TV is not our model
     assert Screen(is_dolphin_screen=False, screen_size='55"').screen_size == '55"'  # a store TV keeps its own
     assert ScreenInput(is_dolphin_screen=True).to_screen().screen_size == '24"'
 
 
 class HardwareCostTests(StoresApiTestCase):
     def test_prices_are_set_together_and_never_negative(self):
-        prices = {"stick": 40, "screen_24": 120, "screen_43": 250.5, "screen_50": None}
+        prices = {"stick": 40, "screens": [{"size": '24"', "type": "Dolphin", "cost": 120},
+                                           {"size": "24", "type": "Dell", "cost": 250.5},
+                                           {"size": '43"', "type": "", "cost": None}]}
         response = self.client.patch("/api/projects/p1", json={"hardware_costs": prices})
         self.assertEqual(response.status_code, 200, response.text)
-        self.assertEqual(response.json()["hardware_costs"], prices)
+        saved = response.json()["hardware_costs"]
+        self.assertEqual(saved["stick"], 40)
+        self.assertEqual([(row["size"], row["type"], row["cost"]) for row in saved["screens"]],
+                         [('24"', "Dolphin", 120), ('24"', "Dell", 250.5), ('43"', "", None)])
+        twice = {"stick": 40, "screens": [{"size": "24", "type": "Dell", "cost": 1},
+                                          {"size": '24"', "type": "dell", "cost": 2}]}
+        self.assertEqual(self.client.patch("/api/projects/p1", json={"hardware_costs": twice}).status_code, 422)
+        # Prices saved per size before the list existed read as "Dolphin" rows.
+        old = HardwareCosts.model_validate({"stick": 40, "screen_24": 120, "screen_43": None, "screen_50": 300})
+        self.assertEqual([(row.size, row.type, row.cost) for row in old.screens],
+                         [('24"', "Dolphin", 120), ('50"', "Dolphin", 300)])
         bad = self.client.patch("/api/projects/p1", json={"hardware_costs": {"stick": -1}})
         self.assertEqual(bad.status_code, 422, bad.text)
         self.assertEqual(self.client.patch("/api/projects/p1", json={"hardware_costs": None}).status_code, 422)
@@ -284,6 +314,28 @@ class HardwareCountTests(StoresApiTestCase):
         everything = self.client.get("/api/projects/p1/stores/hardware").json()
         # a: Completed Dolphin TV; c: Offline Dolphin TV → 2 sticks, two 24" TVs; b and d have nothing installed
         self.assertEqual(everything, {"installed_screens": 2, "installed_stores": 2,
-                                      "installed_dolphin_by_size": {'24"': 2, '43"': 0, '50"': 0}})
+                                      "installed_dolphin_by_model": {'24"|': 2}})
         only_ga = self.client.get("/api/projects/p1/stores/hardware", params={"city": "Macon"}).json()
         self.assertEqual(only_ga["installed_screens"], 1)  # the filters apply (c is in Macon)
+
+
+# --- City and state as shown: from the verified address, not what was typed ---
+
+def test_city_and_state_come_from_the_verified_address() -> None:
+    typed = Stop(uid="a", store_name="A", addr="1 Main St", city="houston ", state="texas",
+                 geocoded="1 Main St, Houston, TX 77002, USA")
+    assert (typed.place_city, typed.place_state) == ("Houston", "TX")
+    unverified = Stop(uid="b", store_name="B", addr="1 Main St", city="Macon", state="georgia")
+    assert (unverified.place_city, unverified.place_state) == ("Macon", "GA")  # typed, the state as its code
+    assert (typed.city, typed.state) == ("houston ", "texas")  # what was typed is kept (duplicates match on it)
+
+
+class PlaceFilterTests(StoresApiTestCase):
+    def test_state_filter_uses_the_shown_state(self):
+        self.stores.update_fields("p1", "a", {"state": "georgia", "geocoded": "1 Main St, Dallas, TX 75201, USA"})
+        states = {o["value"] for o in self.client.get("/api/projects/p1/stores/filters").json()["state"]}
+        self.assertIn("TX", states)
+        self.assertNotIn("georgia", states)
+        page = self.client.get("/api/projects/p1/stores", params={"state": "TX"}).json()
+        self.assertEqual([item["uid"] for item in page["items"]], ["a"])
+        self.assertEqual((page["items"][0]["place_city"], page["items"][0]["place_state"]), ("Dallas", "TX"))

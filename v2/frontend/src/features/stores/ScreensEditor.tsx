@@ -2,16 +2,16 @@ import { useState } from "react";
 import { HardHat, Monitor, Plus, Trash2, Tv } from "lucide-react";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { actualCounts, screenTechnicians } from "@/features/stores/details";
+import { actualCounts, screenTechnicians, screenTypesFor, type HardwareCosts } from "@/features/stores/details";
 import { useVisits } from "@/features/visits/api";
 import { DEVICE_TONE, ScreenDeviceLine, splitCodes } from "@/features/device/DeviceBits";
 import { AlertTriangle } from "lucide-react";
 import { deriveStatus, STOP_STATUSES, type Project, type ScreenStatus, type Stop } from "@/lib/api/types";
-import { BUCKET_META, BUCKETS, bucketOf, STATUS_META } from "@/lib/status";
+import { BUCKET_META, BUCKETS, bucketOf, STATUS_META, storeStatusLabel } from "@/lib/status";
 import { cn } from "@/lib/utils";
 
 /** One editable row; `key` is local (React), `id` is the server's and is sent back so the row keeps it. */
@@ -22,6 +22,7 @@ export interface ScreenRow {
   venue_id: string;
   screen_size: string;
   is_dolphin_screen: boolean;
+  screen_type: string;
   has_mount: boolean;
   has_ceiling_mount: boolean;
   needs_mount: boolean;
@@ -32,50 +33,78 @@ let nextKey = 0;
 export const toRows = (stop: Pick<Stop, "screens">): ScreenRow[] =>
   stop.screens.map(({ device: _device, status_changed_at: _changed, ...screen }) => ({ key: screen.id, ...screen }));
 
-/** A Dolphin TV is 24", 43" or 50" (24" unless picked; the server holds to it too); store TVs can be any size. */
+/** A Dolphin screen saved without a size is the 24-inch one (the server holds to it too). */
 export const DOLPHIN_SCREEN_SIZE = '24"';
-export const DOLPHIN_SIZES = [24, 43, 50] as const;
 
-/** A Dolphin TV's size as one of its three tiles; always one is chosen (24" by default). */
-function DolphinSizePicker({ value, onChange, screen }: { value: string; onChange: (value: string) => void; screen: number }) {
-  const inches = Number(/^\s*(\d{2})/.exec(value)?.[1] ?? 24);
-  const current = (DOLPHIN_SIZES as readonly number[]).includes(inches) ? inches : 24;
+/** STORE-MODEL §4.1: a new row is Upcoming and has no size yet: picking one asks whose screen it is (a Dolphin
+ *  screen unless told otherwise) and how it is mounted (not at all, until one is picked). */
+export const newRow = (): ScreenRow => ({
+  key: `new-${(nextKey += 1)}`, stick_number: "", venue_id: "", screen_size: "", is_dolphin_screen: true, screen_type: "",
+  has_mount: false, has_ceiling_mount: false, needs_mount: false, status: "Upcoming",
+});
+
+/** One choice out of a few, as a row of joined buttons. With `clearable`, pressing the chosen one again clears it
+ *  (no mount, no type). */
+function Segmented<T extends string>({
+  label,
+  ariaLabel,
+  options,
+  value,
+  onChange,
+  clearable = false,
+}: {
+  label: string;
+  ariaLabel: string;
+  options: readonly { value: T; label: string }[];
+  value: T | "";
+  onChange: (value: T | "") => void;
+  clearable?: boolean;
+}) {
   return (
-    <div className="flex flex-wrap items-center gap-1.5" role="radiogroup" aria-label={`Size of screen ${screen}`}>
-      {DOLPHIN_SIZES.map((size) => {
-        const Icon = size <= 32 ? Monitor : Tv;
-        const selected = current === size;
-        return (
-          <button
-            key={size}
-            type="button"
-            role="radio"
-            aria-checked={selected}
-            aria-label={`${size} inch`}
-            onClick={() => onChange(`${size}"`)}
-            className={cn(
-              "flex h-14 w-14 flex-col items-center justify-center gap-1 rounded-lg border-2 text-slate-600 transition-colors",
-              selected ? "border-brand bg-brand/5 text-brand shadow-sm" : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50",
-            )}
-          >
-            <Icon size={12 + (size - 24) / 4} strokeWidth={1.6} />
-            <span className="font-mono text-sm font-semibold leading-none">{size}″</span>
-          </button>
-        );
-      })}
-      <span className="ml-1 text-xs text-slate-500">Dolphin TVs come in 24, 43 and 50 inch</span>
+    <div className="space-y-1">
+      <span className="block text-[11px] text-slate-500">{label}</span>
+      <div role="group" aria-label={ariaLabel} className="inline-flex divide-x divide-slate-200 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-xs">
+        {options.map((option) => {
+          const selected = option.value === value;
+          return (
+            <button
+              key={option.value}
+              type="button"
+              aria-pressed={selected}
+              onClick={() => onChange(selected ? (clearable ? "" : option.value) : option.value)}
+              className={cn(
+                "min-w-20 px-3 py-1.5 text-sm font-medium transition-colors",
+                selected ? "bg-brand text-white" : "text-slate-600 hover:bg-slate-50",
+              )}
+            >
+              {option.label}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
 
-/** STORE-MODEL §4.1: a new row is Upcoming, a Dolphin screen (so 24"), wall-mounted, no mount yet. */
-export const newRow = (): ScreenRow => ({
-  key: `new-${(nextKey += 1)}`, stick_number: "", venue_id: "", screen_size: DOLPHIN_SCREEN_SIZE, is_dolphin_screen: true,
-  has_mount: false, has_ceiling_mount: false, needs_mount: false, status: "Upcoming",
-});
+const OWNERS = [
+  { value: "dolphin", label: "Dolphin screen" },
+  { value: "store", label: "Store TV" },
+] as const;
+const MOUNTS = [
+  { value: "wall", label: "Wall mount" },
+  { value: "ceiling", label: "Ceiling mount" },
+] as const;
+
+/** The type a Dolphin screen of this size takes when its size or owner changes: the one it has if the price list
+ *  still offers it for the size, the size's only type when there is just one, else none (to be picked). */
+export function typeForSize(costs: HardwareCosts, size: string, current: string): string {
+  const types = screenTypesFor(costs, size).map((row) => row.type);
+  if (types.includes(current)) return current;
+  return types.length === 1 ? types[0]! : "";
+}
 
 /** The usual sizes, as big tiles: a monitor icon for the small ones, a TV for the rest. */
-export const SCREEN_SIZES = [24, 32, 43, 55, 65] as const;
+export const SCREEN_SIZES = [24, 32, 43, 50, 55, 65] as const;
 const sizeLabel = (inches: number) => `${inches}"`;
 
 /** The preset a stored size matches ("24", 24", "24in", "24 inch"), or null for anything else. */
@@ -168,7 +197,7 @@ export function splitSuggestion(row: ScreenRow): ScreenRow[] {
   const sticks = splitCodes(row.stick_number);
   const paired = sticks.length === codes.length;
   return codes.map((code, index) => ({
-    ...(index === 0 ? row : { ...newRow(), status: row.status, screen_size: row.screen_size, is_dolphin_screen: row.is_dolphin_screen }),
+    ...(index === 0 ? row : { ...newRow(), status: row.status, screen_size: row.screen_size, is_dolphin_screen: row.is_dolphin_screen, screen_type: row.screen_type }),
     venue_id: code,
     stick_number: paired ? sticks[index]! : index === 0 ? row.stick_number : "",
   }));
@@ -187,6 +216,7 @@ export function ScreensEditor({ project, stop, rows, onChange }: { project: Proj
   const derived = deriveStatus(rows.map((row) => row.status));
   const devices = new Map(stop.screens.map((screen) => [screen.id, screen.device]));
   const visits = useVisits(project.id, stop.uid).data?.items ?? [];
+  const costs = project.hardware_costs;
 
   const patch = (key: string, change: Partial<ScreenRow>) =>
     setRows((current) => current.map((row) => (row.key === key ? { ...row, ...change } : row)));
@@ -197,7 +227,7 @@ export function ScreensEditor({ project, stop, rows, onChange }: { project: Proj
         <p className="text-xs text-slate-600">
           {rows.length} {rows.length === 1 ? "screen" : "screens"} · {counts.dolphin} Dolphin · {counts.tvs} store TVs · store status{" "}
           <span className={cn("rounded border px-1.5 py-0.5 font-medium", STATUS_META[derived].chip)} data-testid="derived-status">
-            {STATUS_META[derived].label}
+            {storeStatusLabel(derived)}
           </span>
         </p>
         <Button size="sm" variant="outline" onClick={() => setRows((current) => [...current, newRow()])}>
@@ -263,10 +293,43 @@ export function ScreensEditor({ project, stop, rows, onChange }: { project: Proj
                 </Button>
               </div>
             )}
-            {row.is_dolphin_screen ? (
-              <DolphinSizePicker screen={index + 1} value={row.screen_size} onChange={(screen_size) => patch(row.key, { screen_size })} />
-            ) : (
-              <SizePicker id={`${row.key}-screen_size`} screen={index + 1} value={row.screen_size} onChange={(screen_size) => patch(row.key, { screen_size })} />
+            {/* Size first; once one is picked: whose screen, which of our models, and the mount. */}
+            <SizePicker
+              id={`${row.key}-screen_size`}
+              screen={index + 1}
+              value={row.screen_size}
+              onChange={(screen_size) => patch(row.key, { screen_size, screen_type: row.is_dolphin_screen ? typeForSize(costs, screen_size, row.screen_type) : "" })}
+            />
+            {row.screen_size.trim() !== "" && (
+              <div className="flex flex-wrap items-start gap-x-5 gap-y-2">
+                <Segmented
+                  label="Whose screen"
+                  ariaLabel={`Owner of screen ${index + 1}`}
+                  options={OWNERS}
+                  value={row.is_dolphin_screen ? "dolphin" : "store"}
+                  onChange={(owner) =>
+                    patch(row.key, { is_dolphin_screen: owner === "dolphin", screen_type: owner === "dolphin" ? typeForSize(costs, row.screen_size, row.screen_type) : "" })
+                  }
+                />
+                {row.is_dolphin_screen && screenTypesFor(costs, row.screen_size).length > 0 && (
+                  <Segmented
+                    label="Type"
+                    ariaLabel={`Type of screen ${index + 1}`}
+                    options={screenTypesFor(costs, row.screen_size).map((item) => ({ value: item.type, label: item.type }))}
+                    value={row.screen_type}
+                    clearable
+                    onChange={(screen_type) => patch(row.key, { screen_type })}
+                  />
+                )}
+                <Segmented
+                  label="Mount (none when neither is picked)"
+                  ariaLabel={`Mount of screen ${index + 1}`}
+                  options={MOUNTS}
+                  value={!row.has_mount ? "" : row.has_ceiling_mount ? "ceiling" : "wall"}
+                  clearable
+                  onChange={(mount) => patch(row.key, { has_mount: mount !== "", has_ceiling_mount: mount === "ceiling" })}
+                />
+              </div>
             )}
             <div className="grid grid-cols-2 gap-2">
               {([["stick_number", "Stick #"], ["venue_id", "DD code"]] as const).map(([key, label]) => (
@@ -279,23 +342,6 @@ export function ScreensEditor({ project, stop, rows, onChange }: { project: Proj
                     <p className={cn("text-[11px]", DEVICE_TONE.text)}>Dolphin data: {devices.get(row.id)!.serial_number} (shown)</p>
                   )}
                 </div>
-              ))}
-            </div>
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm">
-              {([["is_dolphin_screen", "Dolphin TV"], ["has_mount", "Has mount"], ["has_ceiling_mount", "Ceiling mount"]] as const).map(([key, label]) => (
-                <label key={key} className="flex items-center gap-1.5">
-                  <Checkbox
-                    aria-label={`${label}, screen ${index + 1}`}
-                    checked={row[key]}
-                    onCheckedChange={(checked) =>
-                      key === "is_dolphin_screen"
-                        ? // A Dolphin screen is 24"; a store TV starts without a size until one is picked.
-                          patch(row.key, { is_dolphin_screen: checked === true, screen_size: checked === true ? DOLPHIN_SCREEN_SIZE : "" })
-                        : patch(row.key, { [key]: checked === true })
-                    }
-                  />
-                  {label}
-                </label>
               ))}
             </div>
           </li>
@@ -333,7 +379,6 @@ function StickNumber({ sheet, serial }: { sheet: string; serial?: string | null 
   );
 }
 
-const yesNo = (value: boolean) => (value ? "Yes" : "No");
 const dash = <span className="text-slate-300">—</span>;
 
 /** The Dolphin data's word on one screen, short: its status (and days offline); the rest on hover. */
@@ -351,6 +396,34 @@ function DolphinCell({ device }: { device?: Stop["screens"][number]["device"] })
   );
 }
 
+/** When this screen's device registered with the CMS, from the Dolphin data: its last registered date (a device that
+ *  registered only once has no last date, so its first one shows); hovering gives both. */
+function RegisteredCell({ device, screen }: { device?: Stop["screens"][number]["device"]; screen: number }) {
+  if (!device) return dash;
+  const first = (device.first_registered ?? "").slice(0, 10);
+  const last = (device.last_registered ?? "").slice(0, 10);
+  const shown = last || first;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span
+          tabIndex={0}
+          aria-label={`Registered, screen ${screen}`}
+          className={cn("cursor-default font-mono underline decoration-dotted decoration-slate-300 underline-offset-4", shown ? DEVICE_TONE.text : "text-violet-700")}
+        >
+          {shown || "Not registered"}
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="top">
+        <span className="flex flex-col gap-0.5 font-mono text-xs">
+          <span>First registered {first || "—"}</span>
+          <span>Last registered {last || "—"}</span>
+        </span>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
 /** The screens as a table (the store window's default view): one row per screen, its kind, size and mount as
  *  plain values. The window's Edit turns them all into the editor. Shows the draft rows, so changes not saved yet
  *  are visible here too. */
@@ -364,7 +437,7 @@ export function ScreensView({ project, stop, rows }: { project: Project; stop: S
     <section className="space-y-2" aria-label="Screen list">
       <p className="text-xs text-slate-600">
         {rows.length} {rows.length === 1 ? "screen" : "screens"} · {counts.dolphin} Dolphin · {counts.tvs} store TVs · store status{" "}
-        <span className={cn("rounded border px-1.5 py-0.5 font-medium", STATUS_META[derived].chip)}>{STATUS_META[derived].label}</span>
+        <span className={cn("rounded border px-1.5 py-0.5 font-medium", STATUS_META[derived].chip)}>{storeStatusLabel(derived)}</span>
       </p>
       {/* Edge to edge in its section (which is the box): no second border around the table. */}
       <div className="-mx-4 -mb-4 overflow-x-auto border-t border-slate-100">
@@ -375,11 +448,11 @@ export function ScreensView({ project, stop, rows }: { project: Project; stop: S
               <th className={head}>Status</th>
               <th className={head}>Screen</th>
               <th className={head}>Size</th>
-              <th className={head}>Has mount</th>
-              <th className={head}>Ceiling mount</th>
+              <th className={head}>Mount</th>
               <th className={head}>Stick #</th>
               <th className={head}>DD code</th>
               <th className={head}>Dolphin data</th>
+              <th className={head}>Registered</th>
               <th className={head}>Last visit</th>
             </tr>
           </thead>
@@ -399,17 +472,22 @@ export function ScreensView({ project, stop, rows }: { project: Project; stop: S
                     <span className="inline-flex items-center gap-1.5">
                       <Icon size={14} className="text-slate-500" />
                       {row.is_dolphin_screen ? "Dolphin TV" : "Store TV"}
+                      {row.is_dolphin_screen && row.screen_type && <span className="font-normal text-slate-500">· {row.screen_type}</span>}
                     </span>
                   </td>
                   <td className="px-2 py-2 font-mono">{(row.is_dolphin_screen ? row.screen_size || DOLPHIN_SCREEN_SIZE : row.screen_size) || dash}</td>
-                  <td className="px-2 py-2" aria-label={`Has mount, screen ${index + 1}`}>{yesNo(row.has_mount)}</td>
-                  <td className="px-2 py-2" aria-label={`Ceiling mount, screen ${index + 1}`}>{row.has_mount ? yesNo(row.has_ceiling_mount) : dash}</td>
+                  <td className="whitespace-nowrap px-2 py-2" aria-label={`Mount, screen ${index + 1}`}>
+                    {!row.has_mount ? <span className="font-normal text-slate-400">None</span> : row.has_ceiling_mount ? "Ceiling" : "Wall"}
+                  </td>
                   <td className="whitespace-nowrap px-2 py-2 text-xs">
                     <StickNumber sheet={row.stick_number} serial={row.id ? devices.get(row.id)?.serial_number : undefined} />
                   </td>
                   <td className="whitespace-nowrap px-2 py-2 font-mono text-xs">{row.venue_id || dash}</td>
                   <td className="px-2 py-2 text-xs">
                     <DolphinCell device={row.id ? devices.get(row.id) : null} />
+                  </td>
+                  <td className="whitespace-nowrap px-2 py-2 text-xs">
+                    <RegisteredCell device={row.id ? devices.get(row.id) : null} screen={index + 1} />
                   </td>
                   <td className="whitespace-nowrap px-2 py-2 text-xs" title={visited.all.length > 1 ? `Also: ${visited.all.filter((name) => name !== visited.last?.name).join(", ")}` : undefined}>
                     {visited.last ? (

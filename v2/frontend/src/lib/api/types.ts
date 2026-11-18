@@ -11,6 +11,7 @@ export type Project = Schemas["Project"];
 export type ProjectSummary = Schemas["ProjectSummary"];
 export type ProjectCreate = Schemas["ProjectCreate"];
 export type ProjectCreated = Schemas["ProjectCreated"];
+export type UploadList = Schemas["UploadList"];
 export type ProjectUpdate = Schemas["ProjectUpdate"];
 export type Kpi = Schemas["Kpi"];
 export type Breakdown = Schemas["Breakdown"];
@@ -110,6 +111,7 @@ export const STOP_STATUSES: readonly ScreenStatus[] = [
   "Shipped",
   "Delivered",
   "Serviced - Needs More Work",
+  "Not Registered",
   "Offline",
   "Completed",
   "Archived",

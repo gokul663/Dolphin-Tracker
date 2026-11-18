@@ -176,6 +176,7 @@ function WizardBody({
             stops,
             pa: [...new Set(pa)].join(", "),
             import_mapping: importMapping,
+            import_job_id: jobId ?? "", // the sheet is kept with the project (Settings → Uploaded sheets)
           }),
         );
         setStep("done");
@@ -186,6 +187,7 @@ function WizardBody({
         ...metaPayload(values),
         stops,
         import_mapping: importMapping,
+        import_job_id: jobId ?? "",
       });
       const skipped = created.skipped.length
         ? `; ${created.skipped.length} skipped as duplicates`

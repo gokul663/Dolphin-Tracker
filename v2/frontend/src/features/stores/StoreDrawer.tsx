@@ -33,7 +33,7 @@ import {
   type FormValue,
 } from "@/features/stores/details";
 import { ApiError, type OverwriteField, type ProgressUpdate, type Project, type Stop, type StoreFieldSpec } from "@/lib/api/types";
-import { STATUS_META } from "@/lib/status";
+import { STATUS_META, storeStatusLabel } from "@/lib/status";
 import { cn, SURFACE } from "@/lib/utils";
 import { urlTokens } from "@/lib/validation/storeFields";
 
@@ -94,7 +94,7 @@ export function StoreDrawer({ project, stopId, open, onClose }: Props) {
             <div className="flex flex-wrap items-center gap-2">
               {stop && (
                 <span className={cn("rounded border px-1.5 py-0.5 text-xs font-medium", STATUS_META[stop.status].chip)}>
-                  {STATUS_META[stop.status].label}
+                  {storeStatusLabel(stop.status)}
                 </span>
               )}
               {stop && <StoreAlerts project={project} stop={stop} />}

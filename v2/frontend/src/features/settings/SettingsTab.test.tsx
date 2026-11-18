@@ -43,6 +43,26 @@ describe("Project shell", () => {
 });
 
 describe("Settings tab", () => {
+  it("lists the uploaded sheets with a download each, and offers to upload another", async () => {
+    mockApi({
+      "GET /api/projects/p1": () => makeSummary(),
+      "GET /api/projects/p1/uploads": () => ({
+        items: [
+          { id: "j2", filename: "wave-2.xlsx", key: "projects/p1/uploads/j2/wave-2.xlsx", uploaded_at: "2026-11-16T10:00:00+00:00", kind: "append", size: 204800, submitted: 700, added: 200, skipped: 500, download_url: "https://files.example/wave-2.xlsx" },
+          { id: "j1", filename: "wave-1.xlsx", key: "projects/p1/uploads/j1/wave-1.xlsx", uploaded_at: "2026-10-01T09:00:00+00:00", kind: "create", size: 102400, submitted: 500, added: 500, skipped: 0, download_url: "https://files.example/wave-1.xlsx" },
+        ],
+      }),
+    });
+    renderProject();
+    const list = await screen.findByRole("list", { name: "Uploaded sheets" });
+    const rows = within(list).getAllByRole("listitem");
+    expect(rows.map((row) => within(row).getByText(/\.xlsx$/).textContent)).toEqual(["wave-2.xlsx", "wave-1.xlsx"]);
+    expect(rows[0]!.textContent).toContain("200 added · 500 already there");
+    expect(rows[1]!.textContent).toContain("created the project");
+    expect(within(rows[0]!).getByRole("link", { name: /Download/ }).getAttribute("href")).toBe("https://files.example/wave-2.xlsx");
+    expect(screen.getByRole("button", { name: /Upload a sheet/ })).toBeTruthy();
+  });
+
   it("saves project details with the version, without installers or a per-day cap", async () => {
     const { calls } = mockApi({
       "GET /api/projects/p1": () => makeSummary(),
@@ -115,7 +135,7 @@ describe("Settings tab", () => {
     await waitFor(() => expect(body(calls, "PATCH", "/api/projects/p1")).toBeTruthy());
   });
 
-  it("hardware prices: a stick and each Dolphin TV size, saved together; blank is not set", async () => {
+  it("hardware prices: a stick and the Dolphin screens by size and type, saved together; blank is not set", async () => {
     const { calls } = mockApi({
       "GET /api/projects/p1": () => makeSummary(),
       "PATCH /api/projects/p1": () => makeProject(),
@@ -123,14 +143,32 @@ describe("Settings tab", () => {
     renderProject();
     const card = await screen.findByLabelText("Hardware costs");
     await userEvent.type(within(card).getByLabelText(/Stick/), "40");
-    await userEvent.type(within(card).getByLabelText(/24" Dolphin TV/), "120.50");
-    await userEvent.type(within(card).getByLabelText(/43" Dolphin TV/), "abc");
-    expect(within(card).getByText("Enter an amount, e.g. 45 or 45.50")).toBeTruthy();
+    expect(within(card).getByText("No screens priced yet.")).toBeTruthy();
+    // Two types of one size, each with its own cost; a third row with no cost yet.
+    const add = within(card).getByRole("button", { name: /Add a screen/ });
+    for (const [index, size, type, cost] of [[1, "24", "Dolphin", "120.50"], [2, "24", "Dell", "abc"], [3, "43", "", ""]] as const) {
+      await userEvent.click(add);
+      await userEvent.type(within(card).getByLabelText(`Size, screen price ${index}`), size);
+      if (type) await userEvent.type(within(card).getByLabelText(`Type, screen price ${index}`), type);
+      if (cost) await userEvent.type(within(card).getByLabelText(`Cost, screen price ${index}`), cost);
+    }
+    expect(within(card).getByText("Enter an amount, e.g. 120 or 120.50")).toBeTruthy();
     expect(within(card).getByRole("button", { name: /Save prices/ }).hasAttribute("disabled")).toBe(true);
-    await userEvent.clear(within(card).getByLabelText(/43" Dolphin TV/));
+    await userEvent.clear(within(card).getByLabelText("Cost, screen price 2"));
+    await userEvent.type(within(card).getByLabelText("Cost, screen price 2"), "95");
+    // The same size and type twice is refused.
+    await userEvent.clear(within(card).getByLabelText("Type, screen price 2"));
+    await userEvent.type(within(card).getByLabelText("Type, screen price 2"), "dolphin");
+    expect(within(card).getByText("This size and type is already listed")).toBeTruthy();
+    await userEvent.clear(within(card).getByLabelText("Type, screen price 2"));
+    await userEvent.type(within(card).getByLabelText("Type, screen price 2"), "Dell");
     await userEvent.click(within(card).getByRole("button", { name: /Save prices/ }));
     await waitFor(() => expect(body(calls, "PATCH", "/api/projects/p1")).toEqual({
-      hardware_costs: { stick: 40, screen_24: 120.5, screen_43: null, screen_50: null }, expected_version: 1,
+      hardware_costs: {
+        stick: 40,
+        screens: [{ size: '24"', type: "Dolphin", cost: 120.5 }, { size: '24"', type: "Dell", cost: 95 }, { size: '43"', type: "", cost: null }],
+      },
+      expected_version: 1,
     }));
   });
 });

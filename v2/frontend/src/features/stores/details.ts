@@ -129,53 +129,75 @@ export function screenTechnicians(visits: { screen_id: string; installer: string
   return { last: latest ? { name: latest.installer.trim(), date: latest.visit_date } : null, all };
 }
 
-export type HardwareCosts = { stick: number | null; screen_24: number | null; screen_43: number | null; screen_50: number | null };
+export type ScreenPrice = { size: string; type: string; cost: number | null };
+/** The project's prices: a stick, and the Dolphin-owned screen models (size + type) from Settings. */
+export type HardwareCosts = { stick: number | null; screens: ScreenPrice[] };
 
-const DOLPHIN_PRICE_KEY = { '24"': "screen_24", '43"': "screen_43", '50"': "screen_50" } as const;
+/** A size as the prices key it: "43", "43in", '43"' → '43"'; "" when it holds no inches. */
+export function sizeLabel(value: string): string {
+  const match = /^\s*(\d{2,3})(?!\d)/.exec(value ?? "");
+  return match ? `${Number(match[1])}"` : "";
+}
+
+/** The Dolphin-owned models the price list has for one size (the choices after a size is picked). */
+export const screenTypesFor = (costs: HardwareCosts, size: string): ScreenPrice[] =>
+  costs.screens.filter((row) => row.size === sizeLabel(size) && row.type.trim() !== "");
+
+/** The price list row an installed Dolphin screen falls under: its size and type; with no type chosen, the size's
+ *  only row when there is just one. `null` cost = not priced (no such row, or no amount on it). */
+function modelOf(costs: HardwareCosts, size: string, type: string): { label: string; price: number | null } {
+  const inches = sizeLabel(size) || '24"';
+  const rows = costs.screens.filter((row) => row.size === inches);
+  const wanted = type.trim().toLowerCase();
+  const row = wanted ? rows.find((item) => item.type.trim().toLowerCase() === wanted) : rows.length === 1 ? rows[0] : rows.find((item) => item.type.trim() === "");
+  const name = (row?.type ?? type).trim();
+  return { label: name ? `${inches} ${name} screens` : `${inches} Dolphin screens`, price: row?.cost ?? null };
+}
+
+type CostLine = { label: string; count: number; price: number | null };
+
+/** Sticks, then one line per screen model, sizes ascending. `models` holds (size, type, count). */
+function costLines(sticks: number, models: { size: string; type: string; count: number }[], costs: HardwareCosts) {
+  const byLabel = new Map<string, CostLine>();
+  for (const model of models) {
+    if (!model.count) continue;
+    const { label, price } = modelOf(costs, model.size, model.type);
+    const line = byLabel.get(label) ?? { label, count: 0, price };
+    line.count += model.count;
+    byLabel.set(label, line);
+  }
+  const screens = [...byLabel.values()].sort((a, b) => parseInt(a.label, 10) - parseInt(b.label, 10) || a.label.localeCompare(b.label));
+  const lines = [{ label: "Sticks", count: sticks, price: costs.stick }, ...screens].filter((line) => line.count > 0);
+  const missing = lines.filter((line) => line.price === null).map((line) => (line.label === "Sticks" ? "stick" : line.label.replace(/ screens$/, " screen")));
+  const total = missing.length ? null : lines.reduce((sum, line) => sum + line.count * (line.price ?? 0), 0);
+  return { total, lines, missing };
+}
 
 /** What one store's installed hardware cost Dolphin: a stick for every installed screen (Completed, Offline, Needs More
- *  Work), plus the screen itself for a Dolphin TV, at its size's price. `missing` lists prices not set in Settings
- *  that the store needs (the total is then left open). */
+ *  Work), plus the screen itself for a Dolphin screen, at its model's price. `missing` lists prices not set in
+ *  Settings that the store needs (the total is then left open). */
 export function hardwareCost(
-  screens: { status: string; is_dolphin_screen: boolean; screen_size: string }[],
+  screens: { status: string; is_dolphin_screen: boolean; screen_size: string; screen_type?: string }[],
   costs: HardwareCosts,
 ) {
   const installed = screens.filter((screen) => INSTALLED_STATUSES.has(screen.status));
-  const bySize = { '24"': 0, '43"': 0, '50"': 0 } as Record<keyof typeof DOLPHIN_PRICE_KEY, number>;
-  for (const screen of installed) {
-    if (!screen.is_dolphin_screen) continue;
-    const size = (screen.screen_size in DOLPHIN_PRICE_KEY ? screen.screen_size : '24"') as keyof typeof DOLPHIN_PRICE_KEY;
-    bySize[size] += 1;
-  }
-  const missing: string[] = [];
-  if (installed.length && costs.stick === null) missing.push("stick");
-  let total = installed.length * (costs.stick ?? 0);
-  const lines = [{ label: "Sticks", count: installed.length, price: costs.stick }];
-  for (const size of Object.keys(DOLPHIN_PRICE_KEY) as (keyof typeof DOLPHIN_PRICE_KEY)[]) {
-    if (!bySize[size]) continue;
-    const price = costs[DOLPHIN_PRICE_KEY[size]];
-    if (price === null) missing.push(`${size} screen`);
-    total += bySize[size] * (price ?? 0);
-    lines.push({ label: `${size} Dolphin TVs`, count: bySize[size], price });
-  }
-  return { total: missing.length ? null : total, installed: installed.length, lines, missing };
+  const models = installed.filter((screen) => screen.is_dolphin_screen).map((screen) => ({ size: screen.screen_size, type: screen.screen_type ?? "", count: 1 }));
+  return { ...costLines(installed.length, models, costs), installed: installed.length };
 }
 
 export const money = (value: number) => value.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
 
 /** The whole project's installed hardware cost, from the header counts: a stick per installed screen, plus each
- *  installed Dolphin TV at its size's price. `total` is null while a needed price is not set. */
+ *  installed Dolphin screen at its model's price (`installed_dolphin_by_model`, keyed `size|type`). `total` is null
+ *  while a needed price is not set. */
 export function projectHardwareCost(
-  kpi: { installed_screens: number; installed_dolphin_by_size: Record<string, number> },
+  kpi: { installed_screens: number; installed_dolphin_by_model: Record<string, number> },
   costs: HardwareCosts,
 ) {
-  const sizes = Object.keys(DOLPHIN_PRICE_KEY) as (keyof typeof DOLPHIN_PRICE_KEY)[];
-  const lines = [
-    { label: "Sticks", count: kpi.installed_screens, price: costs.stick },
-    ...sizes.map((size) => ({ label: `${size} Dolphin TVs`, count: kpi.installed_dolphin_by_size[size] ?? 0, price: costs[DOLPHIN_PRICE_KEY[size]] })),
-  ].filter((line) => line.count > 0);
-  const missing = lines.filter((line) => line.price === null).map((line) => line.label);
-  const total = missing.length ? null : lines.reduce((sum, line) => sum + line.count * (line.price ?? 0), 0);
-  const dolphinTvs = sizes.reduce((sum, size) => sum + (kpi.installed_dolphin_by_size[size] ?? 0), 0);
-  return { total, lines, missing, sticks: kpi.installed_screens, dolphinTvs };
+  const models = Object.entries(kpi.installed_dolphin_by_model).map(([key, count]) => {
+    const [size = "", type = ""] = key.split("|");
+    return { size, type, count };
+  });
+  const dolphinTvs = models.reduce((sum, model) => sum + model.count, 0);
+  return { ...costLines(kpi.installed_screens, models, costs), sticks: kpi.installed_screens, dolphinTvs };
 }

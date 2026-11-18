@@ -124,11 +124,32 @@ class SyncRuleTests(unittest.TestCase):
         snap = snapshot(*rows)
         return sync_stop(store, index_records(snap.records), snap, self.NOW)
 
+    def test_a_device_that_never_registered(self):
+        """No first and no latest registered date: Not Registered whatever the report calls it, except Online (it is
+        reporting); an archived one was never run, so it is Cancelled, not Archived."""
+        never = {"First Registered Time Stamp": None, "Latest Registered Time Stamp": None}
+        cases = [("Offline", "Completed", "Not Registered"), ("Testing", "Upcoming", "Not Registered"),
+                 ("Online", "Upcoming", "Completed"), ("Archived", "Completed", "Cancelled"),
+                 ("Archived", "Archived", "Cancelled")]
+        for report, before, after in cases:
+            with self.subTest(report=report, before=before):
+                store = stop("a", Screen(venue_id="DD-HFN64S", status=before))
+                changes = self.run_sync(store, report_row("DD_HFN64S", report, **never))
+                self.assertEqual(changes["screens"][0]["status"], after)
+
+    def test_registered_dates_are_kept_on_the_screen(self):
+        from datetime import datetime
+        row = report_row("DD_HFN64S", **{"Latest Registered Time Stamp": datetime(2026, 11, 1, 9, 0, 0)})
+        changes = self.run_sync(stop("a", Screen(venue_id="DD-HFN64S")), row)
+        device = changes["screens"][0]["device"]
+        self.assertEqual(device["first_registered"][:10], "2026-10-12")
+        self.assertEqual(device["last_registered"][:10], "2026-11-01")
+
     def test_report_status_sets_work_status(self):
         cases = [("Online", "Upcoming", "Completed"), ("Offline", "Completed", "Offline"),
                  ("Archived", "Completed", "Archived"), ("Online", "Serviced - Needs More Work", "Completed"),
-                 ("Online", "Cancelled", "Cancelled"), ("Not Registered", "Upcoming", "Upcoming"),
-                 ("Testing", "Shipped", "Shipped")]
+                 ("Online", "Cancelled", "Cancelled"), ("Not Registered", "Upcoming", "Not Registered"),
+                 ("Testing", "Shipped", "Shipped"), ("Archived", "Cancelled", "Archived")]
         for report, before, after in cases:
             with self.subTest(report=report, before=before):
                 store = stop("a", Screen(venue_id="DD-HFN64S", status=before))
@@ -302,7 +323,7 @@ class ServiceTests(ServiceTestCase):
         added = self.service.add_from_review("p1", "DD_NEW002", address="500 Rail Rd, Ponchatoula, LA 70454")
         self.assertEqual((added.addr, added.city, added.lat, added.needs_attention), ("500 Rail Rd", "Ponchatoula",
                                                                                       30.44, ["external_id"]))
-        self.assertEqual(added.status, ScreenStatus.UPCOMING)  # Not Registered: no status change
+        self.assertEqual(added.status, ScreenStatus.NOT_REGISTERED)  # the report's word for it
 
     def test_an_unverifiable_address_is_refused_with_suggestions_unless_added_anyway(self):
         self.geocoder.autocompletes["9 Nowhere Ln"] = ["9 Nowhere Ln, Macon, GA, USA"]

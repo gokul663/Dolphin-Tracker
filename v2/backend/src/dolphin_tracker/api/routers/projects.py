@@ -4,7 +4,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
-from dolphin_tracker.api.deps import get_project_service, get_routing_service
+from dolphin_tracker.api.deps import get_project_service, get_routing_service, get_upload_service
 from dolphin_tracker.api.schemas import (
     InstallerAdd,
     InstallerRename,
@@ -17,10 +17,12 @@ from dolphin_tracker.api.schemas import (
 from dolphin_tracker.domain.models import Page, Project, ProjectCreate, ProjectSummary, RoutesBundle
 from dolphin_tracker.services.projects import ProjectService
 from dolphin_tracker.services.routing import RoutingService
+from dolphin_tracker.services.uploads import UploadList, UploadService
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 ServiceDep = Annotated[ProjectService, Depends(get_project_service)]
 RoutingDep = Annotated[RoutingService, Depends(get_routing_service)]
+UploadDep = Annotated[UploadService, Depends(get_upload_service)]
 
 
 @router.get("", response_model=Page[ProjectSummary])
@@ -40,10 +42,27 @@ def list_projects(
     response_model=ProjectCreated,
     status_code=201,
 )
-def create_project(body: ProjectCreate, service: ServiceDep) -> ProjectCreated:
+def create_project(body: ProjectCreate, service: ServiceDep, uploads: UploadDep) -> ProjectCreated:
     """Stores only: routing happens in route plans, so creating a project never starts a job."""
     project, skipped = service.create(body)
+    uploads.record(project.id, body.import_job_id, kind="create", submitted=len(body.stops),
+                   added=len(body.stops) - len(skipped), skipped=len(skipped))
     return ProjectCreated(project=project, skipped=skipped)
+
+
+@router.get("/{project_id}/uploads", response_model=UploadList)
+def list_uploads(project_id: str, uploads: UploadDep) -> UploadList:
+    """Every sheet imported into the project, newest first, each with a link to the file."""
+    return uploads.list(project_id)
+
+
+@router.get("/{project_id}/uploads/{upload_id}/file", response_class=Response)
+def download_upload_local(project_id: str, upload_id: str, uploads: UploadDep) -> Response:
+    """Local mode only (DT_FILES_BUCKET empty): the file. In AWS, follow `download_url` from the list."""
+    upload, data = uploads.file(project_id, upload_id)
+    name = upload.filename.replace('"', "")
+    return Response(content=data, media_type="application/octet-stream",
+                    headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
 
 @router.get("/{project_id}", response_model=ProjectSummary)

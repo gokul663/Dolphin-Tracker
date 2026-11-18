@@ -110,6 +110,9 @@ def report_row(venue_id: str, status: str = "Online", **extra) -> dict:
         "Longitude": -85.661,
         "PA Name": "IBC",
         "PK External ID": "",
+        # A device that registered once; "Not Registered" rows never did.
+        "First Registered Time Stamp": None if status == "Not Registered" else datetime(2026, 10, 12, 14, 35, 34),
+        "Latest Registered Time Stamp": None,
         "ingested_at_utc": datetime(2026, 11, 10, 3, 2, 6),
         **extra,
     }

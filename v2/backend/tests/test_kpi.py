@@ -39,7 +39,7 @@ class KpiSummaryTests(unittest.TestCase):
         self.assertEqual(
             kpi.by_status,
             {"Upcoming": 1, "Invitation Email Sent": 0, "Shipped": 0, "Delivered": 0, "Serviced - Needs More Work": 0,
-             "Completed": 3, "Offline": 1, "Archived": 1, "Cancelled": 0},
+             "Completed": 3, "Offline": 1, "Not Registered": 0, "Archived": 1, "Cancelled": 0},
         )
         self.assertEqual(kpi.by_installer, {"Ann": 2, "Bo": 1, "Bobby": 1})  # installer_name wins
         self.assertEqual(kpi.by_dma["ATL"].model_dump(), {"total": 3, "complete": 2, "pending": 1})

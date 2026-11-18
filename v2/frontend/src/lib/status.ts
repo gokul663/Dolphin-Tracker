@@ -15,8 +15,9 @@ export const STATUS_META: Record<ScreenStatus, { label: string; color: string; c
   },
   Completed: { label: "Completed", color: "#16a34a", chip: "bg-emerald-50 text-emerald-700 border-emerald-200" },
   Offline: { label: "Offline", color: "#dc2626", chip: "bg-rose-50 text-rose-700 border-rose-200" },
+  "Not Registered": { label: "Not Registered", color: "#7c3aed", chip: "bg-violet-50 text-violet-700 border-violet-200" },
   Archived: { label: "Archived", color: "#64748b", chip: "bg-slate-100 text-slate-600 border-slate-200" },
-  Cancelled: { label: "Cancelled", color: "#78716c", chip: "bg-stone-100 text-stone-600 border-stone-300" },
+  Cancelled: { label: "Cancelled", color: "#3f3f46", chip: "bg-zinc-100 text-zinc-700 border-zinc-300" },
 };
 
 export const INSTALLER_COLORS = ["#0F5B7C", "#0891b2", "#7c3aed", "#dc2626", "#16a34a", "#ea580c", "#ca8a04"];
@@ -28,10 +29,13 @@ export const PROJECT_TYPE_LABELS: Record<string, string> = {
 };
 
 /** The groups the UI shows (backend `StatusBucket`): KPI bubbles, filter chips, map pins and cluster bubbles.
- *  Stored statuses keep all nine; Archived reads as Cancelled. In Progress is not shown for now: its statuses count as
+ *  Stored statuses keep all ten. Not Registered (the CMS has the device, it never registered), Cancelled (never
+ *  registered a screen) and Archived (ran for a while, then archived) are groups of their own. In Progress is not shown for now: its statuses count as
  *  Upcoming (to bring it back, add it to BUCKETS and point them at it in BUCKET_OF, as in the backend). */
 export type StatusBucket = components["schemas"]["StatusBucket"];
-export const BUCKETS: readonly StatusBucket[] = ["Completed", "Upcoming", "Offline", "Cancelled"];
+export const BUCKETS: readonly StatusBucket[] = ["Completed", "Upcoming", "Offline", "Not Registered", "Cancelled", "Archived"];
+/** The order of the map's tags. */
+export const MAP_BUCKETS: readonly StatusBucket[] = ["Upcoming", "Completed", "Offline", "Archived", "Cancelled", "Not Registered"];
 
 export const BUCKET_OF: Record<ScreenStatus, StatusBucket> = {
   Upcoming: "Upcoming",
@@ -41,13 +45,32 @@ export const BUCKET_OF: Record<ScreenStatus, StatusBucket> = {
   "Serviced - Needs More Work": "Upcoming",
   Completed: "Completed",
   Offline: "Offline",
-  Archived: "Cancelled",
+  "Not Registered": "Not Registered",
+  Archived: "Archived",
   Cancelled: "Cancelled",
 };
 
 export const bucketOf = (status: ScreenStatus): StatusBucket => BUCKET_OF[status] ?? "Upcoming";
 
+/** Not Registered is a screen's status. A store is never "not registered": one whose least-progressed screen is
+ *  reads In Progress, in the lists, the store filters and the map's Locations count (backend `STORE_BUCKET_OF`). */
+export const STORE_BUCKETS: readonly StatusBucket[] = BUCKETS.map((bucket) => (bucket === "Not Registered" ? "In Progress" : bucket));
+export const storeBucketOf = (status: ScreenStatus): StatusBucket => (status === "Not Registered" ? "In Progress" : bucketOf(status));
+export const storeStatusLabel = (status: ScreenStatus): string => (status === "Not Registered" ? "In Progress" : STATUS_META[status].label);
+
 /** `color` for pins and dots; `light` → `dark` is the cluster-bubble scale (few → many). */
+/** What a group is called on screen. The Completed group reads "Online": its screens are the ones reporting, and
+ *  the header's Completed is online + offline together. */
+export const BUCKET_LABEL: Record<StatusBucket, string> = {
+  Completed: "Online",
+  Upcoming: "Upcoming",
+  "In Progress": "In Progress",
+  Offline: "Offline",
+  "Not Registered": "Not Registered",
+  Cancelled: "Cancelled",
+  Archived: "Archived",
+};
+
 export const BUCKET_META: Record<StatusBucket, { color: string; light: string; dark: string; chip: string; members: string }> = {
   Completed: {
     color: "#16a34a", light: "#86efac", dark: "#14532d",
@@ -58,19 +81,27 @@ export const BUCKET_META: Record<StatusBucket, { color: string; light: string; d
     chip: "bg-yellow-50 text-yellow-800 border-yellow-300",
     members: "Upcoming, Invitation Email Sent, Shipped, Delivered, Serviced - Needs More Work",
   },
-  // Not shown for now (not in BUCKETS); kept so the group can come back.
+  // Stores only, in Not Registered's colour: the store's side of the same thing.
   "In Progress": {
     color: "#7c3aed", light: "#c4b5fd", dark: "#4c1d95",
     chip: "bg-violet-50 text-violet-700 border-violet-200",
-    members: "Invitation Email Sent, Shipped, Delivered, Serviced - Needs More Work",
+    members: "In Progress: a screen is in the Dolphin data but has not registered yet",
   },
   Offline: {
     color: "#dc2626", light: "#fca5a5", dark: "#7f1d1d",
     chip: "bg-rose-50 text-rose-700 border-rose-200", members: "Offline",
   },
+  "Not Registered": {
+    color: "#7c3aed", light: "#c4b5fd", dark: "#4c1d95",
+    chip: "bg-violet-50 text-violet-700 border-violet-200", members: "Not Registered: in the Dolphin data, never registered",
+  },
   Cancelled: {
+    color: "#3f3f46", light: "#a1a1aa", dark: "#18181b",
+    chip: "bg-zinc-100 text-zinc-700 border-zinc-300", members: "Cancelled: never registered a screen",
+  },
+  Archived: {
     color: "#64748b", light: "#cbd5e1", dark: "#334155",
-    chip: "bg-slate-100 text-slate-600 border-slate-200", members: "Cancelled, Archived",
+    chip: "bg-slate-100 text-slate-600 border-slate-200", members: "Archived: ran for a while, then archived",
   },
 };
 

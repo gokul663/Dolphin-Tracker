@@ -9,7 +9,7 @@ import { renderWithProviders } from "@/test/render";
 
 const NO_COUNTS = { committed_dolphin_screens: "", committed_store_tvs: "", wall_mounts_needed: "", ceiling_mounts_needed: "", tv_mounts_needed: "" };
 
-const PRICES = { stick: 40, screen_24: 120, screen_43: 300, screen_50: null };
+const PRICES = { stick: 40 as number | null, screens: [{ size: '24"', type: "Dolphin", cost: 120 }, { size: '43"', type: "Dolphin", cost: 300 }] };
 
 function Harness({ initial, costs = PRICES }: { initial: SummaryDraft; costs?: typeof PRICES }) {
   const [draft, setDraft] = useState(initial);
@@ -82,11 +82,11 @@ describe("StoreSummary", () => {
     // 3 sticks × 40 + 120 (24") + 300 (43") = 540
     expect(screen.getByLabelText("Hardware cost").textContent).toContain("$540");
     const lines = within(screen.getByLabelText("Hardware cost lines")).getAllByRole("listitem").map((item) => item.textContent);
-    expect(lines).toEqual(["3 × Sticks$120", '1 × 24" Dolphin TVs$120', '1 × 43" Dolphin TVs$300']);
+    expect(lines).toEqual(["3 × Sticks$120", '1 × 24" Dolphin screens$120', '1 × 43" Dolphin screens$300']);
   });
 
   it("hardware cost asks for a price that is not set yet", () => {
     renderWithProviders(<Harness initial={draftOf([makeScreen({ id: "a", status: "Completed", is_dolphin_screen: true, screen_size: '50"' })])} />);
-    expect(screen.getByLabelText("Hardware cost").textContent).toContain('Set the 50" screen price in Settings');
+    expect(screen.getByLabelText("Hardware cost").textContent).toContain('Set the 50" Dolphin screen price in Settings');
   });
 });

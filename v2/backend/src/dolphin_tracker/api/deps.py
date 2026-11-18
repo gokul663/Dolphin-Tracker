@@ -33,6 +33,7 @@ from dolphin_tracker.services.route_plans import RoutePlanService
 from dolphin_tracker.services.routing import RoutingService
 from dolphin_tracker.services.store_search import StoreSearchService
 from dolphin_tracker.services.stores import StoreService
+from dolphin_tracker.services.uploads import UploadService
 from dolphin_tracker.services.visits import VisitService
 
 SettingsDep = Annotated[Settings, Depends(get_settings)]
@@ -123,6 +124,14 @@ def get_routing_service(
     invoker: Annotated[WorkerInvoker, Depends(get_worker_invoker)],
 ) -> RoutingService:
     return RoutingService(projects, stores, jobs, invoker)
+
+
+def get_upload_service(
+    projects: Annotated[ProjectRepository, Depends(get_project_repository)],
+    jobs: Annotated[JobRepository, Depends(get_job_repository)],
+    files: Annotated[FileStore, Depends(get_file_store)],
+) -> UploadService:
+    return UploadService(projects, jobs, files)
 
 
 def get_project_service(

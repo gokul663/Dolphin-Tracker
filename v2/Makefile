@@ -90,7 +90,7 @@ gen-api: ## Regenerate frontend/src/lib/api/schema.d.ts from the backend's OpenA
 DEV_AWS := AWS_PROFILE=$${AWS_PROFILE:-dane-dolphin} AWS_REGION=us-east-1
 DEV_KEY = $(shell grep '^DT_GOOGLE_BROWSER_KEY=' $(BACKEND)/.env 2>/dev/null | cut -d= -f2- | tr -d "\"'")
 
-deploy-dev: ## Build and deploy the dev site (https://d2nm60ijusfh0v.cloudfront.net)
+deploy-dev: ## Build and deploy the dev site (https://tracker.dolphin-one.com)
 	@[ -n "$(DEV_KEY)" ] || { echo "DT_GOOGLE_BROWSER_KEY is missing from $(BACKEND)/.env"; exit 1; }
 	$(DEV_AWS) $(MAKE) infra-deploy ENV=dev CDK="$(CDK) -c google_browser_key=$(DEV_KEY)"
 

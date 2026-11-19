@@ -49,6 +49,8 @@ ENVIRONMENTS: dict[str, EnvConfig] = {
         name="dev",
         retain_data=False,
         cors_origins=["http://localhost:5173"],
+        domain_name="tracker.dolphin-one.com",  # DNS is at GoDaddy: a CNAME to the CloudFront domain below
+        certificate_arn="arn:aws:acm:us-east-1:519747127986:certificate/ac51e029-8352-408c-979b-ece470505075",
         cloudfront_domain="d2nm60ijusfh0v.cloudfront.net",  # the live site (DolphinTracker-Dev-Web)
         log_retention_days=14,
     ),

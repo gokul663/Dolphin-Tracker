@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { actualCounts, screenTechnicians, screenTypesFor, type HardwareCosts } from "@/features/stores/details";
+import { actualCounts, defaultScreenPrice, screenTechnicians, screenTypesFor, type HardwareCosts } from "@/features/stores/details";
 import { useVisits } from "@/features/visits/api";
 import { DEVICE_TONE, ScreenDeviceLine, splitCodes } from "@/features/device/DeviceBits";
 import { AlertTriangle } from "lucide-react";
@@ -23,6 +23,8 @@ export interface ScreenRow {
   screen_size: string;
   is_dolphin_screen: boolean;
   screen_type: string;
+  cms_name: string;
+  venue_type: string;
   has_mount: boolean;
   has_ceiling_mount: boolean;
   needs_mount: boolean;
@@ -37,10 +39,10 @@ export const toRows = (stop: Pick<Stop, "screens">): ScreenRow[] =>
 export const DOLPHIN_SCREEN_SIZE = '24"';
 
 /** STORE-MODEL §4.1: a new row is Upcoming and has no size yet: picking one asks whose screen it is (a Dolphin
- *  screen unless told otherwise) and how it is mounted (not at all, until one is picked). */
+ *  screen unless told otherwise), then its brand and, for ours, how it is mounted (not at all, until one is picked). */
 export const newRow = (): ScreenRow => ({
   key: `new-${(nextKey += 1)}`, stick_number: "", venue_id: "", screen_size: "", is_dolphin_screen: true, screen_type: "",
-  has_mount: false, has_ceiling_mount: false, needs_mount: false, status: "Upcoming",
+  cms_name: "", venue_type: "", has_mount: false, has_ceiling_mount: false, needs_mount: false, status: "Upcoming",
 });
 
 /** One choice out of a few, as a row of joined buttons. With `clearable`, pressing the chosen one again clears it
@@ -87,20 +89,57 @@ function Segmented<T extends string>({
 }
 
 const OWNERS = [
-  { value: "dolphin", label: "Dolphin screen" },
-  { value: "store", label: "Store TV" },
+  { value: "dolphin", label: "Dolphin" },
+  { value: "store", label: "Store" },
 ] as const;
 const MOUNTS = [
-  { value: "wall", label: "Wall mount" },
-  { value: "ceiling", label: "Ceiling mount" },
+  { value: "wall", label: "Wall" },
+  { value: "ceiling", label: "Ceiling" },
 ] as const;
 
+/** The makes a store's own TV usually is; anything else is typed under Other. */
+export const STORE_TV_BRANDS = ["Samsung", "LG", "TCL", "Sony", "Vizio", "Hisense", "Philips", "Panasonic", "Sharp", "Toshiba", "Insignia", "Element", "Sceptre", "Westinghouse", "Roku", "Onn"] as const;
+const OTHER_BRAND = "__other__";
+
+/** The brand of a store's own TV: one of the usual makes, or Other and its name typed. */
+function StoreBrand({ value, onChange, screen }: { value: string; onChange: (value: string) => void; screen: number }) {
+  const known = STORE_TV_BRANDS.find((brand) => brand.toLowerCase() === value.trim().toLowerCase());
+  const [other, setOther] = useState(value.trim() !== "" && !known);
+  return (
+    <div className="space-y-1">
+      <span className="block text-[11px] text-slate-500">Brand</span>
+      <div className="flex flex-wrap items-center gap-2">
+        <Select
+          value={other ? OTHER_BRAND : (known ?? "")}
+          onValueChange={(next) => {
+            setOther(next === OTHER_BRAND);
+            onChange(next === OTHER_BRAND ? "" : next);
+          }}
+        >
+          <SelectTrigger aria-label={`Brand of screen ${screen}`} className="h-[34px] w-40 bg-white">
+            <SelectValue placeholder="Choose a brand" />
+          </SelectTrigger>
+          <SelectContent>
+            {STORE_TV_BRANDS.map((brand) => (
+              <SelectItem key={brand} value={brand}>
+                {brand}
+              </SelectItem>
+            ))}
+            <SelectItem value={OTHER_BRAND}>Other</SelectItem>
+          </SelectContent>
+        </Select>
+        {other && <Input className="h-[34px] w-40" placeholder="Brand name" aria-label={`Other brand, screen ${screen}`} value={value} onChange={(event) => onChange(event.target.value)} />}
+      </div>
+    </div>
+  );
+}
+
 /** The type a Dolphin screen of this size takes when its size or owner changes: the one it has if the price list
- *  still offers it for the size, the size's only type when there is just one, else none (to be picked). */
+ *  still offers it for the size, else the size's default in Settings (another can be picked). */
 export function typeForSize(costs: HardwareCosts, size: string, current: string): string {
   const types = screenTypesFor(costs, size).map((row) => row.type);
   if (types.includes(current)) return current;
-  return types.length === 1 ? types[0]! : "";
+  return defaultScreenPrice(costs, size)?.type || types[0] || "";
 }
 
 /** The usual sizes, as big tiles: a monitor icon for the small ones, a TV for the rest. */
@@ -207,6 +246,95 @@ export function splitSuggestion(row: ScreenRow): ScreenRow[] {
 export const screensChanged = (stop: Pick<Stop, "screens">, rows: ScreenRow[]) =>
   JSON.stringify(toInputs(rows)) !== JSON.stringify(toInputs(toRows(stop)));
 
+/** What a screen is, to edit: its size, whose it is, its brand and mount, then stick number, DD code and venue
+ *  type. Used by the store window's rows and by a route plan's screen log. */
+export function ScreenFields({
+  row,
+  number,
+  costs,
+  device,
+  onPatch,
+  venueType = true,
+}: {
+  row: ScreenRow;
+  /** The screen's place in the store, from 1 (labels). */
+  number: number;
+  costs: HardwareCosts;
+  device?: Stop["screens"][number]["device"];
+  onPatch: (change: Partial<ScreenRow>) => void;
+  /** Off where the venue type is shown for the store as a whole (a route plan's store window). */
+  venueType?: boolean;
+}) {
+  return (
+    <>
+            {/* Size first; once one is picked: whose screen, which of our models, and the mount. */}
+            <SizePicker
+              id={`${row.key}-screen_size`}
+              screen={number}
+              value={row.screen_size}
+              onChange={(screen_size) => onPatch({ screen_size, screen_type: row.is_dolphin_screen ? typeForSize(costs, screen_size, row.screen_type) : row.screen_type })}
+            />
+            {row.screen_size.trim() !== "" && (
+              <div className="flex flex-wrap items-start gap-x-5 gap-y-2">
+                <Segmented
+                  label="Screen belongs to"
+                  ariaLabel={`Owner of screen ${number}`}
+                  options={OWNERS}
+                  value={row.is_dolphin_screen ? "dolphin" : "store"}
+                  onChange={(owner) =>
+                    onPatch(
+                      // A store's own TV has a brand of its own and no mount of ours.
+                      owner === "dolphin"
+                        ? { is_dolphin_screen: true, screen_type: typeForSize(costs, row.screen_size, row.screen_type) }
+                        : { is_dolphin_screen: false, screen_type: "", has_mount: false, has_ceiling_mount: false },
+                    )
+                  }
+                />
+                {row.is_dolphin_screen ? (
+                  <>
+                    {screenTypesFor(costs, row.screen_size).length > 0 && (
+                      <Segmented
+                        label="Brand"
+                        ariaLabel={`Brand of screen ${number}`}
+                        options={screenTypesFor(costs, row.screen_size).map((item) => ({ value: item.type, label: item.type }))}
+                        value={row.screen_type}
+                        clearable
+                        onChange={(screen_type) => onPatch({ screen_type })}
+                      />
+                    )}
+                    <Segmented
+                      label="Mount (none when neither is picked)"
+                      ariaLabel={`Mount of screen ${number}`}
+                      options={MOUNTS}
+                      value={!row.has_mount ? "" : row.has_ceiling_mount ? "ceiling" : "wall"}
+                      clearable
+                      onChange={(mount) => onPatch({ has_mount: mount !== "", has_ceiling_mount: mount === "ceiling" })}
+                    />
+                  </>
+                ) : (
+                  <StoreBrand key={row.key} screen={number} value={row.screen_type} onChange={(screen_type) => onPatch({ screen_type })} />
+                )}
+              </div>
+            )}
+            {/* The venue type is the screen's own; a sync writes the CMS's value over it when it has one. The CMS name is
+                kept on the screen too, but not shown. */}
+            <div className="grid grid-cols-2 gap-2">
+              {([["stick_number", "Stick #"], ["venue_id", "DD code"], ["venue_type", "Venue type"]] as const).filter(([key]) => venueType || key !== "venue_type").map(([key, label]) => (
+                <div key={key} className="space-y-1">
+                  <Label htmlFor={`${row.key}-${key}`} className="text-[11px] text-slate-500">
+                    {label}
+                  </Label>
+                  <Input id={`${row.key}-${key}`} className="h-8" value={row[key]} onChange={(event) => onPatch({ [key]: event.target.value })} />
+                  {key === "stick_number" && device?.serial_number && device.serial_number !== row.stick_number && (
+                    <p className={cn("text-[11px]", DEVICE_TONE.text)}>Dolphin data: {device!.serial_number} (shown)</p>
+                  )}
+                </div>
+              ))}
+            </div>
+    </>
+  );
+}
+
 /** Screen rows of one store as a draft: add, edit, delete (with confirmation). The store window saves them with
  *  everything else, as a full replace (PUT …/screens). */
 export function ScreensEditor({ project, stop, rows, onChange }: { project: Project; stop: Stop; rows: ScreenRow[]; onChange: (rows: ScreenRow[]) => void }) {
@@ -293,57 +421,7 @@ export function ScreensEditor({ project, stop, rows, onChange }: { project: Proj
                 </Button>
               </div>
             )}
-            {/* Size first; once one is picked: whose screen, which of our models, and the mount. */}
-            <SizePicker
-              id={`${row.key}-screen_size`}
-              screen={index + 1}
-              value={row.screen_size}
-              onChange={(screen_size) => patch(row.key, { screen_size, screen_type: row.is_dolphin_screen ? typeForSize(costs, screen_size, row.screen_type) : "" })}
-            />
-            {row.screen_size.trim() !== "" && (
-              <div className="flex flex-wrap items-start gap-x-5 gap-y-2">
-                <Segmented
-                  label="Whose screen"
-                  ariaLabel={`Owner of screen ${index + 1}`}
-                  options={OWNERS}
-                  value={row.is_dolphin_screen ? "dolphin" : "store"}
-                  onChange={(owner) =>
-                    patch(row.key, { is_dolphin_screen: owner === "dolphin", screen_type: owner === "dolphin" ? typeForSize(costs, row.screen_size, row.screen_type) : "" })
-                  }
-                />
-                {row.is_dolphin_screen && screenTypesFor(costs, row.screen_size).length > 0 && (
-                  <Segmented
-                    label="Type"
-                    ariaLabel={`Type of screen ${index + 1}`}
-                    options={screenTypesFor(costs, row.screen_size).map((item) => ({ value: item.type, label: item.type }))}
-                    value={row.screen_type}
-                    clearable
-                    onChange={(screen_type) => patch(row.key, { screen_type })}
-                  />
-                )}
-                <Segmented
-                  label="Mount (none when neither is picked)"
-                  ariaLabel={`Mount of screen ${index + 1}`}
-                  options={MOUNTS}
-                  value={!row.has_mount ? "" : row.has_ceiling_mount ? "ceiling" : "wall"}
-                  clearable
-                  onChange={(mount) => patch(row.key, { has_mount: mount !== "", has_ceiling_mount: mount === "ceiling" })}
-                />
-              </div>
-            )}
-            <div className="grid grid-cols-2 gap-2">
-              {([["stick_number", "Stick #"], ["venue_id", "DD code"]] as const).map(([key, label]) => (
-                <div key={key} className="space-y-1">
-                  <Label htmlFor={`${row.key}-${key}`} className="text-[11px] text-slate-500">
-                    {label}
-                  </Label>
-                  <Input id={`${row.key}-${key}`} className="h-8" value={row[key]} onChange={(event) => patch(row.key, { [key]: event.target.value })} />
-                  {key === "stick_number" && row.id && devices.get(row.id)?.serial_number && devices.get(row.id)!.serial_number !== row.stick_number && (
-                    <p className={cn("text-[11px]", DEVICE_TONE.text)}>Dolphin data: {devices.get(row.id)!.serial_number} (shown)</p>
-                  )}
-                </div>
-              ))}
-            </div>
+            <ScreenFields row={row} number={index + 1} costs={costs} device={row.id ? devices.get(row.id) : undefined} onPatch={(change) => patch(row.key, change)} />
           </li>
         ))}
       </ul>
@@ -446,11 +524,12 @@ export function ScreensView({ project, stop, rows }: { project: Project; stop: S
             <tr>
               <th className={head}>#</th>
               <th className={head}>Status</th>
-              <th className={head}>Screen</th>
+              <th className={head}>Belongs to</th>
               <th className={head}>Size</th>
               <th className={head}>Mount</th>
               <th className={head}>Stick #</th>
               <th className={head}>DD code</th>
+              <th className={head}>Venue type</th>
               <th className={head}>Dolphin data</th>
               <th className={head}>Registered</th>
               <th className={head}>Last visit</th>
@@ -471,8 +550,8 @@ export function ScreensView({ project, stop, rows }: { project: Project; stop: S
                   <td className="whitespace-nowrap px-2 py-2">
                     <span className="inline-flex items-center gap-1.5">
                       <Icon size={14} className="text-slate-500" />
-                      {row.is_dolphin_screen ? "Dolphin TV" : "Store TV"}
-                      {row.is_dolphin_screen && row.screen_type && <span className="font-normal text-slate-500">· {row.screen_type}</span>}
+                      {row.is_dolphin_screen ? "Dolphin" : "Store"}
+                      {row.screen_type && <span className="font-normal text-slate-500">· {row.screen_type}</span>}
                     </span>
                   </td>
                   <td className="px-2 py-2 font-mono">{(row.is_dolphin_screen ? row.screen_size || DOLPHIN_SCREEN_SIZE : row.screen_size) || dash}</td>
@@ -483,6 +562,9 @@ export function ScreensView({ project, stop, rows }: { project: Project; stop: S
                     <StickNumber sheet={row.stick_number} serial={row.id ? devices.get(row.id)?.serial_number : undefined} />
                   </td>
                   <td className="whitespace-nowrap px-2 py-2 font-mono text-xs">{row.venue_id || dash}</td>
+                  <td className="whitespace-nowrap px-2 py-2 text-xs" aria-label={`Venue type, screen ${index + 1}`}>
+                    {row.venue_type || dash}
+                  </td>
                   <td className="px-2 py-2 text-xs">
                     <DolphinCell device={row.id ? devices.get(row.id) : null} />
                   </td>

@@ -1,5 +1,5 @@
 /** The New Log Entry form (ROUTE-PLANNER §5): one visit for one stick. Pure, so the rules are unit-tested. */
-import type { Category, NetworkType, Screen, Stop, VisitInput } from "@/lib/api/types";
+import type { Category, NetworkType, Screen, Stop, Visit, VisitInput } from "@/lib/api/types";
 
 /** Subcategories that need the new stick or screen number (mirrors domain/lists.REPLACED_WITH_SUBCATEGORIES). */
 export const REPLACED_WITH = new Set(["screen replaced with", "Stick Replaced With"]);
@@ -16,10 +16,16 @@ export interface VisitForm {
   network_type: NetworkType | "";
   latest_apk: boolean | null;
   kiosk_mode: boolean | null;
+  dagent_installed: boolean | null;
+  /** Another WiFi this stick is on (only with WiFi): blank = the store's own. */
+  wifi_ssid: string;
+  wifi_password: string;
   category: string;
   subcategory: string;
   replaced_with: string;
   comments: string;
+  /** What the visit left this screen as, in its plan ("" outside a plan's store window). */
+  outcome: "" | "done" | "incomplete";
 }
 
 /** The sheet's "CMS NAME" column lands in the extra fields; it is the venue name the portal asks for. */
@@ -44,10 +50,14 @@ export function formFor(stop: Stop, screen: Screen, defaults: { installer: strin
     network_type: "",
     latest_apk: null,
     kiosk_mode: null,
+    dagent_installed: null,
+    wifi_ssid: "",
+    wifi_password: "",
     category: "",
     subcategory: "",
     replaced_with: "",
     comments: "",
+    outcome: "",
   };
 }
 
@@ -71,6 +81,7 @@ export function formErrors(form: VisitForm, categories: Category[]): Record<stri
   }
   if (form.latest_apk === null) errors.latest_apk = "Latest APK is required";
   if (form.kiosk_mode === null) errors.kiosk_mode = "Set Kiosk Mode is required";
+  if (form.dagent_installed === null) errors.dagent_installed = "Dagent installed is required";
   const category = categories.find((entry) => entry.name === form.category);
   if (form.category && !category) errors.category = "Pick a category from the list";
   if (category && form.subcategory && !category.subcategories.includes(form.subcategory)) errors.subcategory = "Pick a subcategory of this category";
@@ -90,11 +101,15 @@ export function toInput(form: VisitForm, planId: string): VisitInput {
     network_type: form.network_type as NetworkType,
     latest_apk: Boolean(form.latest_apk),
     kiosk_mode: Boolean(form.kiosk_mode),
+    dagent_installed: Boolean(form.dagent_installed),
+    wifi_ssid: form.network_type === "WiFi" ? form.wifi_ssid.trim() : "",
+    wifi_password: form.network_type === "WiFi" ? form.wifi_password.trim() : "",
     category: form.category,
     subcategory: form.subcategory,
     replaced_with: REPLACED_WITH.has(form.subcategory) ? form.replaced_with.trim() : "",
     comments: form.comments.trim(),
     route_plan_id: planId,
+    outcome: form.outcome,
   };
 }
 
@@ -138,4 +153,14 @@ export function visitState(stop: Pick<Stop, "screens" | "screen_visits" | "last_
   const counted = ids.filter((id) => (stop.screen_visits[id] ?? "") !== "" && (stop.screen_visits[id] ?? "") >= since).length;
   if (!ids.length || counted === 0) return "none";
   return counted === ids.length ? "visited" : "partly";
+}
+
+/** What each screen was left as in a plan: its latest log entry there that says Done or Incomplete (`visits`
+ *  newest first). A screen with no such entry is not in the map. */
+export function screenOutcomes(visits: Pick<Visit, "screen_id" | "route_plan_id" | "outcome">[], planId: string): Map<string, "done" | "incomplete"> {
+  const latest = new Map<string, "done" | "incomplete">();
+  for (const visit of visits) {
+    if (visit.route_plan_id === planId && visit.outcome && !latest.has(visit.screen_id)) latest.set(visit.screen_id, visit.outcome);
+  }
+  return latest;
 }

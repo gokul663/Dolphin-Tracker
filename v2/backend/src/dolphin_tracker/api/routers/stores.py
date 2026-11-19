@@ -14,12 +14,13 @@ from dolphin_tracker.api.schemas import (
     ProgressUpdate,
     ScreensUpdate,
     StateCount,
+    StoreAdd,
     StoreDetailsUpdate,
     StoreFilterOptions,
 )
 from dolphin_tracker.domain.models import ScreenStatus, Stop
 from dolphin_tracker.domain.statuses import StatusBucket
-from dolphin_tracker.services.stores import Bounds, StorePage, StoreQuery, StoreService
+from dolphin_tracker.services.stores import Bounds, ScreenPage, StorePage, StoreQuery, StoreService
 from dolphin_tracker.services.uploads import UploadService
 
 router = APIRouter(prefix="/projects/{project_id}/stores", tags=["stores"])
@@ -98,6 +99,30 @@ def list_stores(
         raise _bad_request(exc) from exc
 
 
+@router.get("/screens", response_model=ScreenPage)
+def list_screens(
+    project_id: str,
+    service: ServiceDep,
+    query: QueryDep,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    north: Annotated[float | None, Query(ge=-90, le=90)] = None,
+    south: Annotated[float | None, Query(ge=-90, le=90)] = None,
+    east: Annotated[float | None, Query(ge=-180, le=180)] = None,
+    west: Annotated[float | None, Query(ge=-180, le=180)] = None,
+) -> ScreenPage:
+    """A page of screens, one row each, under the same filters as the stores. `sort` also takes venue_id, status
+    (the screen's), screen_size, owner and brand."""
+    edges = (north, south, east, west)
+    if any(edge is not None for edge in edges) and None in edges:
+        raise HTTPException(status_code=400, detail="Give all of north, south, east and west, or none")
+    bounds = Bounds(north, south, east, west) if north is not None else None  # type: ignore[arg-type]
+    try:
+        return service.screens(project_id, query, limit=limit, offset=offset, bounds=bounds)
+    except ValueError as exc:
+        raise _bad_request(exc) from exc
+
+
 @router.get("/pins", response_model=list[Pin])
 def list_pins(project_id: str, service: ServiceDep, query: QueryDep) -> list[dict]:
     try:
@@ -165,6 +190,12 @@ def append_stores(project_id: str, body: AppendStops, service: ServiceDep, uploa
     uploads.record(project_id, body.import_job_id, kind="append", submitted=len(body.stops),
                    added=result["appended"], skipped=len(result["skipped"]))
     return result
+
+
+@router.post("", response_model=Stop, status_code=201)
+def add_store(project_id: str, body: StoreAdd, service: ServiceDep) -> Stop:
+    """Add one store by hand, with the checks a sheet row gets (422 names what is wrong)."""
+    return service.add_one(project_id, body.model_dump())
 
 
 @router.get("/{stop_uid}", response_model=Stop)

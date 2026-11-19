@@ -26,11 +26,12 @@ from dolphin_tracker.services.drive_times import GoogleDriveTimes
 from dolphin_tracker.services.geocoding import GoogleGeocoder
 from dolphin_tracker.services.imports import ImportService
 from dolphin_tracker.services.jobs import JobService
-from dolphin_tracker.services.lists import ListService
+from dolphin_tracker.services.lists import InstallerWorkService, ListService
 from dolphin_tracker.services.places import PlacesService
 from dolphin_tracker.services.projects import ProjectService
 from dolphin_tracker.services.route_plans import RoutePlanService
 from dolphin_tracker.services.routing import RoutingService
+from dolphin_tracker.services.screen_sheet import ScreenSheetService
 from dolphin_tracker.services.store_search import StoreSearchService
 from dolphin_tracker.services.stores import StoreService
 from dolphin_tracker.services.uploads import UploadService
@@ -67,6 +68,13 @@ def get_list_repository(table: Annotated[object, Depends(get_table)]) -> ListRep
 
 def get_list_service(lists: Annotated[ListRepository, Depends(get_list_repository)]) -> ListService:
     return ListService(lists)
+
+
+def get_screen_sheet_service(
+    projects: Annotated[ProjectRepository, Depends(get_project_repository)],
+    stores: Annotated[StoreRepository, Depends(get_store_repository)],
+) -> ScreenSheetService:
+    return ScreenSheetService(projects, stores)
 
 
 def get_file_store(settings: SettingsDep) -> FileStore:
@@ -152,6 +160,15 @@ def get_store_service(
 
 def get_route_plan_repository(table: Annotated[object, Depends(get_table)]) -> RoutePlanRepository:
     return DynamoRoutePlanRepository(table)
+
+
+def get_installer_work_service(
+    lists: Annotated[ListRepository, Depends(get_list_repository)],
+    projects: Annotated[ProjectRepository, Depends(get_project_repository)],
+    stores: Annotated[StoreRepository, Depends(get_store_repository)],
+    plans: Annotated[RoutePlanRepository, Depends(get_route_plan_repository)],
+) -> InstallerWorkService:
+    return InstallerWorkService(lists, projects, stores, plans)
 
 
 def get_route_plan_service(

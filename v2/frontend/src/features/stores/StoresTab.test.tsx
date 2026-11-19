@@ -56,6 +56,15 @@ function renderTab(routes: Parameters<typeof mockApi>[0] = {}, onRender?: () => 
       const items = [...db.values()].filter(inView);
       return { items, next_cursor: null, total: items.length, offset: 0 };
     },
+    "GET /api/projects/p1/stores/screens": () => {
+      const items = [...db.values()].flatMap((stop) =>
+        stop.screens.map((row) => ({
+          uid: stop.uid, external_id: stop.external_id, display_id: stop.display_id, store_name: stop.store_name, addr: stop.addr,
+          city: stop.place_city, state: stop.place_state, installer_name: stop.installer_name, install_type: stop.install_type, screen: row,
+        })),
+      );
+      return { items, total: items.length, offset: 0 };
+    },
     "GET /api/projects/p1/stores/pins": () =>
       [...db.values()].map(({ uid, lat, lng, status, store_name, installer, day, screens }) => ({
         uid, lat, lng, status, store_name, installer, day, screen_statuses: screens.map((s) => s.status),
@@ -163,7 +172,7 @@ describe("StoresTab", () => {
     expect([last.url.searchParams.get("offset"), last.url.searchParams.get("limit")]).toEqual(["0", "50"]);
   });
 
-  it("one Locations / Screens switch drives the map legend and the top-states chart", async () => {
+  it("the Stores / Screens view drives the table, the map legend and the top-states chart", async () => {
     const pin = { lng: -84.39, installer: "Ann", day: 1, route_plan_id: "", visit_state: "none" };
     const { calls } = renderTab({
       "GET /api/projects/p1/stores/pins": () => [
@@ -176,15 +185,22 @@ describe("StoresTab", () => {
     await waitFor(() => expect(byState().searchParams.get("unit")).toBe("stores"));
     expect(byState().searchParams.get("limit")).toBe("60"); // every state, not just the top ten
     const legend = screen.getByRole("group", { name: "Map legend" });
-    // The Locations / Screens switch and the Full page link sit in the map's own header bar, beside the legend.
-    expect(legend.parentElement?.contains(screen.getByRole("radio", { name: "Screens" }))).toBe(true);
     expect(legend.parentElement?.contains(screen.getByRole("link", { name: /Open map in a new tab/ }))).toBe(true);
     const before = within(legend).getAllByRole("listitem").map((item) => item.textContent);
-    await userEvent.click(screen.getByRole("radio", { name: "Screens" }));
-    expect(screen.getByRole("radio", { name: "Screens" }).getAttribute("aria-checked")).toBe("true");
+    // The page header's Stores | Screens switch sets the view; no second switch on the map.
+    expect(screen.queryByRole("radio", { name: "Screens" })).toBeNull();
+    act(() => useStoresUi.getState().setUnit("screens"));
+    // The table lists screens, one row each, with the store it is at.
+    const grid = await screen.findByRole("grid", { name: "Screens" });
+    expect(within(grid).getAllByRole("columnheader").map((header) => header.textContent)).toEqual([
+      "DD code", "IBC#", "Store name", "Address", "City", "State", "Screen status", "Installer", "Cost", "Screen size", "Owner", "Brand", "Venue type",
+    ]);
+    expect(within(grid).getAllByRole("row")).toHaveLength(1 + STOPS.reduce((sum, stop) => sum + stop.screens.length, 0));
+    expect(within(grid).getAllByText("Alpha Mart").length).toBeGreaterThan(0);
+    expect(screen.queryByRole("grid", { name: "Stores" })).toBeNull();
     await waitFor(() => expect(byState().searchParams.get("unit")).toBe("screens"));
     expect(await screen.findByRole("region", { name: "Top states by screens" })).toBeTruthy();
-    const totals = screen.getByText((_, element) => element?.getAttribute("aria-live") === "polite" && /^\d+ screens · \d+ records/.test(element.textContent ?? ""));
+    const totals = screen.getByText((_, element) => element?.getAttribute("aria-live") === "polite" && /^\d+ pins · \d+ screens$/.test(element.textContent ?? ""));
     expect(totals).toBeTruthy();
     const rest = ["Offline 0", "Archived 0", "Cancelled 0"];
     // Stores read In Progress where screens read Not Registered (a per-screen status).
@@ -237,6 +253,41 @@ describe("StoresTab", () => {
     await userEvent.hover(installed);
     expect((await screen.findAllByText("1 store TV")).length).toBeGreaterThan(0);
     expect(screen.getByLabelText("Table legend").textContent).toContain("store TVs");
+  });
+
+  it("Add store checks the row like a sheet does, then opens the new store", async () => {
+    let attempt = 0;
+    const added = makeStop({ uid: "u7", external_id: "GA90001", store_name: "New Mart" });
+    const duplicate = "IBC# GA90001 is already in the project: Alpha Mart";
+    const { calls } = renderTab({
+      "POST /api/projects/p1/stores": () => {
+        attempt += 1;
+        if (attempt === 1) return jsonError(422, { message: duplicate, fields: { external_id: duplicate } });
+        if (attempt === 2) return jsonError(422, { message: "Address could not be verified by Google.", suggestions: ["9 New St, Macon, GA 31201, USA"] });
+        return added;
+      },
+      "GET /api/projects/p1/stores/u7": () => added,
+    });
+    await screen.findByText("Alpha Mart");
+    expect(screen.getByRole("button", { name: /Upload sheet/ })).toBeTruthy(); // beside it; the sheets are listed in Settings
+    await userEvent.click(screen.getByRole("button", { name: /Add store/ }));
+    const dialog = await screen.findByRole("dialog", { name: "Add a store" });
+    // IBC#, store name and address are needed before anything is sent.
+    await userEvent.click(within(dialog).getByRole("button", { name: "Add store" }));
+    expect(within(dialog).getAllByRole("alert").map((alert) => alert.textContent)).toEqual(["IBC# is required", "Store name is required", "Address is required"]);
+    const posts = () => calls.filter((call) => call.method === "POST" && call.url.pathname === "/api/projects/p1/stores");
+    expect(posts()).toHaveLength(0);
+    await userEvent.type(within(dialog).getByLabelText("IBC# *"), "GA90001");
+    await userEvent.type(within(dialog).getByLabelText("Store name *"), "New Mart");
+    await userEvent.type(within(dialog).getByLabelText("Address *"), "9 New");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Add store" }));
+    expect(await within(dialog).findByText(duplicate)).toBeTruthy(); // a duplicate names the store that has it
+    await userEvent.click(within(dialog).getByRole("button", { name: "Add store" }));
+    // Google could not verify it: its suggestion is sent as the address.
+    await userEvent.click(await within(dialog).findByRole("button", { name: /9 New St, Macon/ }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Add a store" })).toBeNull());
+    expect(posts().at(-1)?.body).toEqual({ external_id: "GA90001", store_name: "New Mart", addr: "9 New St, Macon, GA 31201, USA", city: "", state: "", zip: "" });
+    expect(await screen.findByRole("dialog", { name: /GA90001/ })).toBeTruthy(); // the new store's window
   });
 
   it("a single-PA project leaves out the PA column", async () => {
@@ -415,8 +466,8 @@ describe("StoresTab", () => {
 
   it("hardware cost sits under Top states: completed screens only, priced from Settings, following the filters", async () => {
     const { calls } = renderTab({
-      "GET /api/projects/p1": () => makeSummary({ hardware_costs: { stick: 40, screens: [{ size: '24"', type: "Dolphin", cost: 120 }, { size: '43"', type: "Dolphin", cost: 300 }] } }),
-      "GET /api/projects/p1/stores/hardware": () => ({ installed_screens: 5, installed_stores: 4, installed_dolphin_by_model: { '24"|': 3, '43"|Dolphin': 1 } }),
+      "GET /api/projects/p1": () => makeSummary({ hardware_costs: { stick: 40, screens: [{ size: '24"', type: "Dolphin", cost: 120, is_default: true }, { size: '43"', type: "Dolphin", cost: 300, is_default: true }], mounts: [{ size: '24"', wall: 15, ceiling: null }, { size: '43"', wall: 30, ceiling: 50 }] } }),
+      "GET /api/projects/p1/stores/hardware": () => ({ installed_screens: 5, installed_stores: 4, installed_dolphin_by_model: { '24"|': 3, '43"|Dolphin': 1 }, mounts: { wall_24: 3, wall_other: 1, ceiling: 2 }, installed_mounts: { '24"|wall': 2, '43"|ceiling': 1 } }),
     });
     await screen.findByText("Alpha Mart");
     const chart = await screen.findByRole("region", { name: "Hardware cost" });
@@ -425,6 +476,9 @@ describe("StoresTab", () => {
     expect(chart.textContent).toContain("Completed screens only");
     const items = within(within(chart).getByRole("list", { name: "Hardware cost by item" })).getAllByRole("listitem").map((item) => item.textContent);
     expect(items).toEqual(["5 × Sticks @ $40$20023%", '3 × 24" Dolphin screens @ $120$36042%', '1 × 43" Dolphin screens @ $300$30035%']);
+    // No mount counts or mount costs here: the sheets carry no mount data yet.
+    expect(within(chart).queryByLabelText("Mounts")).toBeNull();
+    expect(within(chart).queryByRole("checkbox", { name: "Include mount costs" })).toBeNull();
     // Under the Top states chart, in the same column.
     const states = screen.getByRole("region", { name: "Top states by stores" });
     expect(states.parentElement?.parentElement?.contains(chart)).toBe(true);
@@ -462,7 +516,7 @@ describe("StoresTab", () => {
       // Top: committed and installed (screens and TVs apart), mounts to bring, and who is assigned.
       "Committed", "Installed", "Mounts needed", "Assignment",
       // Left: what gets edited on site, the screens right under the address.
-      "Identity & address", "Screens", "Screen list", "Pictures", "Location", "Notes",
+      "Identity & address", "Screens", "Screen list", "Notes", "Pictures", "Location",
       // Right: the other details.
       "WiFi", "Contacts", "Installation", "Site notes", "Site checklist", "Other imported data",
     ]);
@@ -532,9 +586,9 @@ describe("StoresTab", () => {
     // A new row asks for its size first; then it is a Dolphin screen unless told otherwise.
     expect(within(second).queryByRole("group", { name: "Owner of screen 2" })).toBeNull();
     await userEvent.click(within(second).getByRole("radio", { name: "55 inch" }));
-    expect(within(second).getByRole("button", { name: "Dolphin screen" }).getAttribute("aria-pressed")).toBe("true");
+    expect(within(second).getByRole("button", { name: "Dolphin" }).getAttribute("aria-pressed")).toBe("true");
     await userEvent.type(within(second).getByLabelText("DD code"), "V9");
-    await userEvent.click(within(second).getByRole("button", { name: "Store TV" }));
+    await userEvent.click(within(second).getByRole("button", { name: "Store" }));
     await userEvent.click(within(rows).getByRole("combobox", { name: "Status of screen 1" }));
     await userEvent.click(await screen.findByRole("option", { name: "Completed" }));
     expect(within(rows).getByTestId("derived-status").textContent).toBe("Upcoming"); // the new row is still Upcoming
@@ -677,7 +731,7 @@ describe("StoresTab", () => {
     expect(calls.some((call) => call.method === "PATCH")).toBe(false);
 
     await choose("Self install");
-    await userEvent.type(within(drawer).getByLabelText("Wall"), "2");
+    await userEvent.type(within(drawer).getByLabelText("Wall override"), "2");
     await userEvent.click(within(drawer).getByRole("button", { name: "Save details" }));
     await waitFor(() => expect(calls.find((call) => call.method === "PATCH" && !call.url.pathname.endsWith("/progress"))?.body).toEqual({
       install_type: "Self install", wall_mounts_needed: 2,

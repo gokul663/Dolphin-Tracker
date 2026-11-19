@@ -1,11 +1,11 @@
-import { useState } from "react";
-import { ChevronLeft, ChevronRight, Clock, Loader2, MapPinOff, Plus } from "lucide-react";
+import { useState, type ReactNode } from "react";
+import { ChevronLeft, ChevronRight, Clock, Loader2, MapPin, MapPinOff, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DEVICE_TONE, DeviceBadge, reportDay } from "@/features/device/DeviceBits";
-import { useAddReviewed, useDeviceReview, useSnoozeReviewed } from "@/features/device/api";
+import { useAddReviewed, useAddReviewedMany, useDeviceReview, useSnoozeReviewed, useSnoozeReviewedMany } from "@/features/device/api";
 import { Input } from "@/components/ui/input";
 import { GoogleSearchPicker } from "@/features/places/GoogleSearchPicker";
 import { ApiError, type Project, type ProjectSummary, type ReviewAdd, type ReviewItem } from "@/lib/api/types";
@@ -64,9 +64,51 @@ export function ReviewDialog({
   const onSnooze = (item: ReviewItem) =>
     snooze.mutate(item.key, { onError: (error) => toast.error(error instanceof Error ? error.message : "Could not hide") });
 
+  // Several at once: tick rows (they stay ticked across pages), then add or set them all aside.
+  const [selected, setSelected] = useState<Record<string, ReviewItem>>({});
+  const chosen = Object.values(selected);
+  const addMany = useAddReviewedMany(project.id);
+  const snoozeMany = useSnoozeReviewedMany(project.id);
+  const busy = add.isPending || snooze.isPending || addMany.isPending || snoozeMany.isPending;
+  const pageItems = (page?.items ?? []).filter((item) => !item.snoozed_date);
+  const allTicked = pageItems.length > 0 && pageItems.every((item) => selected[item.key]);
+  const tick = (items: ReviewItem[], on: boolean) =>
+    setSelected((all) => {
+      const next = { ...all };
+      for (const item of items) {
+        if (on) next[item.key] = item;
+        else delete next[item.key];
+      }
+      return next;
+    });
+  const onAddSelected = () =>
+    addMany.mutate(chosen.map((item) => item.key), {
+      onSuccess: (results) => {
+        const failed = results.filter((result) => result.error);
+        // The ones Google could not verify open their address step and stay ticked; the rest are in.
+        setFixing((all) => {
+          const next = { ...all };
+          for (const { key, error } of failed) {
+            const detail = error instanceof ApiError ? error.validation : null;
+            if (detail?.suggestions !== undefined) next[key] = { message: detail.message, suggestions: detail.suggestions ?? [], typed: detail.address ?? "" };
+          }
+          return next;
+        });
+        setSelected((all) => Object.fromEntries(failed.flatMap(({ key }) => (all[key] ? [[key, all[key]]] : []))));
+        const added = results.length - failed.length;
+        if (added) toast.success(`${added} ${added === 1 ? "screen" : "screens"} added`);
+        if (failed.length) toast.error(`${failed.length} could not be added: check ${failed.length === 1 ? "its address" : "their addresses"} below`);
+      },
+    });
+  const onSnoozeSelected = () =>
+    snoozeMany.mutate(chosen.map((item) => item.key), {
+      onSuccess: () => setSelected({}),
+      onError: (error) => toast.error(error instanceof Error ? error.message : "Could not hide"),
+    });
+
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
-      <DialogContent className="flex max-h-[88vh] flex-col gap-3 sm:max-w-4xl">
+      <DialogContent className="flex max-h-[88vh] flex-col gap-3 sm:max-w-5xl">
         <DialogHeader>
           <DialogTitle className="flex flex-wrap items-center gap-2">
             Needs review {date && <DeviceBadge date={date} />}
@@ -102,33 +144,79 @@ export function ReviewDialog({
           </label>
           {review.isFetching && <Loader2 className="size-4 animate-spin text-slate-400" />}
         </div>
+        {/* Select all on this page; with rows ticked, the two actions for all of them. */}
+        <div className="flex min-h-9 flex-wrap items-center gap-2 text-sm" role="toolbar" aria-label="Selected screens">
+          <label className="flex items-center gap-1.5">
+            <Checkbox aria-label="Select all on this page" checked={allTicked} disabled={pageItems.length === 0} onCheckedChange={(checked) => tick(pageItems, checked === true)} />
+            {chosen.length > 0 ? `${chosen.length} selected` : "Select all on this page"}
+          </label>
+          {chosen.length > 0 && (
+            <>
+              <Button size="sm" variant="ghost" onClick={() => setSelected({})} disabled={busy}>
+                Clear
+              </Button>
+              <span className="ml-auto flex items-center gap-2">
+                <Button size="sm" variant="outline" onClick={onSnoozeSelected} disabled={busy}>
+                  {snoozeMany.isPending ? <Loader2 className="animate-spin" /> : <Clock />} Not now for {chosen.length}
+                </Button>
+                <Button size="sm" onClick={onAddSelected} disabled={busy}>
+                  {addMany.isPending ? <Loader2 className="animate-spin" /> : <Plus />} Add {chosen.length} selected
+                </Button>
+              </span>
+            </>
+          )}
+        </div>
         <div className="min-h-0 flex-1 overflow-y-auto rounded-lg border">
           {review.isError && <p className="p-4 text-sm text-rose-700">{review.error.message}</p>}
           {page && page.items.length === 0 && <p className="p-6 text-center text-sm text-slate-500">Nothing to review.</p>}
           <ul className="divide-y">
             {page?.items.map((item) => (
-              <li key={item.key} className={cn("flex flex-wrap items-center gap-3 px-3 py-2", item.snoozed_date && "opacity-60")}>
-                <div className="min-w-0 flex-1">
+              <li key={item.key} className={cn("flex flex-wrap items-center gap-3 px-3 py-2.5", item.snoozed_date && "opacity-60", selected[item.key] && "bg-sky-50/60")}>
+                <Checkbox
+                  aria-label={`Select ${item.venue_id}`}
+                  checked={Boolean(selected[item.key])}
+                  disabled={Boolean(item.snoozed_date)}
+                  onCheckedChange={(checked) => tick([item], checked === true)}
+                />
+                <div className="min-w-0 flex-1 space-y-1">
                   <p className="flex flex-wrap items-center gap-2 text-sm font-medium">
                     <span className={DEVICE_TONE.text}>{item.store_name || item.venue_name || "No name in the report"}</span>
                     <span className="font-mono text-xs text-slate-500">{item.venue_id}</span>
-                    <span className="rounded border px-1 text-[11px] text-slate-600">{item.status || "Unknown"}</span>
+                    <span className={cn("rounded border px-1 text-[11px]", STATUS_TONE[item.status.toLowerCase()] ?? "text-slate-600")}>{item.status || "Unknown"}</span>
                     {item.snoozed_date && (
                       <span className="flex items-center gap-0.5 text-[11px] text-slate-500">
                         <Clock size={11} /> Not now until after {reportDay(item.snoozed_date)}
                       </span>
                     )}
                   </p>
-                  <p className="flex items-center gap-1 truncate text-xs text-slate-600">
-                    {item.lat === null && <MapPinOff size={11} className="shrink-0 text-amber-600" aria-label="No location in the report" />}
-                    {item.address || [item.city, item.state, item.zip].filter(Boolean).join(", ") || "No address in the report"}
-                    {item.venue_name && <span className="ml-1 font-mono text-slate-400">· {item.venue_name}</span>}
+                  <p className="flex items-center gap-1 text-sm text-slate-700">
+                    {item.lat === null ? (
+                      <MapPinOff size={13} className="shrink-0 text-amber-600" aria-label="No location in the report" />
+                    ) : (
+                      <MapPin size={13} className="shrink-0 text-slate-400" aria-hidden />
+                    )}
+                    <span className="truncate">{item.address || [item.city, item.state, item.zip].filter(Boolean).join(", ") || "No address in the report"}</span>
                   </p>
+                  {/* What else the report knows, each under its name. It has no screen size: that is set in the store. */}
+                  <dl className="flex flex-wrap gap-x-5 gap-y-1 text-xs" aria-label={`Details of ${item.venue_id}`}>
+                    <Fact label="DMA" value={item.dma} />
+                    <Fact label="Venue type" value={item.venue_type} />
+                    <Fact
+                      label="Registered"
+                      value={day(item.last_registered) || day(item.first_registered)}
+                      title={`First registered ${day(item.first_registered) || "—"} · last registered ${day(item.last_registered) || "—"}`}
+                      empty="Never"
+                    />
+                    <Fact label="Last seen" value={day(item.last_seen)} />
+                    <Fact label="Stick #" value={item.serial_number} mono />
+                    <Fact label="IBC#" value={item.external_id} mono />
+                    <Fact label="CMS name" value={item.venue_name} mono />
+                  </dl>
                 </div>
-                <Button size="sm" variant="ghost" onClick={() => onSnooze(item)} disabled={snooze.isPending || Boolean(item.snoozed_date)}>
+                <Button size="sm" variant="ghost" onClick={() => onSnooze(item)} disabled={busy || Boolean(item.snoozed_date)}>
                   <Clock /> Not now
                 </Button>
-                <Button size="sm" onClick={() => onAdd(item)} disabled={add.isPending}>
+                <Button size="sm" onClick={() => onAdd(item)} disabled={busy}>
                   {add.isPending && add.variables?.key === item.key ? <Loader2 className="animate-spin" /> : <Plus />} Add
                 </Button>
                 {fixing[item.key] && (
@@ -159,6 +247,23 @@ export function ReviewDialog({
         )}
       </DialogContent>
     </Dialog>
+  );
+}
+
+const day = (iso: string) => (iso ?? "").slice(0, 10);
+const STATUS_TONE: Record<string, string> = {
+  online: "border-emerald-200 bg-emerald-50 text-emerald-800",
+  offline: "border-rose-200 bg-rose-50 text-rose-800",
+  "not registered": "border-violet-200 bg-violet-50 text-violet-800",
+};
+
+/** One labelled value of a report record; a dash when the report has none. */
+function Fact({ label, value, title, empty = "—", mono = false }: { label: string; value: string; title?: string; empty?: ReactNode; mono?: boolean }) {
+  return (
+    <div className="flex items-baseline gap-1.5" title={title}>
+      <dt className="font-mono text-[10px] uppercase tracking-wider text-slate-400">{label}</dt>
+      <dd className={cn(value ? "text-slate-800" : "text-slate-400", mono && "font-mono")}>{value || empty}</dd>
+    </div>
   );
 }
 

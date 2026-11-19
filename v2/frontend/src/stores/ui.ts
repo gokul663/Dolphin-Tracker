@@ -98,7 +98,8 @@ export const useStoresUi = create<StoresUiState>((set) => ({
         ? state
         : { projectId, ...FILTERS, unit: "locations", bounds: null, selectedId: null, hoveredId: null, drawerOpen: false },
     ),
-  setUnit: (unit) => set({ unit }),
+  // Stores and screens sort by different columns: a switch starts from the default order.
+  setUnit: (unit) => set((state) => (state.unit === unit ? state : { unit, sort: "store_name", dir: "asc" })),
   setNeedsAttention: (needsAttention) => set({ needsAttention }),
   loadView: (projectId, view) =>
     set({ projectId, ...FILTERS, ...view, bounds: null, selectedId: null, hoveredId: null, drawerOpen: false }),

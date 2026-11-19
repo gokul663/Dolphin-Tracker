@@ -344,6 +344,31 @@ export interface paths {
          */
         get: operations["list_stores_api_projects__project_id__stores_get"];
         put?: never;
+        /**
+         * Add Store
+         * @description Add one store by hand, with the checks a sheet row gets (422 names what is wrong).
+         */
+        post: operations["add_store_api_projects__project_id__stores_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{project_id}/stores/screens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Screens
+         * @description A page of screens, one row each, under the same filters as the stores. `sort` also takes venue_id, status
+         *     (the screen's), screen_size, owner and brand.
+         */
+        get: operations["list_screens_api_projects__project_id__stores_screens_get"];
+        put?: never;
         post?: never;
         delete?: never;
         options?: never;
@@ -686,6 +711,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/lists/installers/work": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Installer Work
+         * @description Per installer, across every project: stores assigned and their screens done and upcoming; and the names on
+         *     stores that match no installer.
+         */
+        get: operations["installer_work_api_lists_installers_work_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/lists/installers/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sync Installer Names
+         * @description Bring stores whose technician matches an installer (whatever the case) to the Installers list's spelling.
+         */
+        post: operations["sync_installer_names_api_lists_installers_sync_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/lists/{kind}": {
         parameters: {
             query?: never;
@@ -701,6 +767,27 @@ export interface paths {
          * @description Idempotent: a name already in the list (ignoring case and spacing) comes back as stored.
          */
         post: operations["add_name_api_lists__kind__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/lists/installers/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Save Installer
+         * @description Add an installer or change their details. 422 names the field: a name and a phone number are needed, unless
+         *     `allow_no_phone` is sent. `new_name` renames them; the stores and active route plans that name them follow.
+         */
+        put: operations["save_installer_api_lists_installers__name__put"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -796,6 +883,27 @@ export interface paths {
         get: operations["search_facets_api_store_search_facets_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/store-search/venues/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Refresh Venues
+         * @description Bring the all-venues list (every venue of every PA in the Dolphin data) up to date now. It runs in the
+         *     background and takes a minute or two; the daily device sync does the same.
+         */
+        post: operations["refresh_venues_api_store_search_venues_refresh_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -903,6 +1011,46 @@ export interface paths {
         put?: never;
         /** Reassign Stop */
         post: operations["reassign_stop_api_route_plans__plan_id__stops__project_id___stop_uid__reassign_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/route-plans/{plan_id}/stops/{project_id}/{stop_uid}/move": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Move Stop
+         * @description Put a store on a chosen installer's chosen day and keep it there; `to_plan_id` moves it to another plan.
+         */
+        post: operations["move_stop_api_route_plans__plan_id__stops__project_id___stop_uid__move_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/route-plans/{plan_id}/stops/{project_id}/{stop_uid}/mark": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark Stop
+         * @description Mark a stop Done or Incomplete (or back to in route), or release its pin.
+         */
+        post: operations["mark_stop_api_route_plans__plan_id__stops__project_id___stop_uid__mark_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1192,6 +1340,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{project_id}/screen-sheet": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Read Screen Sheet
+         * @description Line a screen cost sheet (DD code, screen size, screen count, cost) up with the project's screens. Without
+         *     `apply` nothing is written: the result is the preview. With it, sizes and owners that differ are saved.
+         */
+        post: operations["read_screen_sheet_api_projects__project_id__screen_sheet_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1381,7 +1550,7 @@ export interface components {
          */
         DeviceOverwrite: {
             /** Fields */
-            fields: ("store_name" | "addr" | "city" | "state" | "zip" | "location")[];
+            fields: ("store_name" | "addr" | "city" | "state" | "zip" | "dma" | "venue_type" | "location")[];
         };
         /**
          * DeviceSyncState
@@ -1552,26 +1721,30 @@ export interface components {
         /**
          * HardwareCosts
          * @description What the hardware costs Dolphin, per project (dollars; None = not set). Every installed screen has a stick; a
-         *     Dolphin screen also costs the screen itself, by size and type (`screens`, the price list the store window offers
-         *     when a Dolphin screen's size is picked).
+         *     Dolphin screen also costs the screen itself, by its size: the types of a size (`screens`, the list the store
+         *     window offers when a Dolphin screen's size is picked) all carry that size's one cost.
          */
         "HardwareCosts-Input": {
             /** Stick */
             stick?: number | null;
             /** Screens */
             screens?: components["schemas"]["ScreenPrice-Input"][];
+            /** Mounts */
+            mounts?: components["schemas"]["MountPrice-Input"][];
         };
         /**
          * HardwareCosts
          * @description What the hardware costs Dolphin, per project (dollars; None = not set). Every installed screen has a stick; a
-         *     Dolphin screen also costs the screen itself, by size and type (`screens`, the price list the store window offers
-         *     when a Dolphin screen's size is picked).
+         *     Dolphin screen also costs the screen itself, by its size: the types of a size (`screens`, the list the store
+         *     window offers when a Dolphin screen's size is picked) all carry that size's one cost.
          */
         "HardwareCosts-Output": {
             /** Stick */
             stick: number | null;
             /** Screens */
             screens: components["schemas"]["ScreenPrice-Output"][];
+            /** Mounts */
+            mounts: components["schemas"]["MountPrice-Output"][];
         };
         /**
          * HardwareCounts
@@ -1584,6 +1757,14 @@ export interface components {
             installed_stores: number;
             /** Installed Dolphin By Model */
             installed_dolphin_by_model: {
+                [key: string]: number;
+            };
+            /** Mounts */
+            mounts: {
+                [key: string]: number;
+            };
+            /** Installed Mounts */
+            installed_mounts: {
                 [key: string]: number;
             };
         };
@@ -1825,6 +2006,106 @@ export interface components {
             /** New Name */
             new_name: string;
         };
+        /**
+         * InstallerSave
+         * @description An installer's details (the Installers page). `allow_no_phone` saves one without a phone number (it is then
+         *     flagged); `must_be_new` refuses a name that is already listed (Add, as opposed to Edit).
+         */
+        InstallerSave: {
+            /**
+             * Phone
+             * @default
+             */
+            phone?: string;
+            /**
+             * Phone2
+             * @default
+             */
+            phone2?: string;
+            /**
+             * Email
+             * @default
+             */
+            email?: string;
+            /**
+             * Email2
+             * @default
+             */
+            email2?: string;
+            /**
+             * Shipping Address
+             * @default
+             */
+            shipping_address?: string;
+            /**
+             * Allow No Phone
+             * @default false
+             */
+            allow_no_phone?: boolean;
+            /**
+             * Must Be New
+             * @default false
+             */
+            must_be_new?: boolean;
+            /**
+             * New Name
+             * @default
+             */
+            new_name?: string;
+        };
+        /**
+         * InstallerSaved
+         * @description A saved installer, and what a rename carried along.
+         */
+        InstallerSaved: {
+            /**
+             * Id
+             * @default
+             */
+            id: string;
+            /** Value */
+            value: string;
+            /**
+             * Created At
+             * @default
+             */
+            created_at: string;
+            /**
+             * Phone
+             * @default
+             */
+            phone: string;
+            /**
+             * Phone2
+             * @default
+             */
+            phone2: string;
+            /**
+             * Email
+             * @default
+             */
+            email: string;
+            /**
+             * Email2
+             * @default
+             */
+            email2: string;
+            /**
+             * Shipping Address
+             * @default
+             */
+            shipping_address: string;
+            /**
+             * Stores Renamed
+             * @default 0
+             */
+            stores_renamed: number;
+            /**
+             * Plans Renamed
+             * @default 0
+             */
+            plans_renamed: number;
+        };
         /** InstallerStats */
         InstallerStats: {
             /** Total */
@@ -1840,6 +2121,46 @@ export interface components {
             avg_stops: number;
             /** Miles */
             miles: number;
+        };
+        /** InstallerSyncResult */
+        InstallerSyncResult: {
+            /** Stores Updated */
+            stores_updated: number;
+        };
+        /**
+         * InstallerWork
+         * @description What one name has across every project: the stores it is the technician of and their screens.
+         */
+        InstallerWork: {
+            /** Name */
+            name: string;
+            /**
+             * Stores
+             * @default 0
+             */
+            stores: number;
+            /**
+             * Screens Done
+             * @default 0
+             */
+            screens_done: number;
+            /**
+             * Screens Upcoming
+             * @default 0
+             */
+            screens_upcoming: number;
+            /**
+             * To Sync
+             * @default 0
+             */
+            to_sync: number;
+        };
+        /** InstallerWorkReport */
+        InstallerWorkReport: {
+            /** Installers */
+            installers: components["schemas"]["InstallerWork"][];
+            /** Unlisted */
+            unlisted: components["schemas"]["InstallerWork"][];
         };
         /** Job */
         Job: {
@@ -2070,6 +2391,32 @@ export interface components {
              */
             google_map_id: string;
         };
+        /**
+         * MountPrice
+         * @description What the mounts for one screen size cost: the wall mount and the ceiling mount (None = we have none for this
+         *     size, or it is not priced yet).
+         */
+        "MountPrice-Input": {
+            /** Size */
+            size: string;
+            /** Wall */
+            wall?: number | null;
+            /** Ceiling */
+            ceiling?: number | null;
+        };
+        /**
+         * MountPrice
+         * @description What the mounts for one screen size cost: the wall mount and the ceiling mount (None = we have none for this
+         *     size, or it is not priced yet).
+         */
+        "MountPrice-Output": {
+            /** Size */
+            size: string;
+            /** Wall */
+            wall: number | null;
+            /** Ceiling */
+            ceiling: number | null;
+        };
         /** MoveToNextDay */
         MoveToNextDay: {
             /** Version */
@@ -2080,8 +2427,17 @@ export interface components {
             /** Value */
             value: string;
         };
-        /** NameEntry */
+        /**
+         * NameEntry
+         * @description One name of a pick list. An installer also carries how to reach them (the Installers page); a name that was
+         *     only ever typed somewhere (a visit, a route plan) has these blank until someone fills them in.
+         */
         NameEntry: {
+            /**
+             * Id
+             * @default
+             */
+            id: string;
             /** Value */
             value: string;
             /**
@@ -2089,6 +2445,31 @@ export interface components {
              * @default
              */
             created_at: string;
+            /**
+             * Phone
+             * @default
+             */
+            phone: string;
+            /**
+             * Phone2
+             * @default
+             */
+            phone2: string;
+            /**
+             * Email
+             * @default
+             */
+            email: string;
+            /**
+             * Email2
+             * @default
+             */
+            email2: string;
+            /**
+             * Shipping Address
+             * @default
+             */
+            shipping_address: string;
         };
         /**
          * NameListKind
@@ -2322,10 +2703,28 @@ export interface components {
             max_day_hours: number | null;
         };
         /** PlanInstaller */
-        PlanInstaller: {
+        "PlanInstaller-Input": {
             /** Name */
             name: string;
             start: components["schemas"]["StartLocation"];
+            /** Stops Per Day */
+            stops_per_day?: number | null;
+            /** Max Day Hours */
+            max_day_hours?: number | null;
+            /** Start Date */
+            start_date?: string | null;
+        };
+        /** PlanInstaller */
+        "PlanInstaller-Output": {
+            /** Name */
+            name: string;
+            start: components["schemas"]["StartLocation"];
+            /** Stops Per Day */
+            stops_per_day: number | null;
+            /** Max Day Hours */
+            max_day_hours: number | null;
+            /** Start Date */
+            start_date: string | null;
         };
         /** PlanPreview */
         PlanPreview: {
@@ -2410,6 +2809,13 @@ export interface components {
             drive_minutes: number | null;
             /** Visited Screens */
             visited_screens: string[];
+            /** @default  */
+            outcome: components["schemas"]["StopOutcome"];
+            /**
+             * Pinned
+             * @default false
+             */
+            pinned: boolean;
             /** Added At */
             added_at: string;
         };
@@ -2422,6 +2828,27 @@ export interface components {
             /** Version */
             version?: number | null;
         };
+        /**
+         * PlanSummary
+         * @description Store counts of a plan: done (marked Done, or every stick visited), incomplete (marked so), and the rest.
+         */
+        PlanSummary: {
+            /**
+             * Done
+             * @default 0
+             */
+            done: number;
+            /**
+             * Incomplete
+             * @default 0
+             */
+            incomplete: number;
+            /**
+             * Not Visited
+             * @default 0
+             */
+            not_visited: number;
+        };
         /** PoolFacets */
         PoolFacets: {
             /** States */
@@ -2430,6 +2857,14 @@ export interface components {
             cities: components["schemas"]["FacetValue"][];
             /** Projects */
             projects: components["schemas"]["FacetValue"][];
+            /** Dmas */
+            dmas: components["schemas"]["FacetValue"][];
+            /** Statuses */
+            statuses: components["schemas"]["FacetValue"][];
+            /** Buckets */
+            buckets: components["schemas"]["FacetValue"][];
+            /** Pas */
+            pas: components["schemas"]["FacetValue"][];
         };
         /**
          * PoolStore
@@ -2970,7 +3405,7 @@ export interface components {
              */
             max_day_hours: number;
             /** Installers */
-            installers: components["schemas"]["PlanInstaller"][];
+            installers: components["schemas"]["PlanInstaller-Output"][];
             /** Days */
             days: components["schemas"]["PlanDay"][];
             /** Locked Days */
@@ -2994,6 +3429,7 @@ export interface components {
              * @default
              */
             closed_at: string;
+            summary: components["schemas"]["PlanSummary"] | null;
         };
         /**
          * RoutePlanBundle
@@ -3034,7 +3470,7 @@ export interface components {
              */
             max_day_hours?: number;
             /** Installers */
-            installers: components["schemas"]["PlanInstaller"][];
+            installers: components["schemas"]["PlanInstaller-Input"][];
             /** Stores */
             stores: components["schemas"]["StoreRef"][];
         };
@@ -3050,7 +3486,7 @@ export interface components {
             /** Max Day Hours */
             max_day_hours?: number | null;
             /** Installers */
-            installers?: components["schemas"]["PlanInstaller"][] | null;
+            installers?: components["schemas"]["PlanInstaller-Input"][] | null;
             /** @default forecast */
             replan?: components["schemas"]["Replan"];
             /** Version */
@@ -3114,6 +3550,16 @@ export interface components {
              * @default
              */
             screen_type: string;
+            /**
+             * Cms Name
+             * @default
+             */
+            cms_name: string;
+            /**
+             * Venue Type
+             * @default
+             */
+            venue_type: string;
             /**
              * Has Mount
              * @default false
@@ -3214,6 +3660,16 @@ export interface components {
              */
             screen_type?: string;
             /**
+             * Cms Name
+             * @default
+             */
+            cms_name?: string;
+            /**
+             * Venue Type
+             * @default
+             */
+            venue_type?: string;
+            /**
              * Has Mount
              * @default false
              */
@@ -3232,6 +3688,43 @@ export interface components {
             status?: components["schemas"]["ScreenStatus"];
         };
         /**
+         * ScreenListRow
+         * @description One screen in the Screens view: the screen itself, with the store it is at.
+         */
+        ScreenListRow: {
+            /** Uid */
+            uid: string;
+            /** External Id */
+            external_id: string;
+            /** Display Id */
+            display_id: string;
+            /** Store Name */
+            store_name: string;
+            /** Addr */
+            addr: string;
+            /** City */
+            city: string;
+            /** State */
+            state: string;
+            /** Installer Name */
+            installer_name: string;
+            /** Install Type */
+            install_type: string;
+            screen: components["schemas"]["Screen"];
+        };
+        /**
+         * ScreenPage
+         * @description A page of the screen list, with the filtered total and where the page starts.
+         */
+        ScreenPage: {
+            /** Items */
+            items: components["schemas"]["ScreenListRow"][];
+            /** Total */
+            total: number;
+            /** Offset */
+            offset: number;
+        };
+        /**
          * ScreenPrice
          * @description One Dolphin-owned screen model and what it costs: a size ('24"') and a type ("Dolphin", "Dell").
          */
@@ -3245,6 +3738,11 @@ export interface components {
             type?: string;
             /** Cost */
             cost?: number | null;
+            /**
+             * Is Default
+             * @default false
+             */
+            is_default?: boolean;
         };
         /**
          * ScreenPrice
@@ -3260,6 +3758,71 @@ export interface components {
             type: string;
             /** Cost */
             cost: number | null;
+            /**
+             * Is Default
+             * @default false
+             */
+            is_default: boolean;
+        };
+        /** ScreenSheetResult */
+        ScreenSheetResult: {
+            /** Rows */
+            rows: components["schemas"]["SheetScreenRow"][];
+            /**
+             * Matched
+             * @default 0
+             */
+            matched: number;
+            /**
+             * Changing
+             * @default 0
+             */
+            changing: number;
+            /**
+             * Unmatched
+             * @default 0
+             */
+            unmatched: number;
+            /**
+             * Cost Differs
+             * @default 0
+             */
+            cost_differs: number;
+            /**
+             * Total Cost
+             * @default 0
+             */
+            total_cost: number;
+            /**
+             * Unpriced
+             * @default 0
+             */
+            unpriced: number;
+            /**
+             * Applied
+             * @default false
+             */
+            applied: boolean;
+            /**
+             * Screens Updated
+             * @default 0
+             */
+            screens_updated: number;
+        };
+        /**
+         * ScreenSheetUpload
+         * @description A screen cost sheet (.csv or .xlsx) sent whole, base64; `apply` writes what the preview showed.
+         */
+        ScreenSheetUpload: {
+            /** Filename */
+            filename: string;
+            /** Content Base64 */
+            content_base64: string;
+            /**
+             * Apply
+             * @default false
+             */
+            apply?: boolean;
         };
         /**
          * ScreenStatus
@@ -3279,6 +3842,91 @@ export interface components {
              * @default
              */
             updated_by?: string;
+        };
+        /**
+         * SheetScreenRow
+         * @description One row of the sheet against the project.
+         */
+        SheetScreenRow: {
+            /** Row */
+            row: number;
+            /** Dd Code */
+            dd_code: string;
+            /**
+             * External Id
+             * @default
+             */
+            external_id: string;
+            /**
+             * Note
+             * @default
+             */
+            note: string;
+            /**
+             * Matched
+             * @default false
+             */
+            matched: boolean;
+            /**
+             * Store Uid
+             * @default
+             */
+            store_uid: string;
+            /**
+             * Store Name
+             * @default
+             */
+            store_name: string;
+            /**
+             * Store External Id
+             * @default
+             */
+            store_external_id: string;
+            /**
+             * Ibc Differs
+             * @default false
+             */
+            ibc_differs: boolean;
+            /**
+             * Size From
+             * @default
+             */
+            size_from: string;
+            /**
+             * Size To
+             * @default
+             */
+            size_to: string;
+            /** Dolphin From */
+            dolphin_from: boolean | null;
+            /** Dolphin To */
+            dolphin_to: boolean | null;
+            /**
+             * Changes
+             * @default false
+             */
+            changes: boolean;
+            /**
+             * Stick Count
+             * @default 1
+             */
+            stick_count: number;
+            /** Screen Count */
+            screen_count: number | null;
+            /** Sheet Cost */
+            sheet_cost: number | null;
+            /** Our Cost */
+            our_cost: number | null;
+            /**
+             * Cost Differs
+             * @default false
+             */
+            cost_differs: boolean;
+            /**
+             * Problem
+             * @default
+             */
+            problem: string;
         };
         /**
          * SkippedStop
@@ -3458,6 +4106,12 @@ export interface components {
             committed_store_tvs: number | null;
             /** Wall Mounts Needed */
             wall_mounts_needed: number | null;
+            /** Wall 24 Mounts Needed */
+            wall_24_mounts_needed: number | null;
+            /** Screens Used */
+            screens_used: number | null;
+            /** Mounts Used */
+            mounts_used: number | null;
             /** Ceiling Mounts Needed */
             ceiling_mounts_needed: number | null;
             /** Tv Mounts Needed */
@@ -3737,6 +4391,12 @@ export interface components {
             committed_store_tvs?: number | null;
             /** Wall Mounts Needed */
             wall_mounts_needed?: number | null;
+            /** Wall 24 Mounts Needed */
+            wall_24_mounts_needed?: number | null;
+            /** Screens Used */
+            screens_used?: number | null;
+            /** Mounts Used */
+            mounts_used?: number | null;
             /** Ceiling Mounts Needed */
             ceiling_mounts_needed?: number | null;
             /** Tv Mounts Needed */
@@ -3829,10 +4489,67 @@ export interface components {
             /** Needs Attention */
             needs_attention?: components["schemas"]["NeedsAttention"][];
         };
+        /**
+         * StopMark
+         * @description Mark a stop Done / Incomplete / back to in route, and/or release its pin. Fields left out stay.
+         */
+        StopMark: {
+            outcome?: components["schemas"]["StopOutcome"] | null;
+            /** Pinned */
+            pinned?: boolean | null;
+        };
+        /**
+         * StopMove
+         * @description Put an open store on a chosen installer's chosen day, where it adds the least driving, and keep it there
+         *     (pinned). `to_plan_id` moves it to another active plan instead: it leaves this one.
+         */
+        StopMove: {
+            /** Installer */
+            installer: string;
+            /** Day */
+            day: number;
+            /** To Plan Id */
+            to_plan_id?: string | null;
+            /** Version */
+            version?: number | null;
+        };
+        /**
+         * StopOutcome
+         * @enum {string}
+         */
+        StopOutcome: "" | "done" | "incomplete";
         /** StopReassign */
         StopReassign: {
             /** Installer */
             installer: string;
+        };
+        /**
+         * StoreAdd
+         * @description One store typed in by hand (the Stores page's "Add store"). Checked like a sheet row: IBC#, store name and
+         *     address are required, the IBC# and the address must be new to the project, and Google must verify the address.
+         */
+        StoreAdd: {
+            /** External Id */
+            external_id: string;
+            /** Store Name */
+            store_name: string;
+            /** Addr */
+            addr: string;
+            /**
+             * City
+             * @default
+             */
+            city?: string;
+            /**
+             * State
+             * @default
+             */
+            state?: string;
+            /**
+             * Zip
+             * @default
+             */
+            zip?: string;
         };
         /**
          * StoreDetailsUpdate
@@ -3891,6 +4608,12 @@ export interface components {
             committed_store_tvs?: number | null;
             /** Wall Mounts Needed */
             wall_mounts_needed?: number | null;
+            /** Wall 24 Mounts Needed */
+            wall_24_mounts_needed?: number | null;
+            /** Screens Used */
+            screens_used?: number | null;
+            /** Mounts Used */
+            mounts_used?: number | null;
             /** Ceiling Mounts Needed */
             ceiling_mounts_needed?: number | null;
             /** Tv Mounts Needed */
@@ -4163,6 +4886,21 @@ export interface components {
             latest_apk: boolean;
             /** Kiosk Mode */
             kiosk_mode: boolean;
+            /**
+             * Dagent Installed
+             * @default false
+             */
+            dagent_installed: boolean;
+            /**
+             * Wifi Ssid
+             * @default
+             */
+            wifi_ssid: string;
+            /**
+             * Wifi Password
+             * @default
+             */
+            wifi_password: string;
             /** Category */
             category: string;
             /** Subcategory */
@@ -4182,6 +4920,12 @@ export interface components {
              * @default
              */
             route_plan_id: string;
+            /**
+             * Outcome
+             * @default
+             * @enum {string}
+             */
+            outcome: "" | "done" | "incomplete";
             /** Id */
             id: string;
             /** Project Id */
@@ -4263,6 +5007,21 @@ export interface components {
             latest_apk: boolean;
             /** Kiosk Mode */
             kiosk_mode: boolean;
+            /**
+             * Dagent Installed
+             * @default false
+             */
+            dagent_installed?: boolean;
+            /**
+             * Wifi Ssid
+             * @default
+             */
+            wifi_ssid?: string;
+            /**
+             * Wifi Password
+             * @default
+             */
+            wifi_password?: string;
             /** Category */
             category: string;
             /** Subcategory */
@@ -4282,6 +5041,12 @@ export interface components {
              * @default
              */
             route_plan_id?: string;
+            /**
+             * Outcome
+             * @default
+             * @enum {string}
+             */
+            outcome?: "" | "done" | "incomplete";
         };
         /**
          * VisitState
@@ -4982,6 +5747,116 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StorePage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_store_api_projects__project_id__stores_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StoreAdd"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Stop"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_screens_api_projects__project_id__stores_screens_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+                north?: number | null;
+                south?: number | null;
+                east?: number | null;
+                west?: number | null;
+                status?: components["schemas"]["ScreenStatus"][] | null;
+                /** @description Repeatable; empty value = unassigned */
+                installer?: string[] | null;
+                /** @description Repeatable; a store matches any of the values */
+                pa?: string[] | null;
+                /** @description Repeatable; a store matches any of the values */
+                state?: string[] | null;
+                /** @description Repeatable; a store matches any of the values */
+                city?: string[] | null;
+                /** @description Repeatable; a store matches any of the values */
+                dma?: string[] | null;
+                /** @description Repeatable; a store matches any of the values */
+                venue_type?: string[] | null;
+                /** @description Repeatable; any screen's venue id */
+                dd_code?: string[] | null;
+                /** @description Repeatable; any screen's size */
+                screen_size?: string[] | null;
+                /** @description Repeatable; "In route" or "Not in route" */
+                route?: string[] | null;
+                /** @description Repeatable; Visited, Partly visited, Not visited */
+                visit?: string[] | null;
+                /** @description Repeatable; the store's status group */
+                bucket?: components["schemas"]["StatusBucket"][] | null;
+                /** @description Repeatable; Technician, Self install, … */
+                install_type?: string[] | null;
+                /** @description Repeatable; a technician's name, "" = none */
+                technician?: string[] | null;
+                /** @description Repeatable; "Needs mount" or "No mount needed" */
+                mount?: string[] | null;
+                /** @description Repeatable; "Fulfilled", "Not fulfilled" or "No commitment" */
+                fulfilled?: string[] | null;
+                q?: string;
+                /** @description Only stores added without a name or a verified address */
+                needs_attention?: boolean;
+                /** @description a store attribute, status, installer, day, screens, fields.<key> */
+                sort?: string;
+                dir?: string;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScreenPage"];
                 };
             };
             /** @description Validation Error */
@@ -5830,6 +6705,46 @@ export interface operations {
             };
         };
     };
+    installer_work_api_lists_installers_work_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstallerWorkReport"];
+                };
+            };
+        };
+    };
+    sync_installer_names_api_lists_installers_sync_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstallerSyncResult"];
+                };
+            };
+        };
+    };
     list_names_api_lists__kind__get: {
         parameters: {
             query?: {
@@ -5886,6 +6801,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["NameEntry"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    save_installer_api_lists_installers__name__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InstallerSave"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstallerSaved"];
                 };
             };
             /** @description Validation Error */
@@ -6011,6 +6961,11 @@ export interface operations {
                 city?: string[] | null;
                 /** @description Repeatable; a store matches any of the values */
                 project_id?: string[] | null;
+                /** @description Repeatable; a store matches any of the values */
+                dma?: string[] | null;
+                /** @description Repeatable; a store matches any of the values */
+                pa?: string[] | null;
+                bucket?: components["schemas"]["StatusBucket"][] | null;
                 status?: components["schemas"]["ScreenStatus"][] | null;
                 pending_only?: boolean;
                 available_only?: boolean;
@@ -6051,6 +7006,11 @@ export interface operations {
                 city?: string[] | null;
                 /** @description Repeatable; a store matches any of the values */
                 project_id?: string[] | null;
+                /** @description Repeatable; a store matches any of the values */
+                dma?: string[] | null;
+                /** @description Repeatable; a store matches any of the values */
+                pa?: string[] | null;
+                bucket?: components["schemas"]["StatusBucket"][] | null;
                 status?: components["schemas"]["ScreenStatus"][] | null;
                 pending_only?: boolean;
                 available_only?: boolean;
@@ -6091,6 +7051,11 @@ export interface operations {
                 city?: string[] | null;
                 /** @description Repeatable; a store matches any of the values */
                 project_id?: string[] | null;
+                /** @description Repeatable; a store matches any of the values */
+                dma?: string[] | null;
+                /** @description Repeatable; a store matches any of the values */
+                pa?: string[] | null;
+                bucket?: components["schemas"]["StatusBucket"][] | null;
                 status?: components["schemas"]["ScreenStatus"][] | null;
                 pending_only?: boolean;
                 available_only?: boolean;
@@ -6118,6 +7083,28 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    refresh_venues_api_store_search_venues_refresh_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: boolean;
+                    };
                 };
             };
         };
@@ -6369,6 +7356,80 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["Reassign"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoutePlanBundle"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    move_stop_api_route_plans__plan_id__stops__project_id___stop_uid__move_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plan_id: string;
+                project_id: string;
+                stop_uid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StopMove"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoutePlanBundle"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mark_stop_api_route_plans__plan_id__stops__project_id___stop_uid__mark_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plan_id: string;
+                project_id: string;
+                stop_uid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StopMark"];
             };
         };
         responses: {
@@ -6884,6 +7945,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Stop"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_screen_sheet_api_projects__project_id__screen_sheet_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScreenSheetUpload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScreenSheetResult"];
                 };
             };
             /** @description Validation Error */

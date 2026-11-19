@@ -116,7 +116,8 @@ export function fulfillment(stop: {
     /** Completed Dolphin screens and Completed store TVs, apart. */
     installedScreens,
     installedTvs: installed - installedScreens,
-    fulfilled: committed > 0 && installed >= committed,
+    /** A blank committed count is 0: anything installed meets it. */
+    fulfilled: installed > 0 && installed >= committed,
   };
 }
 
@@ -129,9 +130,11 @@ export function screenTechnicians(visits: { screen_id: string; installer: string
   return { last: latest ? { name: latest.installer.trim(), date: latest.visit_date } : null, all };
 }
 
-export type ScreenPrice = { size: string; type: string; cost: number | null };
+export type ScreenPrice = { size: string; type: string; cost: number | null; is_default?: boolean };
 /** The project's prices: a stick, and the Dolphin-owned screen models (size + type) from Settings. */
-export type HardwareCosts = { stick: number | null; screens: ScreenPrice[] };
+/** What the mounts for one screen size cost; null = none for this size, or not priced. */
+export type MountPrice = { size: string; wall: number | null; ceiling: number | null };
+export type HardwareCosts = { stick: number | null; screens: ScreenPrice[]; mounts?: MountPrice[] };
 
 /** A size as the prices key it: "43", "43in", '43"' → '43"'; "" when it holds no inches. */
 export function sizeLabel(value: string): string {
@@ -143,13 +146,20 @@ export function sizeLabel(value: string): string {
 export const screenTypesFor = (costs: HardwareCosts, size: string): ScreenPrice[] =>
   costs.screens.filter((row) => row.size === sizeLabel(size) && row.type.trim() !== "");
 
-/** The price list row an installed Dolphin screen falls under: its size and type; with no type chosen, the size's
- *  only row when there is just one. `null` cost = not priced (no such row, or no amount on it). */
+/** The size's default model in Settings (the one marked; its first when none is): what a Dolphin screen of that size
+ *  is when no type is chosen, so screens entered before types existed stay priced. */
+export const defaultScreenPrice = (costs: HardwareCosts, size: string): ScreenPrice | undefined => {
+  const rows = costs.screens.filter((row) => row.size === (sizeLabel(size) || '24"'));
+  return rows.find((row) => row.is_default) ?? rows[0];
+};
+
+/** The price list row an installed Dolphin screen falls under: its size and type, or the size's default when no
+ *  type is chosen. `null` cost = not priced (no such row, or no amount on it). */
 function modelOf(costs: HardwareCosts, size: string, type: string): { label: string; price: number | null } {
   const inches = sizeLabel(size) || '24"';
   const rows = costs.screens.filter((row) => row.size === inches);
   const wanted = type.trim().toLowerCase();
-  const row = wanted ? rows.find((item) => item.type.trim().toLowerCase() === wanted) : rows.length === 1 ? rows[0] : rows.find((item) => item.type.trim() === "");
+  const row = wanted ? rows.find((item) => item.type.trim().toLowerCase() === wanted) : defaultScreenPrice(costs, inches);
   const name = (row?.type ?? type).trim();
   return { label: name ? `${inches} ${name} screens` : `${inches} Dolphin screens`, price: row?.cost ?? null };
 }
@@ -200,4 +210,21 @@ export function projectHardwareCost(
   });
   const dolphinTvs = models.reduce((sum, model) => sum + model.count, 0);
   return { ...costLines(kpi.installed_screens, models, costs), sticks: kpi.installed_screens, dolphinTvs };
+}
+
+/** The hardware cost with the mounts on the installed screens added: one line per size and kind
+ *  (`installed_mounts`, keyed `24"|wall`), priced from Settings' mounts. `total` is null while a needed price is not
+ *  set. */
+export function withMountCosts<T extends { lines: CostLine[]; missing: string[]; total: number | null }>(cost: T, installedMounts: Record<string, number>, costs: HardwareCosts): T {
+  const mounts = Object.entries(installedMounts)
+    .filter(([, count]) => count > 0)
+    .map(([key, count]) => {
+      const [size = "", kind = "wall"] = key.split("|");
+      const row = (costs.mounts ?? []).find((item) => item.size === size);
+      return { size, label: `${size} ${kind} mounts`, count, price: row ? (kind === "ceiling" ? row.ceiling : row.wall) : null };
+    })
+    .sort((a, b) => parseInt(a.size, 10) - parseInt(b.size, 10) || a.label.localeCompare(b.label));
+  const lines = [...cost.lines, ...mounts.map(({ label, count, price }) => ({ label, count, price }))];
+  const missing = [...cost.missing, ...mounts.filter((line) => line.price === null).map((line) => line.label.replace(/ mounts$/, " mount"))];
+  return { ...cost, lines, missing, total: missing.length ? null : lines.reduce((sum, line) => sum + line.count * (line.price ?? 0), 0) };
 }

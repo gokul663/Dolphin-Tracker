@@ -17,6 +17,7 @@ import {
   type Bounds,
   type MarkerStyle,
   type PinGroup,
+  type PinPaint,
 } from "@/components/map/pins";
 import { useMapsConfig } from "@/features/places/api";
 import type { Pin } from "@/lib/api/types";
@@ -76,10 +77,17 @@ export interface MapViewProps {
   controls?: ReactNode;
   /** At the right end of the map's header bar (the Stores tab's Full page link). */
   action?: ReactNode;
+  /** The route planner: pins in their installer's colour, the status as a small dot on the pin. Pins are then
+   *  never clustered (a plan's stores are few, and a bubble could not say whose they are). */
+  installerColors?: Record<string, string>;
+  /** pin uid → text in the pin's head (a stop's place in the day's order). */
+  labels?: Record<string, string>;
+  /** Lines over the map: an installer's day, in order. */
+  routes?: { key: string; color: string; points: { lat: number; lng: number }[]; bold?: boolean }[];
 }
 
 /** Shared map for the Stores and Routes tabs: status pins, same-location stacks, legend, clustering, sync. */
-export function MapView({ pins, selectedId, hoveredId, onSelect, onBoundsChange, className, unit = "locations", controls, action }: MapViewProps) {
+export function MapView({ pins, selectedId, hoveredId, onSelect, onBoundsChange, className, unit = "locations", controls, action, installerColors, labels, routes }: MapViewProps) {
   const config = useMapsConfig();
   // The map shows what the filters above select; the legend only explains the colours.
   const visible = pins;
@@ -91,7 +99,6 @@ export function MapView({ pins, selectedId, hoveredId, onSelect, onBoundsChange,
   // Counting stores, the Not Registered group is their In Progress (Not Registered is a screen's status).
   const tag = (bucket: StatusBucket) => (unit === "locations" && bucket === "Not Registered" ? "In Progress" : BUCKET_LABEL[bucket]);
   const showBadges = pins.some((pin) => pin.route_plan_id || (pin.visit_state && pin.visit_state !== "none"));
-  const stacked = groups.filter((group) => group.pins.length > 1);
   const key = config.data?.google_maps_browser_key ?? "";
   const mapId = config.data?.google_map_id || undefined; // a vector map when the user has created a Map ID
 
@@ -100,6 +107,18 @@ export function MapView({ pins, selectedId, hoveredId, onSelect, onBoundsChange,
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 border-b px-3 py-2 text-xs text-slate-600">
       {controls}
       <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-4 gap-y-1" role="group" aria-label="Map legend">
+        {installerColors && (
+          <ul className="flex w-full flex-wrap items-center gap-x-4 gap-y-1" aria-label="Installer colours">
+            <li className="font-mono text-[10px] uppercase tracking-wider text-slate-400">Pin colour</li>
+            {Object.entries(installerColors).map(([name, color]) => (
+              <li key={name} className="flex items-center gap-1.5 font-medium text-slate-800">
+                <span className="size-3 rounded-full" style={{ background: color }} aria-hidden /> {name}
+                <span className="font-normal tabular-nums text-slate-400">{pins.filter((pin) => pin.installer === name).length}</span>
+              </li>
+            ))}
+            <li className="font-mono text-[10px] uppercase tracking-wider text-slate-400">· small dot on a pin = status:</li>
+          </ul>
+        )}
         <ul className="flex flex-wrap items-center gap-x-4 gap-y-1" aria-label="Status colours">
           {present.map((bucket) => (
             <li key={bucket} className={cn("flex flex-col gap-1", counts[bucket] === 0 && "opacity-45")} title={`${BUCKET_META[bucket].members}. Bubbles go from light (few) to dark (many).`}>
@@ -124,9 +143,7 @@ export function MapView({ pins, selectedId, hoveredId, onSelect, onBoundsChange,
           </div>
         )}
         <span className="ml-auto font-mono text-[11px] text-slate-500" aria-live="polite">
-          {unit === "screens" ? `${groups.reduce((sum, group) => sum + group.screens, 0)} screens · ` : ""}
-          {visible.length} records · {groups.length} pins
-          {stacked.length ? ` · ${stacked.reduce((sum, group) => sum + group.pins.length, 0)} at ${stacked.length} shared addresses` : ""}
+          {groups.length} pins · {unit === "screens" ? `${groups.reduce((sum, group) => sum + group.screens, 0)} screens` : `${visible.length} stores`}
         </span>
       </div>
       {action}
@@ -156,7 +173,8 @@ export function MapView({ pins, selectedId, hoveredId, onSelect, onBoundsChange,
                 if (bounds) onBoundsChange?.(bounds);
               }}
             >
-              <Markers groups={groups} fitSignature={fitSignature} selectedId={selectedId} hoveredId={hoveredId} onSelect={onSelect} unit={unit} />
+              <Markers groups={groups} fitSignature={fitSignature} selectedId={selectedId} hoveredId={hoveredId} onSelect={onSelect} unit={unit} paint={{ installerColors, labels }} />
+              {routes && <RouteLines routes={routes} />}
             </Map>
           </APIProvider>
         )}
@@ -190,11 +208,39 @@ interface MarkersProps {
   hoveredId?: string | null;
   onSelect?: (uid: string) => void;
   unit: MapUnit;
+  paint: PinPaint;
+}
+
+/** Each installer's day as a line through its stops, in the installer's colour; the clicked day is heavier. */
+function RouteLines({ routes }: { routes: NonNullable<MapViewProps["routes"]> }) {
+  const map = useMap();
+  const signature = routes.map((route) => `${route.key}:${route.color}:${route.bold ? 1 : 0}:${route.points.map((point) => `${point.lat},${point.lng}`).join(";")}`).join("|");
+  useEffect(() => {
+    if (!map) return;
+    const lines = routes
+      .filter((route) => route.points.length > 1)
+      .map(
+        (route) =>
+          new google.maps.Polyline({
+            map,
+            path: route.points,
+            strokeColor: route.color,
+            strokeOpacity: route.bold ? 0.95 : 0.55,
+            strokeWeight: route.bold ? 4 : 2,
+            clickable: false,
+            // Arrows along the way say which direction the day runs.
+            icons: route.bold ? [{ icon: { path: google.maps.SymbolPath.FORWARD_OPEN_ARROW, scale: 2.5 }, offset: "50px", repeat: "120px" }] : undefined,
+          }),
+      );
+    return () => lines.forEach((line) => line.setMap(null));
+  }, [map, signature]); // `signature` stands in for `routes`
+  return null;
 }
 
 /** Imperative markers (one per location) in a clusterer that only clusters at low zoom. */
-function Markers({ groups, fitSignature, selectedId, hoveredId, onSelect, unit }: MarkersProps) {
+function Markers({ groups, fitSignature, selectedId, hoveredId, onSelect, unit, paint }: MarkersProps) {
   const map = useMap();
+  const loose = Boolean(paint.installerColors); // installer-coloured pins sit on the map itself, never in a bubble
   const clusterers = useRef(new globalThis.Map<StatusBucket, MarkerClusterer>()); // one per status group
   const markers = useRef(new globalThis.Map<string, google.maps.Marker>()); // by location key
   const applied = useRef(new globalThis.Map<string, MarkerStyle>()); // the style each marker has now
@@ -235,6 +281,7 @@ function Markers({ groups, fitSignature, selectedId, hoveredId, onSelect, unit }
   useEffect(() => {
     if (!map || clusterers.current.size === 0) return;
     for (const clusterer of clusterers.current.values()) clusterer.clearMarkers();
+    for (const marker of markers.current.values()) marker.setMap(null);
     markers.current.clear();
     applied.current.clear();
     const byBucket = new globalThis.Map<StatusBucket, google.maps.Marker[]>();
@@ -247,11 +294,15 @@ function Markers({ groups, fitSignature, selectedId, hoveredId, onSelect, unit }
         else setOpenKey(current.key);
       });
       markers.current.set(group.key, marker);
+      if (loose) {
+        marker.setMap(map);
+        return;
+      }
       const bucket = bucketOf(group.status);
       byBucket.set(bucket, [...(byBucket.get(bucket) ?? []), marker]);
     });
     for (const [bucket, created] of byBucket) clusterers.current.get(bucket)?.addMarkers(created);
-  }, [map, signature]); // `signature` stands in for `groups`: rebuild only when locations or their groups change
+  }, [map, signature, loose]); // `signature` stands in for `groups`: rebuild only when locations or their groups change
 
   // Fit to the project's locations (v1: one pin → zoom 13) only when those change, not on legend toggles.
   const fitGroups = useRef(groups);
@@ -301,7 +352,7 @@ function Markers({ groups, fitSignature, selectedId, hoveredId, onSelect, unit }
 
   // Status, stack count, selection and hover restyle only the markers whose style changed. Never refits.
   useEffect(() => {
-    const next = markerStyles(groups, selectedId, hoveredId, unit);
+    const next = markerStyles(groups, selectedId, hoveredId, unit, paint);
     const changed = changedStyles(applied.current, next);
     for (const key of changed) {
       const marker = markers.current.get(key);
@@ -360,10 +411,10 @@ function Markers({ groups, fitSignature, selectedId, hoveredId, onSelect, unit }
   );
 }
 
-function icon({ status, count, emphasis, overlay }: MarkerStyle): google.maps.Icon {
+function icon({ status, count, emphasis, overlay, fill, text }: MarkerStyle): google.maps.Icon {
   const scale = emphasis === "normal" ? 1 : 1.2;
   return {
-    url: markerSvg(status, count, emphasis, overlay),
+    url: markerSvg(status, count, emphasis, overlay, fill, text),
     scaledSize: new google.maps.Size(40 * scale, 50 * scale),
     anchor: new google.maps.Point(20 * scale, 47 * scale),
   };

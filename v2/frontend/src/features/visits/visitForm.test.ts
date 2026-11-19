@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formErrors, LOCKED_GROUPS, lockedPatch, lockedValues, formFor, toInput, venueNameOf, visitState } from "@/features/visits/visitForm";
+import { formErrors, LOCKED_GROUPS, lockedPatch, lockedValues, formFor, screenOutcomes, toInput, venueNameOf, visitState } from "@/features/visits/visitForm";
 import { makeScreen, makeStop } from "@/test/fixtures";
 import type { Category } from "@/lib/api/types";
 
@@ -21,14 +21,17 @@ describe("visit form", () => {
   it("requires the starred fields and the new number for replacements", () => {
     const form = formFor(stop, screen, { installer: "Ann", manager: "", date: "2026-11-06" });
     expect(Object.keys(formErrors(form, TREE)).sort()).toEqual(
-      ["category", "dolphin_manager", "kiosk_mode", "latest_apk", "network_type", "subcategory"].sort(),
+      ["category", "dagent_installed", "dolphin_manager", "kiosk_mode", "latest_apk", "network_type", "subcategory"].sort(),
     );
-    const filled = { ...form, dolphin_manager: "Zoe", network_type: "LTE" as const, latest_apk: true, kiosk_mode: false, category: "Stick / Device Issues", subcategory: "Stick Replaced With" };
+    const filled = { ...form, dolphin_manager: "Zoe", network_type: "LTE" as const, latest_apk: true, kiosk_mode: false, dagent_installed: true, wifi_ssid: "Back room", category: "Stick / Device Issues", subcategory: "Stick Replaced With" };
     expect(formErrors(filled, TREE)).toEqual({ replaced_with: "Enter the new number" });
     expect(formErrors({ ...filled, replaced_with: "ST-9" }, TREE)).toEqual({});
     expect(formErrors({ ...filled, subcategory: "TV Off" }, TREE).subcategory).toBeTruthy();
     expect(toInput({ ...filled, replaced_with: " ST-9 " }, "plan1")).toMatchObject({ replaced_with: "ST-9", route_plan_id: "plan1", latest_apk: true });
     expect(toInput({ ...filled, subcategory: "TV Off", category: "Power Issues", replaced_with: "left over" }, "").replaced_with).toBe("");
+    // The stick's own WiFi is only sent with WiFi; Dagent is the third check.
+    expect(toInput(filled, "")).toMatchObject({ dagent_installed: true, wifi_ssid: "" });
+    expect(toInput({ ...filled, network_type: "WiFi" }, "").wifi_ssid).toBe("Back room");
   });
 
   it("sends only the locked fields that changed", () => {
@@ -46,5 +49,17 @@ describe("visit form", () => {
     expect(visitState(makeStop({ screens, screen_visits: { x: "2026-11-02" }, last_planned_at: "" }))).toBe("partly");
     expect(visitState(makeStop({ screens, screen_visits: { x: "2026-11-02", y: "2026-11-03" }, last_planned_at: "2026-11-01" }))).toBe("visited");
     expect(visitState(makeStop({ screens, screen_visits: { x: "2026-11-02", y: "2026-11-03" }, last_planned_at: "2026-11-03" }))).toBe("partly");
+  });
+});
+
+describe("screenOutcomes", () => {
+  it("is each screen's latest Done or Incomplete in the plan (newest first)", () => {
+    const visits = [
+      { screen_id: "s1", route_plan_id: "plan", outcome: "done" as const },
+      { screen_id: "s1", route_plan_id: "plan", outcome: "incomplete" as const },
+      { screen_id: "s2", route_plan_id: "other", outcome: "done" as const },
+      { screen_id: "s3", route_plan_id: "plan", outcome: "" as const },
+    ];
+    expect([...screenOutcomes(visits, "plan")]).toEqual([["s1", "done"]]);
   });
 });

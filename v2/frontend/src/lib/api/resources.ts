@@ -3,6 +3,7 @@ import { api, apiUrl, fetchJson, uploadFile } from "@/lib/api/client";
 import type {
   AppendResult,
   AppendStops,
+  StoreAdd,
   GeocodeResult,
   HealthResponse,
   ImportJobCreate,
@@ -46,7 +47,7 @@ import type {
   RoutePlanCreate,
   RoutePlanUpdate,
   Visit,
-  VisitInput, OverwriteField, ReviewAdd, OverwriteResult, PaList, ReviewItem, ReviewPage, LogPage, UploadList, SyncResult, DayInsert, DayLockSet, InsertOptions, InsertQuery, StorePage, PlaceHit } from "@/lib/api/types";
+  VisitInput, OverwriteField, ReviewAdd, OverwriteResult, PaList, ReviewItem, ReviewPage, LogPage, UploadList, SyncResult, DayInsert, DayLockSet, StopMove, StopMark, InsertOptions, InsertQuery, StorePage, ScreenPage, PlaceHit, InstallerSave, InstallerSaved, InstallerWorkReport, ScreenSheetResult } from "@/lib/api/types";
 import type { StorePageParams } from "@/lib/api/keys";
 import type { StatusBucket } from "@/lib/status";
 
@@ -159,6 +160,11 @@ export const storesApi = {
     api<StorePage>(`/projects/${enc(projectId)}/stores`, {
       query: { ...storeQuery(filters), limit: page.limit, offset: page.offset, ...(page.bounds ?? {}) },
     }),
+  /** One row per screen, under the same filters; status, DD code and size keep the screens they match. */
+  screens: (projectId: string, filters: StoreFilters, page: StorePageParams) =>
+    api<ScreenPage>(`/projects/${enc(projectId)}/stores/screens`, {
+      query: { ...storeQuery(filters), limit: page.limit, offset: page.offset, ...(page.bounds ?? {}) },
+    }),
   pins: (projectId: string, filters: StoreFilters = {}) =>
     api<Pin[]>(`/projects/${enc(projectId)}/stores/pins`, { query: storeQuery(filters) }),
   filters: (projectId: string, filters: StoreFilters) =>
@@ -183,8 +189,16 @@ export const storesApi = {
     api<Stop>(`/projects/${enc(projectId)}/stores/${enc(uid)}/external-id`, { method: "PUT", body: { external_id: externalId } }),
   updateProgress: (projectId: string, uid: string, body: ProgressUpdate) =>
     api<Stop>(`/projects/${enc(projectId)}/stores/${enc(uid)}/progress`, { method: "PATCH", body }),
+  add: (projectId: string, body: StoreAdd) => api<Stop>(`/projects/${enc(projectId)}/stores`, { method: "POST", body }),
   append: (projectId: string, body: AppendStops) =>
     api<AppendResult>(`/projects/${enc(projectId)}/stores/append`, { method: "POST", body }),
+};
+
+/** A screen cost sheet (DD code, size, screen count, cost) against the project's screens: a preview, or with
+ *  `apply` the sizes and owners written. */
+export const screenSheetApi = {
+  send: (projectId: string, body: { filename: string; content_base64: string; apply: boolean }) =>
+    api<ScreenSheetResult>(`/projects/${enc(projectId)}/screen-sheet`, { method: "POST", body }),
 };
 
 export const jobsApi = {
@@ -202,6 +216,9 @@ export interface PoolFilters {
   state?: string[];
   city?: string[];
   project_id?: string[];
+  dma?: string[];
+  pa?: string[];
+  bucket?: string[];
   status?: StopStatus[];
   pending_only?: boolean;
   available_only?: boolean;
@@ -213,6 +230,9 @@ function poolQuery(filters: PoolFilters) {
     state: filters.state,
     city: filters.city,
     project_id: filters.project_id,
+    dma: filters.dma,
+    pa: filters.pa,
+    bucket: filters.bucket,
     status: filters.status,
     pending_only: filters.pending_only || undefined,
     available_only: filters.available_only || undefined,
@@ -225,6 +245,8 @@ export const storeSearchApi = {
     api<Page<PoolStore>>("/store-search", { query: { ...poolQuery(filters), limit: params.limit, cursor: params.cursor } }),
   pins: (filters: PoolFilters) => api<PoolStore[]>("/store-search/pins", { query: poolQuery(filters) }),
   facets: (filters: PoolFilters) => api<PoolFacets>("/store-search/facets", { query: poolQuery(filters) }),
+  /** Starts a background refresh of every Dolphin venue (all PAs); it takes a minute or two. */
+  refreshVenues: () => api<{ started: boolean }>("/store-search/venues/refresh", { method: "POST" }),
 };
 
 const plan = (id: string) => `/route-plans/${enc(id)}`;
@@ -251,6 +273,12 @@ export const routePlansApi = {
   insert: (id: string, body: DayInsert) => api<RoutePlanBundle>(`${plan(id)}/days/insert`, { method: "POST", body }),
   moveToNextDay: (id: string, projectId: string, uid: string, version?: number) =>
     api<RoutePlanBundle>(`${plan(id)}/stops/${enc(projectId)}/${enc(uid)}/next-day`, { method: "POST", body: { version } }),
+  /** Put a store on a chosen installer's day (pinned there), or move it to another plan (`to_plan_id`). */
+  move: (id: string, projectId: string, uid: string, body: StopMove) =>
+    api<RoutePlanBundle>(`${plan(id)}/stops/${enc(projectId)}/${enc(uid)}/move`, { method: "POST", body }),
+  /** Mark a stop Done / Incomplete / in route, or release its pin. */
+  mark: (id: string, projectId: string, uid: string, body: StopMark) =>
+    api<RoutePlanBundle>(`${plan(id)}/stops/${enc(projectId)}/${enc(uid)}/mark`, { method: "POST", body }),
   close: (id: string) => api<RoutePlanBundle>(`${plan(id)}/close`, { method: "POST" }),
 };
 
@@ -258,6 +286,12 @@ export const listsApi = {
   names: (kind: NameListKind) => api<Page<NameEntry>>(`/lists/${kind}`, { query: { limit: 500 } }),
   addName: (kind: NameListKind, value: string) => api<NameEntry>(`/lists/${kind}`, { method: "POST", body: { value } }),
   removeName: (kind: NameListKind, value: string) => api<void>(`/lists/${kind}/${enc(value)}`, { method: "DELETE" }),
+  /** Add an installer or change their details (name, phone, email, shipping address). */
+  saveInstaller: (name: string, body: Partial<InstallerSave>) => api<InstallerSaved>(`/lists/installers/${enc(name)}`, { method: "PUT", body }),
+  /** Per installer across every project: stores and screens; and the names on stores that match no installer. */
+  installerWork: () => api<InstallerWorkReport>("/lists/installers/work"),
+  /** Stores whose technician matches an installer in another case take the list's spelling. */
+  syncInstallers: () => api<{ stores_updated: number }>("/lists/installers/sync", { method: "POST" }),
   categories: () => api<Category[]>("/lists/categories"),
   saveCategories: (categories: CategoryInput[]) =>
     api<Category[]>("/lists/categories", { method: "PUT", body: { categories } }),

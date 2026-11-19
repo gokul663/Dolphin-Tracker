@@ -10,6 +10,8 @@ from __future__ import annotations
 import itertools
 import uuid
 from collections.abc import Callable
+from datetime import date as Date
+from datetime import timedelta
 from enum import StrEnum
 from typing import Any
 
@@ -62,6 +64,12 @@ class StartLocation(ApiModel):
 class PlanInstaller(ApiModel):
     name: str = Field(min_length=1, max_length=200)
     start: StartLocation
+    # This installer's own limits; None means the plan's.
+    stops_per_day: int | None = Field(default=None, ge=1, le=50)
+    max_day_hours: float | None = Field(default=None, ge=0, le=MAX_DAY_HOURS)  # 0 = no limit for them
+    # The first date they work on this plan; None means from the plan's first day. Until then they get no stops:
+    # their route begins on a later day.
+    start_date: str | None = Field(default=None, pattern=DATE_PATTERN)
 
     @field_validator("name", mode="before")
     @classmethod
@@ -87,6 +95,23 @@ class DayLock(ApiModel):
     day: int = Field(ge=1)
 
 
+def working_days_until(day: str, later: str) -> int:
+    """Weekdays after `day` up to and including `later` (0 when `later` is not after `day`; at least 1 when it
+    is, so a start on a weekend still waits a day)."""
+    start, end = Date.fromisoformat(day), Date.fromisoformat(later)
+    if end <= start:
+        return 0
+    count = sum(1 for offset in range(1, (end - start).days + 1) if (start + timedelta(days=offset)).weekday() < 5)
+    return max(1, count)
+
+
+def next_working_day(day: str) -> str:
+    current = Date.fromisoformat(day) + timedelta(days=1)
+    while current.weekday() >= 5:
+        current += timedelta(days=1)
+    return current.isoformat()
+
+
 def check_installers(installers: list[PlanInstaller]) -> None:
     if not installers:
         raise ValueError("At least one installer is required")
@@ -95,6 +120,14 @@ def check_installers(installers: list[PlanInstaller]) -> None:
     keys = [name_key(installer.name) for installer in installers]
     if len(set(keys)) != len(keys):
         raise ValueError("Installer names must be unique")
+
+
+class PlanSummary(ApiModel):
+    """Store counts of a plan: done (marked Done, or every stick visited), incomplete (marked so), and the rest."""
+
+    done: int = 0
+    incomplete: int = 0
+    not_visited: int = 0
 
 
 class RoutePlan(ApiModel):
@@ -113,6 +146,8 @@ class RoutePlan(ApiModel):
     created_at: str = Field(default_factory=now_iso)
     updated_at: str = Field(default_factory=now_iso)
     closed_at: str = ""
+    # How the plan ended, counted when it was closed (None on an active plan, and on plans closed before this).
+    summary: PlanSummary | None = None
 
     @model_validator(mode="after")
     def _shape(self) -> RoutePlan:
@@ -136,6 +171,30 @@ class RoutePlan(ApiModel):
         hours = day.max_day_hours if day.max_day_hours is not None else self.max_day_hours
         return per_day, hours
 
+    def installer_limits(self, day: PlanDay | None = None) -> dict[str, tuple[int, float]]:
+        """installer → (stops per day, max driving hours) for `day`. A day planned with its own limits ("Plan next
+        day") uses them for everyone; otherwise each installer's own, else the plan's defaults."""
+        result = {}
+        for installer in self.installers:
+            per_day = installer.stops_per_day if installer.stops_per_day is not None else self.stops_per_day
+            hours = installer.max_day_hours if installer.max_day_hours is not None else self.max_day_hours
+            if day is not None:
+                per_day = day.stops_per_day if day.stops_per_day is not None else per_day
+                hours = day.max_day_hours if day.max_day_hours is not None else hours
+            result[installer.name] = (per_day, hours)
+        return result
+
+    def first_days(self, day_number: int, day_date: str) -> dict[str, int]:
+        """installer → the day number their route can begin on, when a layout starts at `day_number` on
+        `day_date`: that day for whoever has started by then, else as many working days later as their start date
+        is away (days not started yet have no date, so this is the forecast; it is worked out again every time
+        the plan is laid out)."""
+        return {
+            installer.name: day_number + (working_days_until(day_date, installer.start_date)
+                                          if installer.start_date else 0)
+            for installer in self.installers
+        }
+
     def installer_names(self) -> list[str]:
         return [installer.name for installer in self.installers]
 
@@ -143,6 +202,12 @@ class RoutePlan(ApiModel):
 class PlanStopState(StrEnum):
     OPEN = "open"
     VISITED = "visited"
+
+
+class StopOutcome(StrEnum):
+    NONE = ""
+    DONE = "done"
+    INCOMPLETE = "incomplete"
 
 
 class PlanStop(ApiModel):
@@ -167,6 +232,11 @@ class PlanStop(ApiModel):
     # unknown (no coordinates, or laid out before drive times were kept).
     drive_minutes: int | None = None
     visited_screens: list[str] = Field(default_factory=list)
+    # What a person marked the stop as: "done" (finished, with or without a log entry), "incomplete" (went, could
+    # not finish: it stays open and is planned again), "" = not marked (in route).
+    outcome: StopOutcome = StopOutcome.NONE
+    # Put on its day (and installer) by hand: recalculations leave it there, until that day is over.
+    pinned: bool = False
     added_at: str = Field(default_factory=now_iso)
 
     @property
@@ -175,6 +245,8 @@ class PlanStop(ApiModel):
 
     @property
     def state_value(self) -> PlanStopState:
+        if self.outcome == StopOutcome.DONE:
+            return PlanStopState.VISITED
         if self.screen_ids and set(self.screen_ids) <= set(self.visited_screens):
             return PlanStopState.VISITED
         return PlanStopState.OPEN
@@ -227,7 +299,7 @@ def split_long_days(
     routes: dict[str, list[list[dict[str, Any]]]],
     starts: dict[str, dict[str, Any]],
     drive_times: DriveTimes,
-    max_minutes: float,
+    max_minutes: float | dict[str, float],
 ) -> tuple[dict[str, list[list[dict[str, Any]]]], dict[str, int | None]]:
     """Each installer's days, with any day whose driving passes `max_minutes` cut into more days, and every row's
     driving minutes from the previous point. The installer drives start → day 1 → day 2 ..., sleeping near the
@@ -238,13 +310,14 @@ def split_long_days(
     for installer, days in routes.items():
         legs = chain_legs(starts[installer], [row for day in days for row in day], drive_times)
         minutes.update(legs)
+        limit = max_minutes.get(installer, 0) if isinstance(max_minutes, dict) else max_minutes
         split: list[list[dict[str, Any]]] = []
         for day in days:
             current: list[dict[str, Any]] = []
             total = 0
             for row in day:
                 leg = legs.get(row["id"]) or 0
-                if max_minutes and current and total + leg > max_minutes:
+                if limit and current and total + leg > limit:
                     split.append(current)
                     current, total = [], 0
                 current.append(row)
@@ -296,12 +369,13 @@ def anchor_days(days: list[list[dict]], start: dict) -> list[list[dict]]:
 
 
 def build_days(
-    rows: list[dict[str, Any]], starts: dict[str, dict[str, Any]], per_day: int
+    rows: list[dict[str, Any]], starts: dict[str, dict[str, Any]], per_day: int | dict[str, int]
 ) -> dict[str, list[list[dict[str, Any]]]]:
     """installer → days (from 1) → rows in visiting order. `rows` carry `id`, `lat`, `lng`, `state`; `starts` maps
     each installer to a point with `lat`/`lng`. Rows without coordinates go round-robin to the installers, onto a
     day of their state with room, else a new day (as the project routing did)."""
     installers = list(starts)
+    cap = (lambda name: per_day.get(name, 10)) if isinstance(per_day, dict) else (lambda name: per_day)
     routes: dict[str, list[list[dict[str, Any]]]] = {installer: [] for installer in installers}
     if not installers or not rows:
         return routes
@@ -312,11 +386,13 @@ def build_days(
         picks = match_clusters(clusters, [starts[installer] for installer in installers])
         for installer, pick in zip(installers, picks, strict=True):
             if pick is not None:
-                routes[installer] = anchor_days(make_state_day_batches(clusters[pick], per_day), starts[installer])
+                batches = make_state_day_batches(clusters[pick], cap(installer))
+                routes[installer] = anchor_days(batches, starts[installer])
     for index, row in enumerate(missing):
-        days = routes[installers[index % len(installers)]]
+        mine = installers[index % len(installers)]
+        days = routes[mine]
         target = next(
-            (day for day in days if len(day) < per_day and all(state_key(r) == state_key(row) for r in day)), None
+            (day for day in days if len(day) < cap(mine) and all(state_key(r) == state_key(row) for r in day)), None
         )
         if target is None:
             target = []
@@ -332,22 +408,27 @@ def plan_row(stop: PlanStop) -> dict[str, Any]:
 def assign(
     stops: list[PlanStop],
     starts: dict[str, StartLocation],
-    per_day: int,
+    per_day: int | dict[str, int],
     first_day: int,
     *,
-    max_day_hours: float = 0,
+    max_day_hours: float | dict[str, float] = 0,
     drive_times: DriveTimes = estimate_leg_minutes,
+    first_days: dict[str, int] | None = None,
 ) -> Assignment:
     """Lay `stops` out over days `first_day`, `first_day + 1`, ... per installer: at most `per_day` stops and, when
-    set, at most `max_day_hours` of driving a day."""
+    set, at most `max_day_hours` of driving a day. Either limit may be one number for everyone or one per
+    installer."""
     points = {name: {"lat": start.lat, "lng": start.lng} for name, start in starts.items()}
     routes = build_days([plan_row(stop) for stop in stops], points, per_day)
-    routes, minutes = split_long_days(routes, points, drive_times, max_day_hours * 60)
+    max_minutes = ({name: hours * 60 for name, hours in max_day_hours.items()}
+                   if isinstance(max_day_hours, dict) else max_day_hours * 60)
+    routes, minutes = split_long_days(routes, points, drive_times, max_minutes)
     result: Assignment = {}
     for installer, days in routes.items():
         for offset, day in enumerate(days):
             for seq, row in enumerate(day):
-                result[row["id"]] = (installer, first_day + offset, seq, minutes.get(row["id"]))
+                begin = max(first_day, (first_days or {}).get(installer, first_day))
+                result[row["id"]] = (installer, begin + offset, seq, minutes.get(row["id"]))
     return result
 
 
@@ -520,6 +601,23 @@ class DayInsert(InsertQuery):
 
 class MoveToNextDay(ApiModel):
     version: int | None = None
+
+
+class StopMove(ApiModel):
+    """Put an open store on a chosen installer's chosen day, where it adds the least driving, and keep it there
+    (pinned). `to_plan_id` moves it to another active plan instead: it leaves this one."""
+
+    installer: str = Field(min_length=1, max_length=200)
+    day: int = Field(ge=1)
+    to_plan_id: str | None = Field(default=None, max_length=64)
+    version: int | None = None
+
+
+class StopMark(ApiModel):
+    """Mark a stop Done / Incomplete / back to in route, and/or release its pin. Fields left out stay."""
+
+    outcome: StopOutcome | None = None
+    pinned: bool | None = None
 
 
 class SkippedStore(ApiModel):

@@ -21,6 +21,7 @@ export const keys = {
   stores: (id: string) => ["projects", id, "stores"] as const,
   storeList: (id: string, filters: StoreFilters, page: StorePageParams = { offset: 0, limit: 20, bounds: null }) =>
     ["projects", id, "stores", "list", filters, page] as const,
+  screenList: (id: string, filters: StoreFilters, page: StorePageParams) => ["projects", id, "stores", "screens", filters, page] as const,
   pins: (id: string, filters: StoreFilters) => ["projects", id, "stores", "pins", filters] as const,
   storeFacets: (id: string, filters: StoreFilters) => ["projects", id, "stores", "facets", filters] as const,
   byState: (id: string, filters: StoreFilters) => ["projects", id, "stores", "by-state", filters] as const,
@@ -37,6 +38,8 @@ export const keys = {
   storeSearchPins: (filters: PoolFilters) => ["store-search", "pins", filters] as const,
   storeSearchFacets: (filters: PoolFilters) => ["store-search", "facets", filters] as const,
   names: (kind: string) => ["lists", kind] as const,
+  installers: ["lists", "installers", "entries"] as const,
+  installerWork: ["lists", "installers", "work"] as const,
   categories: ["lists", "categories"] as const,
   job: (jobId: string) => ["jobs", jobId] as const,
   jobResult: (jobId: string) => ["jobs", jobId, "result"] as const,

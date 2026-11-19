@@ -2,14 +2,15 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { MapView } from "@/components/map/MapView";
-import { OpenFullPage, UnitToggle } from "@/features/stores/StoresViewControls";
+import { OpenFullPage } from "@/features/stores/StoresViewControls";
 import { useProjectContext } from "@/features/projects/ProjectPage";
-import { DEFAULT_STORE_PAGE_SIZE, useFilterOptions, usePins, useStoreHardware, useStoreList, useStoresByState } from "@/features/stores/api";
+import { DEFAULT_STORE_PAGE_SIZE, useFilterOptions, usePins, useScreenList, useStoreHardware, useStoreList, useStoresByState } from "@/features/stores/api";
 import { HardwareCostChart } from "@/features/stores/HardwareCostChart";
 import { BucketChips } from "@/features/stores/BucketChips";
 import { FilterBar } from "@/features/stores/FilterBar";
 import { toStoreFilters } from "@/features/stores/filters";
 import { StoreDrawer } from "@/features/stores/StoreDrawer";
+import { ScreensTable } from "@/features/stores/ScreensTable";
 import { StoresTable } from "@/features/stores/StoresTable";
 import { StoresListActions, StoresToolbar } from "@/features/stores/StoresToolbar";
 import type { StoreFilters } from "@/lib/api/resources";
@@ -55,16 +56,21 @@ export function StoresTab() {
   // A new filter, sort, page size or map view starts again at page 1.
   useEffect(() => setPageIndex(0), [filters, bounds, pageSize]);
   const page = useMemo(() => ({ offset: pageIndex * pageSize, limit: pageSize, bounds }), [pageIndex, pageSize, bounds]);
-  const list = useStoreList(project.id, filters, page);
+  // Stores or Screens (the switch in the page header): what the map and chart count, and what a table row is.
+  const unit = useStoresUi((state) => state.unit);
+  const byScreen = unit === "screens";
+  const storeList = useStoreList(project.id, filters, page, !byScreen);
+  const screenList = useScreenList(project.id, filters, page, byScreen);
+  const list = byScreen ? screenList : storeList;
+  const noun = byScreen ? "screens" : "stores";
   const pins = usePins(project.id, selection);
   const options = useFilterOptions(project.id, selection);
-  const unit = useStoresUi((state) => state.unit);
-  const setUnit = useStoresUi((state) => state.setUnit);
   const byState = useStoresByState(project.id, selection, unit === "screens" ? "screens" : "stores");
   const hardware = useStoreHardware(project.id, selection);
 
-  const stops = list.data?.items ?? [];
   const total = list.data?.total ?? 0;
+  const paging = { total, offset: page.offset, pageSize, fetching: list.isFetching, onPage: setPageIndex, onPageSize: setPageSize };
+  const rowState = { sort: ui.sort, dir: ui.dir, onSort: ui.setSort, selectedId: ui.selectedId, hoveredId: ui.hoveredId, onHover: ui.hover };
 
   const open = useCallback((uid: string) => ui.select(uid, true), []); // stable store action
 
@@ -76,7 +82,7 @@ export function StoresTab() {
         {/* Two lines: the status chips with "only in map view" and CSV at the right, then search and filters. */}
         <div className="flex flex-wrap items-center justify-between gap-2">
           <BucketChips options={options.data?.bucket} selected={ui.facets.bucket} onToggle={(bucket) => ui.toggleFacet("bucket", bucket)} />
-          <StoresListActions project={project} filters={filters} />
+          <StoresListActions project={project} filters={filters} onAdded={open} />
         </div>
         <StoresToolbar project={project} filters={filters} onPick={open}>
           <FilterBar options={options.data} facets={ui.facets} onToggle={ui.toggleFacet} />
@@ -89,7 +95,6 @@ export function StoresTab() {
           <MapView
             unit={unit}
             className="min-h-0 flex-1"
-            controls={<UnitToggle value={unit} onChange={setUnit} />}
             action={<OpenFullPage projectId={project.id} view="map" label="Open map in a new tab" />}
             pins={pins.data ?? []}
             selectedId={ui.selectedId}
@@ -119,36 +124,22 @@ export function StoresTab() {
           page. */}
       <div className="flex max-h-[75vh] flex-col">
         {list.isPending ? (
-          <Card className="flex-1 items-center justify-center font-mono text-sm text-slate-500">Loading stores…</Card>
+          <Card className="flex-1 items-center justify-center font-mono text-sm text-slate-500">Loading {noun}…</Card>
         ) : list.isError ? (
           <Card className="flex-1 items-center justify-center gap-3 text-sm text-rose-700">
-            Could not load stores: {list.error.message}
+            Could not load {noun}: {list.error.message}
             <Button variant="outline" size="sm" onClick={() => list.refetch()}>
               Retry
             </Button>
           </Card>
         ) : total === 0 ? (
           <Card className="flex-1 items-center justify-center font-mono text-sm text-slate-500">
-            {bounds ? "No stores in the current map view." : "No stores match these filters."}
+            {bounds ? `No ${noun} in the current map view.` : `No ${noun} match these filters.`}
           </Card>
+        ) : byScreen ? (
+          <ScreensTable project={project} rows={screenList.data?.items ?? []} {...paging} {...rowState} onOpen={open} />
         ) : (
-          <StoresTable
-            project={project}
-            stops={stops}
-            total={total}
-            offset={page.offset}
-            pageSize={pageSize}
-            fetching={list.isFetching}
-            onPage={(index) => setPageIndex(index)}
-            onPageSize={setPageSize}
-            sort={ui.sort}
-            dir={ui.dir}
-            onSort={ui.setSort}
-            selectedId={ui.selectedId}
-            hoveredId={ui.hoveredId}
-            onHover={ui.hover}
-            onOpen={open}
-          />
+          <StoresTable project={project} stops={storeList.data?.items ?? []} {...paging} {...rowState} onOpen={open} />
         )}
       </div>
       <StoreDrawer project={project} stopId={ui.selectedId} open={ui.drawerOpen} onClose={ui.closeDrawer} />

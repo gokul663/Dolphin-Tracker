@@ -1,3 +1,4 @@
+import { centralTime } from "@/lib/time";
 import { useState } from "react";
 import { Download, FileSpreadsheet, Upload } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
@@ -10,7 +11,6 @@ import { projectsApi } from "@/lib/api/resources";
 import type { Project } from "@/lib/api/types";
 
 const size = (bytes: number) => (bytes >= 1_048_576 ? `${(bytes / 1_048_576).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`);
-const when = (iso: string) => iso.slice(0, 16).replace("T", " ");
 
 /** Every sheet imported into the project, kept for good, newest first, with a download; and the way to upload
  *  another one (new stores are added, stores already there are left as they are). */
@@ -41,7 +41,7 @@ export function UploadsSection({ project }: { project: Project }) {
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium text-slate-900">{item.filename}</p>
                 <p className="text-xs text-slate-500">
-                  {when(item.uploaded_at)} UTC · {size(item.size)} · {item.kind === "create" ? "created the project" : "added to the project"}
+                  {centralTime(item.uploaded_at)} · {size(item.size)} · {item.kind === "create" ? "created the project" : "added to the project"}
                 </p>
               </div>
               <p className="text-xs text-slate-600">

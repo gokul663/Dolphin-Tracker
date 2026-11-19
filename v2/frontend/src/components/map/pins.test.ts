@@ -160,3 +160,22 @@ describe("screens view", () => {
     expect(markerStyles(groups, null, null).get(shared.key)?.count).toBe(2);
   });
 });
+
+describe("route planner pins", () => {
+  const pin = (uid: string, installer: string, lat: number) => ({ uid, lat, lng: -84, status: "Upcoming" as const, store_name: uid, installer, day: 1, route_plan_id: "", visit_state: "none" as const, screen_statuses: [] });
+
+  it("a pin takes its installer's colour and keeps its status as a small dot", () => {
+    const groups = groupPins([pin("a", "Ann", 33), pin("b", "Bo", 34)]);
+    const styles = markerStyles(groups, null, null, "locations", { installerColors: { Ann: "#f97316" }, labels: { a: "3" } });
+    const [ann, bo] = groups.map((group) => styles.get(group.key)!);
+    expect(ann).toMatchObject({ fill: "#f97316", text: "3" });
+    expect(bo!.fill).toBeUndefined(); // no colour for them: the plain status pin
+    const svg = decodeURIComponent(markerSvg("Upcoming", 1, "normal", undefined, "#f97316", "3"));
+    expect(svg).toContain('fill="#f97316"'); // the pin
+    expect(svg).toContain('r="6" fill="#'); // the status dot
+    expect(svg).toContain(">3</text>");
+    expect(decodeURIComponent(markerSvg("Upcoming"))).not.toContain("#f97316");
+    // A new colour or number restyles the marker.
+    expect(changedStyles(styles, markerStyles(groups, null, null, "locations", { installerColors: { Ann: "#22c55e" }, labels: { a: "3" } }))).toEqual([groups[0]!.key]);
+  });
+});

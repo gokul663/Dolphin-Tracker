@@ -5,7 +5,7 @@ from __future__ import annotations
 from dolphin_tracker.domain.errors import NotFoundError, ValidationFailed
 from dolphin_tracker.domain.lists import REPLACED_WITH_SUBCATEGORIES, NameListKind
 from dolphin_tracker.domain.models import Page, Project, Stop
-from dolphin_tracker.domain.visits import Visit, VisitInput
+from dolphin_tracker.domain.visits import Visit, VisitInput, store_outcome
 from dolphin_tracker.repositories.projects import ProjectRepository
 from dolphin_tracker.repositories.stores import StoreRepository
 from dolphin_tracker.repositories.visits import VisitRepository
@@ -76,6 +76,12 @@ class VisitService:
         visit = self._visits.add(self.build(project, stop, body))
         if visit.route_plan_id and self._plans:
             self._plans.record_visit(visit.route_plan_id, project_id, stop_uid, visit.screen_id)
+            if visit.outcome:
+                # The stop is Done or Incomplete from its screens: every one done, or any left incomplete.
+                logged = self._visits.list_for_store(project_id, stop_uid, limit=200).items
+                outcome = store_outcome([screen.id for screen in stop.screens], logged, visit.route_plan_id)
+                if outcome:
+                    self._plans.set_outcome(visit.route_plan_id, project_id, stop_uid, outcome)
         self._lists.remember(NameListKind.INSTALLERS, visit.installer)
         self._lists.remember(NameListKind.MANAGERS, visit.dolphin_manager)
         return visit

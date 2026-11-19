@@ -12,6 +12,8 @@ import type {
   RoutePlanBundle,
   RoutePlanCreate,
   RoutePlanUpdate,
+  StopMark,
+  StopMove,
 } from "@/lib/api/types";
 
 /** Every plan with this status (a handful at a time in practice), paging through the API. */
@@ -101,6 +103,14 @@ export function usePlanMutations(planId: string) {
     moveToNextDay: useMutation({
       mutationFn: ({ projectId, uid, version }: { projectId: string; uid: string; version?: number }) =>
         routePlansApi.moveToNextDay(planId, projectId, uid, version),
+      ...done,
+    }),
+    move: useMutation({
+      mutationFn: ({ projectId, uid, body }: { projectId: string; uid: string; body: StopMove }) => routePlansApi.move(planId, projectId, uid, body),
+      ...done,
+    }),
+    mark: useMutation({
+      mutationFn: ({ projectId, uid, body }: { projectId: string; uid: string; body: StopMark }) => routePlansApi.mark(planId, projectId, uid, body),
       ...done,
     }),
     close: useMutation({ mutationFn: () => routePlansApi.close(planId), ...done }),

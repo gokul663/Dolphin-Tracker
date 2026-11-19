@@ -26,6 +26,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import type { Project, Stop } from "@/lib/api/types";
 import { STATUS_META, storeStatusLabel } from "@/lib/status";
 import { DEVICE_TONE } from "@/features/device/DeviceBits";
+import { InstallerName } from "@/features/installers/InstallerName";
 import { cn } from "@/lib/utils";
 
 const ROW_HEIGHT = 44;
@@ -119,7 +120,7 @@ function TotalCount({ screens, tvs, label, tone, suffix }: { screens: number | n
 }
 
 /** A store's hardware cost, the sticks and screens behind it on hover; prices not set yet in Settings say so. */
-function HardwareCostCell({ cost }: { cost: ReturnType<typeof hardwareCost> }) {
+export function HardwareCostCell({ cost }: { cost: ReturnType<typeof hardwareCost> }) {
   if (cost.installed === 0) return dash;
   const breakdown = cost.lines.map((line) => `${line.count} × ${line.label}${line.price === null ? " (no price)" : ` @ ${money(line.price)}`}`).join("\n");
   if (cost.total === null) {
@@ -269,7 +270,20 @@ export function StoresTable(props: Props) {
           </button>
         ),
       }),
-      helper.accessor("dma", { header: "DMA", size: 130, cell: (info) => info.getValue() || dash }),
+      helper.accessor((stop) => stop.device?.dma || stop.dma, {
+        id: "dma",
+        header: "DMA",
+        size: 130,
+        // The Dolphin data's DMA shows over ours, in its colour (ours on hover).
+        cell: (info) =>
+          info.row.original.device?.dma ? (
+            <span className={DEVICE_TONE.text} title={info.row.original.dma && info.row.original.dma !== info.getValue() ? `Dolphin data. Sheet: ${info.row.original.dma}` : "Dolphin data"}>
+              {info.getValue()}
+            </span>
+          ) : (
+            info.getValue() || dash
+          ),
+      }),
       helper.accessor((stop) => stop.place_state, {
         id: "state",
         header: "State",
@@ -316,7 +330,7 @@ export function StoresTable(props: Props) {
               </span>
             );
           }
-          return info.getValue() || dash;
+          return info.getValue() ? <InstallerName name={info.getValue()} /> : dash;
         },
       }),
 
@@ -446,8 +460,21 @@ export function StoresTable(props: Props) {
   );
 }
 
+export interface PagerProps {
+  total: number;
+  offset: number;
+  pageSize: number;
+  fetching: boolean;
+  onPage: (index: number) => void;
+  onPageSize: (size: number) => void;
+  /** Rows on this page. */
+  shown: number;
+  /** What a row is, for the empty line ("0 stores"). */
+  noun?: string;
+}
+
 /** "51–100 of 482", first/previous/next/last page, a page number box and the page size. */
-function Pager({ total, offset, pageSize, fetching, onPage, onPageSize, shown }: Props & { shown: number }) {
+export function Pager({ total, offset, pageSize, fetching, onPage, onPageSize, shown, noun = "stores" }: PagerProps) {
   const pages = Math.max(1, Math.ceil(total / pageSize));
   const index = Math.floor(offset / pageSize);
   const [draft, setDraft] = useState(String(index + 1));
@@ -461,7 +488,7 @@ function Pager({ total, offset, pageSize, fetching, onPage, onPageSize, shown }:
   return (
     <nav aria-label="Pages" className="flex flex-wrap items-center justify-between gap-2 border-t px-3 py-1.5 font-mono text-xs text-slate-600">
       <span aria-live="polite">
-        {total ? `${offset + 1}–${offset + shown} of ${total.toLocaleString()}` : "0 stores"}
+        {total ? `${offset + 1}–${offset + shown} of ${total.toLocaleString()}` : `0 ${noun}`}
         {fetching && <Loader2 size={12} className="ml-2 inline animate-spin" />}
       </span>
       <div className="flex items-center gap-1">

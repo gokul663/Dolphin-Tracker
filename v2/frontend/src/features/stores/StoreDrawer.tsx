@@ -98,6 +98,8 @@ export function StoreDrawer({ project, stopId, open, onClose }: Props) {
                 </span>
               )}
               {stop && <StoreAlerts project={project} stop={stop} />}
+              {/* At the right: the route it is in, Log visit, and collapse / expand. */}
+              <span className="ml-auto flex flex-wrap items-center gap-2">
               {stop?.route_plan_id ? (
                 <Link to={`/planner/${stop.route_plan_id}`} className="rounded bg-blue-100 px-1.5 py-0.5 text-xs font-medium text-blue-800 hover:underline">
                   In route: {planNames.get(stop.route_plan_id) ?? "open the plan"}
@@ -114,11 +116,12 @@ export function StoreDrawer({ project, stopId, open, onClose }: Props) {
                 type="button"
                 variant="ghost"
                 size="sm"
-                className="ml-auto h-7 text-xs"
+                className="h-7 text-xs"
                 onClick={() => setExpanded(new Set(allOpen ? [] : SECTIONS))}
               >
                 {allOpen ? <ChevronsDownUp /> : <ChevronsUpDown />} {allOpen ? "Collapse all" : "Expand all"}
               </Button>
+              </span>
             </div>
           </DialogDescription>
         </DialogHeader>
@@ -546,7 +549,7 @@ function DetailsEditor({
   const dirty = Object.keys(patch).length > 0 || Object.keys(progressPatch).length > 0 || rowsDirty || deviceLocation;
   /** Fields Overwrite has taken into the draft: the draft holds the Dolphin data's value but the store does not yet. */
   const overwritten: OverwriteField[] = stop.device
-    ? (["store_name", "addr", "city", "state", "zip"] as const).filter(
+    ? (["store_name", "addr", "city", "state", "zip", "dma", "venue_type"] as const).filter(
         (name) => stop.device![name] && form[name] === stop.device![name] && stop[name] !== stop.device![name],
       )
     : [];
@@ -861,9 +864,6 @@ function DetailsEditor({
               <ScreensView project={project} stop={stop} rows={rows} />
             )}
           </Section>
-          {/* Pictures on the left, with the store on a small map under them. */}
-          {detailPanel("Pictures")}
-          <StoreLocationMap stop={stop} />
           {/* The project manager's own notes (stored as the store's `comment`). Installation and site notes come
               from the sheet and the people on site, and sit under Other details. */}
           <Section title="Notes" sections={sections}>
@@ -878,6 +878,9 @@ function DetailsEditor({
               <p className="text-xs text-slate-500">For whoever manages the project. Installation and site notes are under Other details.</p>
             </div>
           </Section>
+          {/* Pictures, with the store on a small map under them: last, below the notes. */}
+          {detailPanel("Pictures")}
+          <StoreLocationMap stop={stop} />
         </div>
         <aside
           className={cn(SURFACE, "min-w-0 space-y-2 p-4 lg:sticky lg:top-4 lg:max-h-[calc(94vh-12rem)] lg:self-start lg:overflow-y-auto")}

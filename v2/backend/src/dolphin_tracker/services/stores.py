@@ -16,13 +16,15 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass, field, replace
 from typing import Any
 
+from dolphin_tracker.domain.addresses import parse_us_formatted_address
 from dolphin_tracker.domain.base import ApiModel
 from dolphin_tracker.domain.cursors import encode_cursor, offset_from_cursor
 from dolphin_tracker.domain.device import split_codes, venue_code_key
 from dolphin_tracker.domain.device_sync import packed_screens, shown_location, store_with_code
 from dolphin_tracker.domain.errors import ConflictError, NotFoundError, ValidationFailed
-from dolphin_tracker.domain.import_mapping import clean_mapping, split_duplicates
+from dolphin_tracker.domain.import_mapping import clean_mapping, dedupe_key_address, split_duplicates
 from dolphin_tracker.domain.kpi import missing_screens
+from dolphin_tracker.domain.lists import best_spellings, name_key
 from dolphin_tracker.domain.models import (
     PENDING_STATUSES,
     PROGRESS_FIELDS,
@@ -42,10 +44,12 @@ from dolphin_tracker.domain.parsing import clean_cell
 from dolphin_tracker.domain.route_optimizer import state_key
 from dolphin_tracker.domain.schema import coerce_fields, validate_fields, validate_stop_inputs, with_sheet_fields
 from dolphin_tracker.domain.statuses import (
+    BUCKET_OF,
     BUCKET_ORDER,
     INSTALLED_STATUSES,
     StatusBucket,
     dolphin_model_key,
+    screen_size_label,
     store_bucket_of,
 )
 from dolphin_tracker.domain.validation import (
@@ -101,6 +105,60 @@ class StorePage(ApiModel):
     next_cursor: str | None = None
     total: int
     offset: int
+
+
+class ScreenListRow(ApiModel):
+    """One screen in the Screens view: the screen itself, with the store it is at."""
+
+    uid: str  # the store's
+    external_id: str
+    display_id: str
+    store_name: str  # as shown: the Dolphin data's when it has one
+    addr: str
+    city: str  # as shown (place_city / place_state)
+    state: str
+    installer_name: str
+    install_type: str
+    screen: Screen
+
+
+class ScreenPage(ApiModel):
+    """A page of the screen list, with the filtered total and where the page starts."""
+
+    items: list[ScreenListRow]
+    total: int
+    offset: int
+
+
+# Filters that are about a screen: in the Screens view they keep the screens they match, not whole stores.
+SCREEN_FILTERS = ("status", "bucket", "dd_code", "screen_size")
+SCREEN_SORT_KEYS = frozenset({"venue_id", "status", "screen_size", "owner", "brand"})
+
+
+def _screen_matches(screen: Screen, query: StoreQuery) -> bool:
+    if query.status and screen.status not in query.status:
+        return False
+    # The store groups say "In Progress" where a screen says "Not Registered": either name finds the screen.
+    if query.bucket and not {BUCKET_OF[screen.status], store_bucket_of(screen.status)}.intersection(query.bucket):
+        return False
+    if query.dd_code and screen.venue_id not in query.dd_code:
+        return False
+    return not query.screen_size or screen.screen_size in query.screen_size
+
+
+def _screen_sort_value(screen: Screen, sort: str) -> Any:
+    match sort:
+        case "status":
+            return (0, STATUS_PRECEDENCE.index(screen.status))
+        case "owner":
+            return (0, 0 if screen.is_dolphin_screen else 1)
+        case "screen_size":
+            digits = re.sub(r"\D", "", screen.screen_size)
+            return (0, int(digits)) if digits else None
+        case "brand":
+            return (1, screen.screen_type.lower()) if screen.screen_type else None
+        case _:
+            return (1, _natural(screen.venue_id)) if screen.venue_id else None
 
 
 @dataclass(frozen=True)
@@ -188,21 +246,49 @@ def facet_values(stop: Stop, project: Project, name: str) -> list[str]:
             return [value] if value else []
 
 
+MOUNT_KINDS = ("wall_24", "wall", "ceiling")
+DEFAULT_SIZE = '24"'  # a screen saved without a size
+
+
+def mount_kind(screen: Screen) -> str | None:
+    """The piece a screen's mount is: the 24 inch wall mount, a wall mount of another size, or a ceiling mount; None
+    when no mount is picked."""
+    if not screen.has_mount:
+        return None
+    if screen.has_ceiling_mount:
+        return "ceiling"
+    return "wall_24" if screen_size_label(screen.screen_size) == '24"' else "wall"
+
+
+def mounts_needed(stop: Stop) -> dict[str, int]:
+    """Mounts to bring, per piece: the typed number when there is one, else worked out from the screens still to be
+    installed (Upcoming and the like) and the mount picked on each."""
+    worked_out = dict.fromkeys(MOUNT_KINDS, 0)
+    for screen in stop.screens:
+        kind = mount_kind(screen)
+        if kind and screen.status in PENDING_STATUSES:
+            worked_out[kind] += 1
+    typed = {"wall_24": stop.wall_24_mounts_needed, "wall": stop.wall_mounts_needed,
+             "ceiling": stop.ceiling_mounts_needed}
+    return {kind: worked_out[kind] if typed[kind] is None else typed[kind] for kind in MOUNT_KINDS}
+
+
 def needs_mount(stop: Stop) -> bool:
-    """Mounts still to bring: any typed wall / ceiling / TV mount count, or a screen flagged before those existed."""
-    counts = (stop.wall_mounts_needed, stop.ceiling_mounts_needed, stop.tv_mounts_needed)
-    return any(count for count in counts) or any(screen.needs_mount for screen in stop.screens)
+    """Mounts still to bring (typed, or worked out from the Upcoming screens), or a screen flagged before those
+    existed. The TV mount count is no longer shown or counted."""
+    return any(mounts_needed(stop).values()) or any(screen.needs_mount for screen in stop.screens)
 
 
 def fulfillment(stop: Stop) -> str:
     """Fulfilled once the screen rows on the wall (Completed, Offline, Needs More Work) reach the committed Dolphin
-    screens + store TVs; "No commitment" when the sheet gave neither count."""
+    screens + store TVs. A blank committed count is 0: a store with something installed and no count is fulfilled,
+    and it is "No commitment" only when it has neither."""
     committed = (stop.committed_dolphin_screens or 0) + (stop.committed_store_tvs or 0)
-    if committed == 0:
-        return NO_COMMITMENT
+    installed = sum(1 for screen in stop.screens if screen.status in INSTALLED_STATUSES)
+    if committed == 0:  # a blank count is 0: anything installed meets it
+        return FULFILLED if installed else NO_COMMITMENT
     if missing_screens(stop.status, committed, len(stop.screens)):
         return NEEDS_REVIEW
-    installed = sum(1 for screen in stop.screens if screen.status in INSTALLED_STATUSES)
     return FULFILLED if installed >= committed else NOT_FULFILLED
 
 
@@ -263,9 +349,9 @@ def _csv_value(spec: StoreField, value: Any) -> Any:
 
 def screen_summary(screen: Screen) -> str:
     """One screen row for the CSV: stick / DD code / size / kind / mount / status."""
-    kind = "Store TV"
-    if screen.is_dolphin_screen:
-        kind = f"Dolphin screen ({screen.screen_type})" if screen.screen_type else "Dolphin screen"
+    kind = "Dolphin screen" if screen.is_dolphin_screen else "Store TV"
+    if screen.screen_type:
+        kind += f" ({screen.screen_type})"
     mount = f"{'ceiling' if screen.has_ceiling_mount else 'wall'} mount{'' if screen.has_mount else ' (none yet)'}"
     if screen.needs_mount:
         mount += ", needs mount"
@@ -296,7 +382,10 @@ class StoreService:
     def _filter(self, project: Project, stops: list[Stop], query: StoreQuery) -> list[Stop]:
         for name in FILTER_FIELDS:
             wanted = {str(value) for value in getattr(query, name)}
-            if wanted:
+            if wanted and name == "technician":  # a name matches whatever case it was typed in
+                keys = {name_key(value) for value in wanted}
+                stops = [stop for stop in stops if name_key(stop.installer_name) in keys]
+            elif wanted:
                 stops = [stop for stop in stops if wanted.intersection(facet_values(stop, project, name))]
         needle = query.q.strip().lower()
         if needle:
@@ -342,6 +431,43 @@ class StoreService:
         next_cursor = encode_cursor({"offset": start + limit}) if start + limit < len(stops) else None
         return StorePage(items=window, next_cursor=next_cursor, total=len(stops), offset=start)
 
+    def screens(
+        self,
+        project_id: str,
+        query: StoreQuery | None = None,
+        *,
+        limit: int = 50,
+        offset: int = 0,
+        bounds: Bounds | None = None,
+    ) -> ScreenPage:
+        """One page of screens, one row each (the Screens view). The store filters pick the stores; the filters about
+        a screen (status, group, DD code, size) pick the screens themselves, so "Offline" lists offline screens, not
+        every screen of a store that reads Offline. Sorted by a store column, or by one of the screen's own."""
+        project = self._project(project_id)
+        query = query or StoreQuery()
+        by_screen = query.sort in SCREEN_SORT_KEYS
+        stores = replace(query, **dict.fromkeys(SCREEN_FILTERS, []), sort="store_name" if by_screen else query.sort,
+                         dir="asc" if by_screen else query.dir)
+        stops = self._query(project, stores)
+        if bounds is not None:
+            stops = [stop for stop in stops if in_bounds(stop, bounds)]
+        rows = [(stop, screen) for stop in stops for screen in stop.screens if _screen_matches(screen, query)]
+        if by_screen:
+            present = [row for row in rows if _screen_sort_value(row[1], query.sort) is not None]
+            blank = [row for row in rows if _screen_sort_value(row[1], query.sort) is None]
+            present.sort(key=lambda row: _screen_sort_value(row[1], query.sort), reverse=query.dir == "desc")
+            rows = present + blank
+        items = [
+            ScreenListRow(
+                uid=stop.uid, external_id=stop.external_id, display_id=stop.display_id,
+                store_name=(stop.device.store_name if stop.device else "") or stop.store_name,
+                addr=stop.addr, city=stop.place_city, state=stop.place_state,
+                installer_name=stop.installer_name, install_type=stop.install_type or "", screen=screen,
+            )
+            for stop, screen in rows[offset : offset + limit]
+        ]
+        return ScreenPage(items=items, total=len(rows), offset=offset)
+
     def get(self, project_id: str, stop_uid: str) -> Stop:
         self._project(project_id)
         stop = self._stores.get(project_id, stop_uid)
@@ -384,6 +510,12 @@ class StoreService:
             counts: Counter[str] = Counter()
             for stop in self._filter(project, list(everything), query.without(name)):
                 counts.update(set(facet_values(stop, project, name)))
+            if name == "technician":  # one option per technician, in the spelling used most
+                spelling = best_spellings(Counter(stop.installer_name for stop in everything))
+                merged: Counter[str] = Counter()
+                for value, count in counts.items():
+                    merged[spelling.get(name_key(value), value)] += count
+                counts = merged
             if name == "status":
                 ordered = [status.value for status in STATUS_PRECEDENCE if counts[status.value]]
             elif name in ("route", "visit", "bucket", "mount", "fulfilled"):
@@ -428,16 +560,28 @@ class StoreService:
         project = self._project(project_id)
         stops = self._filter(project, self._stores.list_all(project_id), query or StoreQuery())
         by_model: dict[str, int] = {}
+        # Screens with a mount chosen (not Cancelled or Archived): the 24 inch wall mount is its own piece.
+        mounts = {"wall_24": 0, "wall_other": 0, "ceiling": 0}
+        installed_mounts: dict[str, int] = {}  # on installed screens, by '24"|wall' / '43"|ceiling': what they cost
         screens = stores = 0
         for stop in stops:
+            for screen in stop.screens:
+                kind = mount_kind(screen)
+                if kind and screen.status not in (ScreenStatus.CANCELLED, ScreenStatus.ARCHIVED):
+                    mounts["wall_other" if kind == "wall" else kind] += 1
             installed = [screen for screen in stop.screens if screen.status in INSTALLED_STATUSES]
             stores += bool(installed)
             screens += len(installed)
             for screen in installed:
+                if kind := mount_kind(screen):
+                    size = screen_size_label(screen.screen_size) or DEFAULT_SIZE
+                    piece = f"{size}|{'ceiling' if kind == 'ceiling' else 'wall'}"
+                    installed_mounts[piece] = installed_mounts.get(piece, 0) + 1
                 if screen.is_dolphin_screen:
                     model = dolphin_model_key(screen.screen_size, screen.screen_type)
                     by_model[model] = by_model.get(model, 0) + 1
-        return {"installed_screens": screens, "installed_stores": stores, "installed_dolphin_by_model": by_model}
+        return {"installed_screens": screens, "installed_stores": stores, "installed_dolphin_by_model": by_model,
+                "mounts": mounts, "installed_mounts": installed_mounts}
 
     def field_usage(self, project_id: str) -> dict[str, int]:
         """How many stores hold a non-empty value per `fields` key (Settings warns before a field is removed)."""
@@ -622,6 +766,55 @@ class StoreService:
         # computing over the old stop set (and a build claimed in between makes this claim 409).
         with sync_routing_slot(self._projects, project):
             return self._append(project, stops, pa, clean_mapping(import_mapping or {}))
+
+    def add_one(self, project_id: str, values: dict[str, Any]) -> Stop:
+        """Add one store typed in by hand, checked like a sheet row: IBC#, store name and address are required and
+        well-formed; the IBC# and the address are new to the project (a duplicate names the store that has them);
+        Google verifies the address (a partial or failed match is refused with suggestions). A suggestion sent back
+        as the address alone ("12 Main St, Macon, GA 31201, USA") fills the city, state and ZIP from it."""
+        self._project(project_id)
+        clean = {name: str(values.get(name) or "").strip() for name in ("store_name", *ADDRESS_PARTS)}
+        clean["external_id"] = normalize_external_id(values.get("external_id") or "")
+        if not any(clean[name] for name in ("city", "state", "zip")):
+            clean.update(parse_us_formatted_address(clean["addr"]))  # a picked suggestion: split it
+        problems = validate_store_values(clean, partial=True)
+        for name, label in (("external_id", "IBC#"), ("store_name", "Store name"), ("addr", "Address")):
+            if not clean[name]:
+                problems.setdefault(name, f"{label} is required")
+        if problems:
+            raise ValidationFailed("; ".join(problems.values()), errors=list(problems.values()), fields=problems)
+
+        stop = StopInput(**clean)
+        existing = self._stores.list_all(project_id)
+        _, skipped = split_duplicates(existing, [stop])
+        if skipped:
+            by_id = skipped[0]["reason"] == "external_id"
+            same = next(
+                (other for other in existing
+                 if (normalize_external_id(other.external_id) == clean["external_id"] if by_id else
+                     dedupe_key_address(other.model_dump()) == dedupe_key_address(clean))), None)
+            where = " · ".join(part for part in (same.store_name, same.external_id) if part) if same else "a store"
+            name = "external_id" if by_id else "addr"
+            what = f"IBC# {clean['external_id']}" if by_id else "This address"
+            message = f"{what} is already in the project: {where}"
+            raise ValidationFailed(message, errors=[message], fields={name: message})
+
+        assert self._geocoder is not None
+        lookup = ", ".join(clean[key] for key in ADDRESS_PARTS if clean[key])
+        geo = resolve_address(self._geocoder, lookup, clean["store_name"])
+        if not geo.get("ok") or geo.get("partial"):
+            raise ValidationFailed(
+                "Address could not be verified by Google. Pick a suggestion or correct the address.",
+                google_status=geo.get("status"), suggestions=geo.get("suggestions") or [], address=lookup,
+            )
+        stop = stop.model_copy(update={"lat": geo.get("lat"), "lng": geo.get("lng"),
+                                       "geocoded": geo.get("formatted") or lookup})
+        self.append(project_id, [stop])
+        added = next((other for other in self._stores.list_all(project_id)
+                      if normalize_external_id(other.external_id) == clean["external_id"]), None)
+        if added is None:  # skipped by a store added in between
+            raise ConflictError("The store was added by someone else just now; reload the list")
+        return added
 
     @staticmethod
     def _new_stop(project: Project, stop: StopInput, display_id: str, installer: str, day: int, seq: int) -> Stop:

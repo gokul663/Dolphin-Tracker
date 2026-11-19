@@ -1,5 +1,6 @@
 import { STOP_STATUSES, type ProjectSummary, type ScreenStatus } from "@/lib/api/types";
 import { PROJECT_TYPE_LABELS } from "@/lib/status";
+import { nameKey } from "@/features/installers/InstallerName";
 
 export interface DashboardTotals {
   projects: number;
@@ -45,7 +46,7 @@ export function aggregateTotals(projects: ProjectSummary[]): DashboardTotals {
     screens: screenTotals(projects.map((project) => project.kpi)),
   };
   for (const project of projects) {
-    project.installers.forEach((name) => installers.add(name));
+    project.installers.forEach((name) => installers.add(nameKey(name)));
     totals.sites += project.kpi.total;
     totals.complete += project.kpi.complete;
     totals.pending += project.kpi.pending;
@@ -58,11 +59,20 @@ export function aggregateTotals(projects: ProjectSummary[]): DashboardTotals {
 }
 
 export function sitesByInstaller(projects: ProjectSummary[]): { name: string; value: number }[] {
-  const totals = new Map<string, number>();
+  // One slice per installer whatever case the name was typed in; it shows in the spelling with the most sites.
+  const totals = new Map<string, { value: number; spellings: Map<string, number> }>();
   for (const project of projects) {
-    for (const [name, count] of Object.entries(project.kpi.by_installer)) totals.set(name, (totals.get(name) ?? 0) + count);
+    for (const [name, count] of Object.entries(project.kpi.by_installer)) {
+      const entry = totals.get(nameKey(name)) ?? { value: 0, spellings: new Map<string, number>() };
+      entry.value += count;
+      entry.spellings.set(name, (entry.spellings.get(name) ?? 0) + count);
+      totals.set(nameKey(name), entry);
+    }
   }
-  return [...totals].map(([name, value]) => ({ name, value }));
+  return [...totals.values()].map(({ value, spellings }) => ({
+    name: [...spellings].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1))[0]![0],
+    value,
+  }));
 }
 
 export function statusBreakdown(totals: DashboardTotals) {

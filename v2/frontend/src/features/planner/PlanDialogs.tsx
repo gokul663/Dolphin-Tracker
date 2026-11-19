@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { usePlanMutations } from "@/features/planner/api";
-import { InstallerRows, installerProblems, type InstallerDraft } from "@/features/planner/InstallerRows";
+import { installerBody, InstallerRows, installerProblems, type InstallerDraft } from "@/features/planner/InstallerRows";
 import { isVisited, maxHoursText, nextWorkingDay, parseMaxHours } from "@/features/planner/planModel";
 import { StartLocationField } from "@/features/planner/StartLocationField";
 import { StorePicker } from "@/features/planner/StorePicker";
@@ -29,29 +29,30 @@ export function NextDayDialog({ bundle, open, onClose }: DialogProps) {
   const current = plan.days.at(-1)!;
   const mutations = usePlanMutations(plan.id);
   const [date, setDate] = useState(nextWorkingDay(current.date));
-  const [perDay, setPerDay] = useState(plan.stops_per_day);
-  const [maxHours, setMaxHours] = useState(maxHoursText(plan.max_day_hours));
+  // Blank: every installer keeps their own limits. A number applies to everyone, for this day only.
+  const [perDay, setPerDay] = useState("");
+  const [maxHours, setMaxHours] = useState("");
   const [starts, setStarts] = useState<Record<string, StartLocation | null>>({});
 
   useEffect(() => {
     if (!open) return;
     setDate(nextWorkingDay(current.date));
-    setPerDay(plan.stops_per_day);
-    setMaxHours(maxHoursText(plan.max_day_hours));
+    setPerDay("");
+    setMaxHours("");
     setStarts(Object.fromEntries(plan.installers.map((i) => [i.name, bundle.next_starts[i.name] ?? i.start])));
-  }, [open, bundle, current.date, plan.installers, plan.stops_per_day, plan.max_day_hours]);
+  }, [open, bundle, current.date, plan.installers]);
 
   const today = bundle.stops.filter((stop) => stop.day === current.number);
   const missed = today.filter((stop) => !isVisited(stop)).length;
   const openCount = bundle.stops.filter((stop) => !isVisited(stop)).length;
-  const ready = date > current.date && plan.installers.every((i) => starts[i.name]) && perDay >= 1 && perDay <= 50 && parseMaxHours(maxHours) !== null;
+  const ready = date > current.date && plan.installers.every((i) => starts[i.name]) && (perDay === "" || (Number(perDay) >= 1 && Number(perDay) <= 50)) && parseMaxHours(maxHours) !== null;
 
   const submit = async () => {
     try {
       await mutations.nextDay.mutateAsync({
         date,
-        stops_per_day: perDay,
-        max_day_hours: parseMaxHours(maxHours) ?? 0,
+        stops_per_day: perDay === "" ? null : Number(perDay),
+        max_day_hours: maxHours.trim() === "" ? null : parseMaxHours(maxHours),
         starts: Object.fromEntries(Object.entries(starts).filter((entry): entry is [string, StartLocation] => entry[1] !== null)),
         version: plan.version,
       });
@@ -68,8 +69,8 @@ export function NextDayDialog({ bundle, open, onClose }: DialogProps) {
         <DialogHeader>
           <DialogTitle>Plan day {current.number + 1}</DialogTitle>
           <DialogDescription>
-            Stops per day and max driving below apply to this day only; the plan's defaults (Edit plan) stay as they
-            are. Day {current.number} ({current.date}) closes. {missed} of its {today.length} stops were not visited and go back into the pool;
+            Each installer keeps their own stops per day and max driving (Edit plan) unless you type a number below: that
+            applies to everyone, for this day only. Day {current.number} ({current.date}) closes. {missed} of its {today.length} stops were not visited and go back into the pool;
             all {openCount} open stops are recalculated from the starts below.
           </DialogDescription>
         </DialogHeader>
@@ -81,7 +82,7 @@ export function NextDayDialog({ bundle, open, onClose }: DialogProps) {
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="next-per-day">Stops per day (this day)</Label>
-            <Input id="next-per-day" type="number" min={1} max={50} value={perDay} onChange={(e) => setPerDay(Number(e.target.value))} />
+            <Input id="next-per-day" type="number" min={1} max={50} placeholder="Each installer's own" value={perDay} onChange={(e) => setPerDay(e.target.value)} />
           </div>
           <MaxHoursField id="next-max-hours" label="Max driving (this day, hours)" value={maxHours} onChange={setMaxHours} />
         </div>
@@ -141,17 +142,14 @@ export function EditPlanDialog({ bundle, open, onClose }: DialogProps) {
   const { plan } = bundle;
   const mutations = usePlanMutations(plan.id);
   const [name, setName] = useState(plan.name);
-  const [perDay, setPerDay] = useState(plan.stops_per_day);
-  const [maxHours, setMaxHours] = useState(maxHoursText(plan.max_day_hours));
   const [rows, setRows] = useState<InstallerDraft[]>([]);
   const [replan, setReplan] = useState<Replan>("forecast");
 
   useEffect(() => {
     if (!open) return;
     setName(plan.name);
-    setPerDay(plan.stops_per_day);
-    setMaxHours(maxHoursText(plan.max_day_hours));
-    setRows(plan.installers.map((i) => ({ name: i.name, start: i.start })));
+    // An installer without limits of their own shows the plan's; saving then makes those their own.
+    setRows(plan.installers.map((i) => ({ name: i.name, start: i.start, perDay: i.stops_per_day ?? plan.stops_per_day, maxHours: maxHoursText(i.max_day_hours ?? plan.max_day_hours), startDate: i.start_date ?? plan.days[0]!.date })));
     setReplan("forecast");
   }, [open, plan]);
 
@@ -160,9 +158,7 @@ export function EditPlanDialog({ bundle, open, onClose }: DialogProps) {
     try {
       await mutations.update.mutateAsync({
         name: name.trim(),
-        stops_per_day: perDay,
-        max_day_hours: parseMaxHours(maxHours) ?? 0,
-        installers: rows.map((row) => ({ name: row.name.trim(), start: row.start! })),
+        installers: rows.map(installerBody),
         replan,
         version: plan.version,
       });
@@ -175,24 +171,19 @@ export function EditPlanDialog({ bundle, open, onClose }: DialogProps) {
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
-      <DialogContent className="max-w-3xl">
+      <DialogContent className="max-h-[92vh] w-[90vw] max-w-[90vw] overflow-y-auto sm:max-w-5xl">
         <DialogHeader>
           <DialogTitle>Edit plan</DialogTitle>
-          <DialogDescription>Removing an installer who still has stops today needs "Recalculate today too".</DialogDescription>
+          <DialogDescription>Each installer has their own start location and date, stops per day and max driving. Removing an installer who still has stops today needs "Recalculate today too".</DialogDescription>
         </DialogHeader>
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="space-y-1.5">
             <Label htmlFor="edit-name">Name</Label>
             <Input id="edit-name" value={name} onChange={(e) => setName(e.target.value)} />
           </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="edit-per-day">Default stops per day</Label>
-            <Input id="edit-per-day" type="number" min={1} max={50} value={perDay} onChange={(e) => setPerDay(Number(e.target.value))} />
-          </div>
-          <MaxHoursField id="edit-max-hours" label="Default max driving per day (hours)" value={maxHours} onChange={setMaxHours} />
         </div>
-        <div className="max-h-[45vh] overflow-y-auto">
-          <InstallerRows rows={rows} onChange={setRows} />
+        <div className="max-h-[55vh] overflow-y-auto">
+          {open && <InstallerRows rows={rows} onChange={setRows} />}
         </div>
         <ReplanSelect value={replan} onChange={setReplan} />
         {problems.length > 0 && <p className="text-xs text-amber-700">{problems[0]}</p>}
@@ -236,7 +227,8 @@ export function AddStoresDialog({ bundle, open, onClose }: DialogProps) {
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
-      <DialogContent className="max-h-[92vh] max-w-[min(1400px,95vw)] overflow-y-auto">
+      {/* Wide: the picker has a filter card, a table and a map side by side. */}
+      <DialogContent className="max-h-[92vh] w-[90vw] max-w-[90vw] overflow-y-auto sm:max-w-[90vw]">
         <DialogHeader>
           <DialogTitle>Add stores to {bundle.plan.name}</DialogTitle>
           <DialogDescription>New stores go to the coming days unless you recalculate today too.</DialogDescription>

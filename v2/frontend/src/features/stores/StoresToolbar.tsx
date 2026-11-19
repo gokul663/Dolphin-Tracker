@@ -1,5 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { AlertTriangle, Download, Search, X } from "lucide-react";
+import { AlertTriangle, Download, Plus, Search, Upload, X } from "lucide-react";
+import { AddStoreDialog } from "@/features/stores/AddStoreDialog";
+import { ImportWizard } from "@/features/imports/ImportWizard";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -14,23 +16,36 @@ import { anyFacet, FACET_LABELS, optionLabel } from "@/features/stores/filters";
 import type { Facet } from "@/stores/ui";
 import { cn } from "@/lib/utils";
 
-/** "Only stores in map view" and the CSV export, for the status line above the search and filters. */
-export function StoresListActions({ project, filters }: { project: Project; filters: StoreFilters }) {
+/** "Only stores in map view", then the ways in and out, for the status line above the search and filters: add one
+ *  store by hand, upload a sheet of them (the sheets themselves are listed in Settings), export the list as CSV. */
+export function StoresListActions({ project, filters, onAdded }: { project: Project; filters: StoreFilters; onAdded?: (uid: string) => void }) {
   const onlyInView = useStoresUi((state) => state.onlyInView);
   const setOnlyInView = useStoresUi((state) => state.setOnlyInView);
+  const [adding, setAdding] = useState(false);
+  const [importing, setImporting] = useState(false);
   return (
-    <div className="flex items-center gap-3">
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
       <div className="flex items-center gap-1.5">
         <Checkbox id="only-in-view" checked={onlyInView} onCheckedChange={(checked) => setOnlyInView(checked === true)} />
         <Label htmlFor="only-in-view" className="text-xs">
           Only stores in map view
         </Label>
       </div>
-      <Button asChild variant="outline" size="sm">
-        <a href={storeExportUrl(project.id, filters)} download>
-          <Download /> CSV
-        </a>
-      </Button>
+      <div className="flex items-center gap-1.5">
+        <Button size="sm" onClick={() => setAdding(true)}>
+          <Plus /> Add store
+        </Button>
+        <Button variant="outline" size="sm" onClick={() => setImporting(true)}>
+          <Upload /> Upload sheet
+        </Button>
+        <Button asChild variant="outline" size="sm">
+          <a href={storeExportUrl(project.id, filters)} download>
+            <Download /> CSV
+          </a>
+        </Button>
+      </div>
+      <AddStoreDialog project={project} open={adding} onClose={() => setAdding(false)} onAdded={onAdded} />
+      {importing && <ImportWizard open appendTo={project} onClose={() => setImporting(false)} />}
     </div>
   );
 }

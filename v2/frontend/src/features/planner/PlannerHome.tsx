@@ -51,6 +51,13 @@ export function PlannerHome() {
                       {status === "active" ? `Day ${current?.number} · ${current?.date}` : `Started ${plan.days[0]?.date} · ${plan.days.length} days`}
                     </div>
                     <div className="truncate text-xs text-slate-500">{plan.installers.map((i) => i.name).join(", ")}</div>
+                    {plan.summary && (
+                      <div className="flex flex-wrap gap-1.5 pt-1 font-mono text-[11px]" aria-label="How the plan ended">
+                        <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-emerald-800">{plan.summary.done} done</span>
+                        <span className="rounded bg-amber-50 px-1.5 py-0.5 text-amber-800">{plan.summary.incomplete} incomplete</span>
+                        <span className="rounded bg-slate-100 px-1.5 py-0.5 text-slate-700">{plan.summary.not_visited} not visited</span>
+                      </div>
+                    )}
                   </Card>
                 </Link>
               </li>

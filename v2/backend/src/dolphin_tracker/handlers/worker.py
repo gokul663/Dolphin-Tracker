@@ -68,6 +68,16 @@ RUNNERS: dict[JobType, Callable[[dict[str, Any], WorkerDeps], None]] = {
 }
 
 
+def refresh_venues() -> dict[str, Any]:
+    """The Route Planner's all-venues list, from every PA of the device report (asked for from the planner)."""
+    from dolphin_tracker.repositories.device_data import make_device_data
+    from dolphin_tracker.services.venues import VenueCatalogService
+
+    result = VenueCatalogService(default_deps().stores, make_device_data(get_settings())).refresh_all().model_dump()
+    logger.info("Venue refresh finished", extra=result)
+    return {"ok": not result["failed"], **result}
+
+
 def sync_all_devices() -> dict[str, Any]:
     """The daily schedule (EventBridge, 12:00 UTC): sync every project that has a device PA chosen."""
     from dolphin_tracker.repositories.device_data import make_device_data
@@ -89,6 +99,8 @@ def dispatch(event: dict[str, Any], deps: WorkerDeps | None = None) -> dict[str,
     """Run one job event. Shared by the Lambda handler and the inline (local) invoker."""
     if event.get("task") == "device_sync_all":
         return sync_all_devices()
+    if event.get("task") == "venues_refresh":
+        return refresh_venues()
     job_id = event.get("job_id", "")
     try:
         job_type = JobType(event["job_type"])

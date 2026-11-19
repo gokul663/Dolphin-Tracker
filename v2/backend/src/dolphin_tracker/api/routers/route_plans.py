@@ -4,7 +4,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from dolphin_tracker.api.deps import get_route_plan_service, get_store_search_service
+from dolphin_tracker.api.deps import get_route_plan_service, get_store_search_service, get_worker_invoker
 from dolphin_tracker.api.schemas import PoolFacets
 from dolphin_tracker.domain.models import Page, ScreenStatus
 from dolphin_tracker.domain.route_plans import (
@@ -24,7 +24,11 @@ from dolphin_tracker.domain.route_plans import (
     RoutePlanBundle,
     RoutePlanCreate,
     RoutePlanUpdate,
+    StopMark,
+    StopMove,
 )
+from dolphin_tracker.domain.statuses import StatusBucket
+from dolphin_tracker.repositories.worker_invoker import WorkerInvoker
 from dolphin_tracker.services.route_plans import RoutePlanService
 from dolphin_tracker.services.store_search import PoolQuery, StoreSearchService
 
@@ -38,13 +42,17 @@ def pool_query(
     state: ListParam = None,
     city: ListParam = None,
     project_id: ListParam = None,
+    dma: ListParam = None,
+    pa: ListParam = None,
+    bucket: Annotated[list[StatusBucket] | None, Query()] = None,
     status: Annotated[list[ScreenStatus] | None, Query()] = None,
     pending_only: bool = False,
     available_only: bool = False,
     q: Annotated[str, Query(max_length=200)] = "",
 ) -> PoolQuery:
     return PoolQuery(
-        state=state or [], city=city or [], project_id=project_id or [], status=status or [],
+        state=state or [], city=city or [], project_id=project_id or [], dma=dma or [], pa=pa or [],
+        bucket=bucket or [], status=status or [],
         pending_only=pending_only, available_only=available_only, q=q,
     )
 
@@ -77,6 +85,14 @@ def search_pins(service: SearchDep, query: PoolDep) -> list[PoolStore]:
 @router.get("/store-search/facets", response_model=PoolFacets)
 def search_facets(service: SearchDep, query: PoolDep) -> dict:
     return service.facets(query)
+
+
+@router.post("/store-search/venues/refresh", status_code=202)
+def refresh_venues(invoker: Annotated[WorkerInvoker, Depends(get_worker_invoker)]) -> dict[str, bool]:
+    """Bring the all-venues list (every venue of every PA in the Dolphin data) up to date now. It runs in the
+    background and takes a minute or two; the daily device sync does the same."""
+    invoker.invoke({"task": "venues_refresh"})
+    return {"started": True}
 
 
 # ---- plans -----------------------------------------------------------------------------------------------------
@@ -129,6 +145,18 @@ def remove_stop(plan_id: str, project_id: str, stop_uid: str, service: PlanDep) 
 @router.post("/route-plans/{plan_id}/stops/{project_id}/{stop_uid}/reassign", response_model=RoutePlanBundle)
 def reassign_stop(plan_id: str, project_id: str, stop_uid: str, body: Reassign, service: PlanDep) -> RoutePlanBundle:
     return service.reassign(plan_id, project_id, stop_uid, body)
+
+
+@router.post("/route-plans/{plan_id}/stops/{project_id}/{stop_uid}/move", response_model=RoutePlanBundle)
+def move_stop(plan_id: str, project_id: str, stop_uid: str, body: StopMove, service: PlanDep) -> RoutePlanBundle:
+    """Put a store on a chosen installer's chosen day and keep it there; `to_plan_id` moves it to another plan."""
+    return service.move(plan_id, project_id, stop_uid, body)
+
+
+@router.post("/route-plans/{plan_id}/stops/{project_id}/{stop_uid}/mark", response_model=RoutePlanBundle)
+def mark_stop(plan_id: str, project_id: str, stop_uid: str, body: StopMark, service: PlanDep) -> RoutePlanBundle:
+    """Mark a stop Done or Incomplete (or back to in route), or release its pin."""
+    return service.mark(plan_id, project_id, stop_uid, body)
 
 
 @router.post("/route-plans/{plan_id}/next-day", response_model=RoutePlanBundle)

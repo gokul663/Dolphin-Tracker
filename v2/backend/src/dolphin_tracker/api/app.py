@@ -14,6 +14,7 @@ from dolphin_tracker.api.routers import (
     places,
     projects,
     route_plans,
+    screen_sheet,
     stores,
     visits,
 )
@@ -55,6 +56,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     api.include_router(visits.router)
     api.include_router(route_plans.router)
     api.include_router(device_sync.router)
+    api.include_router(screen_sheet.router)
     app.include_router(api)
 
     @app.exception_handler(NotFoundError)

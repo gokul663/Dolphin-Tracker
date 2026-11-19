@@ -1,21 +1,21 @@
 import { useMemo, useState } from "react";
-import { ChevronDown, Lock } from "lucide-react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { Loader2, Lock, RefreshCw, Search, X } from "lucide-react";
+import { toast } from "sonner";
+import { FacetDropdown, type FacetOption } from "@/components/FacetDropdown";
 import { MapView } from "@/components/map/MapView";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
-import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import { BucketChips } from "@/features/stores/BucketChips";
 import { usePoolFacets, usePoolPins } from "@/features/planner/api";
 import { poolKey, poolPins } from "@/features/planner/planModel";
 import { US_STATE_NAMES } from "@/features/routes/routeModel";
-import type { PoolFilters } from "@/lib/api/resources";
+import { keys } from "@/lib/api/keys";
+import { storeSearchApi, type PoolFilters } from "@/lib/api/resources";
 import type { FacetValue, PoolStore, StopStatus } from "@/lib/api/types";
-import { STATUS_META } from "@/lib/status";
+import { BUCKET_LABEL, STATUS_META, STORE_BUCKETS, storeStatusLabel, type StatusBucket } from "@/lib/status";
 import { cn } from "@/lib/utils";
 
 const TABLE_ROWS = 300;
@@ -27,65 +27,45 @@ interface Props {
   planId?: string;
 }
 
-function Facet({
-  label,
-  values,
-  selected,
-  onToggle,
-  render = (value: FacetValue) => value.label || value.value,
-}: {
-  label: string;
-  values: FacetValue[] | undefined;
-  selected: string[];
-  onToggle: (value: string) => void;
-  render?: (value: FacetValue) => string;
-}) {
-  const only = selected.length === 1 ? values?.find((value) => value.value === selected[0]) : undefined;
-  const summary =
-    selected.length === 0 ? `All ${label}` : selected.length > 1 ? `${selected.length} ${label}` : only ? render(only) : selected[0]!;
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild disabled={!values?.length}>
-        <Button
-          variant="outline"
-          size="sm"
-          aria-label={`${label}: ${summary}`}
-          className={cn("max-w-56 font-mono text-[11px]", selected.length > 0 && "border-slate-800 bg-slate-800 text-white hover:bg-slate-700 hover:text-white")}
-        >
-          <span className="truncate">{summary}</span>
-          <ChevronDown />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="max-h-80 overflow-y-auto">
-        {(values ?? []).map((value) => (
-          <DropdownMenuCheckboxItem
-            key={value.value}
-            checked={selected.includes(value.value)}
-            onCheckedChange={() => onToggle(value.value)}
-            onSelect={(event) => event.preventDefault()}
-          >
-            <span className="flex-1">{render(value)}</span>
-            <span className="font-mono text-[10px] text-slate-400">{value.count}</span>
-          </DropdownMenuCheckboxItem>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
+const plain = (values: FacetValue[] | undefined): FacetOption[] => (values ?? []).map((value) => ({ value: value.value, label: value.label || value.value, count: value.count }));
+/** Archived and cancelled stores are never routed, so the planner does not offer them. */
+const ROUTED_BUCKETS = STORE_BUCKETS.filter((bucket) => bucket !== "Archived" && bucket !== "Cancelled");
 
 const toggle = (list: string[] | undefined, value: string) =>
   (list ?? []).includes(value) ? (list ?? []).filter((v) => v !== value) : [...(list ?? []), value];
 
-/** Stores from every project, filtered by state, city, project and status; pick them on the map or in the table. */
+/** Stores from every project and every other venue of the Dolphin data (the ones in no project), filtered by status group, state, city, DMA and project; pick them on the map or in the table. */
 export function StorePicker({ selected, onChange, planId }: Props) {
-  const [filters, setFilters] = useState<PoolFilters>({ pending_only: true });
+  const [filters, setFilters] = useState<PoolFilters>({ bucket: ["Upcoming"] });
   const facets = usePoolFacets(filters);
+  const client = useQueryClient();
+  // The update runs in the background: look again a few times while it fills in.
+  const refresh = useMutation({
+    mutationFn: storeSearchApi.refreshVenues,
+    onSuccess: () => [20_000, 60_000, 120_000].forEach((wait) => window.setTimeout(() => void client.invalidateQueries({ queryKey: keys.storeSearch }), wait)),
+  });
   const pins = usePoolPins(filters);
   const matches = useMemo(() => pins.data ?? [], [pins.data]);
   const locked = (store: PoolStore) => Boolean(store.route_plan_id);
   const pickable = matches.filter((store) => !locked(store));
   const mapPins = useMemo(() => poolPins(matches), [matches]);
   const set = (patch: Partial<PoolFilters>) => setFilters((current) => ({ ...current, ...patch }));
+
+  const stateOptions: FacetOption[] = (facets.data?.states ?? []).map((value) => ({ value: value.value, label: US_STATE_NAMES[value.value] ? `${US_STATE_NAMES[value.value]} (${value.value})` : value.value, count: value.count }));
+  const projectOptions = plain(facets.data?.projects);
+  // Everything narrowing the list, one chip each with its own ×.
+  const picked = (name: string, key: "state" | "city" | "dma" | "pa" | "project_id" | "bucket", labelOf: (value: string) => string = (value) => value) =>
+    (filters[key] ?? []).map((value) => ({ key: `${key}:${value}`, label: `${name}: ${labelOf(value)}`, onRemove: () => set({ [key]: toggle(filters[key], value) }) }));
+  const chips = [
+    ...(filters.q ? [{ key: "q", label: `Search: ${filters.q}`, onRemove: () => set({ q: "" }) }] : []),
+    ...picked("Status", "bucket", (value) => BUCKET_LABEL[value as StatusBucket] ?? value),
+    ...picked("State", "state", (value) => US_STATE_NAMES[value] ?? value),
+    ...picked("City", "city"),
+    ...picked("DMA", "dma"),
+    ...picked("PA", "pa"),
+    ...picked("Project", "project_id", (value) => projectOptions.find((option) => option.value === value)?.label ?? value),
+    ...(filters.available_only ? [{ key: "free", label: "Not in a plan", onRemove: () => set({ available_only: false }) }] : []),
+  ];
 
   const flip = (store: PoolStore) => {
     if (locked(store)) return;
@@ -108,37 +88,60 @@ export function StorePicker({ selected, onChange, planId }: Props) {
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Store filters">
-        <Facet
-          label="states"
-          values={facets.data?.states}
-          selected={filters.state ?? []}
-          onToggle={(value) => set({ state: toggle(filters.state, value), city: [] })}
-          render={(value) => `${US_STATE_NAMES[value.value] ?? value.value} (${value.value})`}
-        />
-        <Facet label="cities" values={facets.data?.cities} selected={filters.city ?? []} onToggle={(value) => set({ city: toggle(filters.city, value) })} />
-        <Facet
-          label="projects"
-          values={facets.data?.projects}
-          selected={filters.project_id ?? []}
-          onToggle={(value) => set({ project_id: toggle(filters.project_id, value) })}
-        />
-        <label className="flex items-center gap-1.5 text-xs">
-          <Checkbox checked={filters.pending_only ?? false} onCheckedChange={(on) => set({ pending_only: on === true })} />
-          Pending only
-        </label>
-        <label className="flex items-center gap-1.5 text-xs">
-          <Checkbox checked={filters.available_only ?? false} onCheckedChange={(on) => set({ available_only: on === true })} />
-          Hide stores in a plan
-        </label>
-        <Input
-          aria-label="Search stores"
-          placeholder="Search name, IBC#, address…"
-          value={filters.q ?? ""}
-          onChange={(event) => set({ q: event.target.value })}
-          className="h-8 w-56"
-        />
-      </div>
+      {/* One filter card, as on the Projects page: the status groups first, then search and the other filters,
+          then a chip for everything that narrows the list. */}
+      <Card className="gap-2.5 p-3" role="group" aria-label="Store filters">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <BucketChips buckets={ROUTED_BUCKETS} options={facets.data?.buckets} selected={filters.bucket ?? []} onToggle={(bucket) => set({ bucket: toggle(filters.bucket, bucket) })} />
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="flex items-center gap-1.5 text-xs text-slate-700">
+              <Checkbox checked={filters.available_only ?? false} onCheckedChange={(on) => set({ available_only: on === true })} />
+              Hide stores in a plan
+            </label>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={refresh.isPending}
+              title="Every venue of every PA in the Dolphin data is listed here, also the ones in no project. The daily sync updates them; this does it now."
+              onClick={() =>
+                refresh.mutate(undefined, {
+                  onSuccess: () => toast.success("Updating every venue from the Dolphin data", { description: "It takes a minute or two; the list here follows." }),
+                  onError: (error) => toast.error(error instanceof Error ? error.message : "Could not start the update"),
+                })
+              }
+            >
+              {refresh.isPending ? <Loader2 className="animate-spin" /> : <RefreshCw />} Update venues
+            </Button>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <div className="relative w-72 shrink-0">
+            <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <Input aria-label="Search stores" placeholder="Search IBC#, store name or address…" value={filters.q ?? ""} onChange={(event) => set({ q: event.target.value })} className="h-8 pl-9 text-sm" />
+          </div>
+          <FacetDropdown label="State" options={stateOptions} selected={filters.state ?? []} onToggle={(value) => set({ state: toggle(filters.state, value), city: [] })} />
+          <FacetDropdown label="City" options={plain(facets.data?.cities)} selected={filters.city ?? []} onToggle={(value) => set({ city: toggle(filters.city, value) })} />
+          <FacetDropdown label="DMA" options={plain(facets.data?.dmas)} selected={filters.dma ?? []} onToggle={(value) => set({ dma: toggle(filters.dma, value) })} />
+          <FacetDropdown label="PA" options={plain(facets.data?.pas)} selected={filters.pa ?? []} onToggle={(value) => set({ pa: toggle(filters.pa, value) })} />
+          <FacetDropdown label="Project" options={projectOptions} selected={filters.project_id ?? []} onToggle={(value) => set({ project_id: toggle(filters.project_id, value) })} />
+        </div>
+        {chips.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Active filters">
+            <span className="font-mono text-[11px] uppercase tracking-wider text-slate-500">Filtered by</span>
+            {chips.map((chip) => (
+              <span key={chip.key} className="inline-flex items-center gap-1 rounded-full border border-brand/30 bg-brand/10 py-0.5 pl-2.5 pr-1 text-xs font-medium text-brand">
+                {chip.label}
+                <button type="button" aria-label={`Remove ${chip.label}`} onClick={chip.onRemove} className="rounded-full p-0.5 hover:bg-brand/20">
+                  <X size={12} />
+                </button>
+              </span>
+            ))}
+            <Button variant="ghost" size="sm" className="h-7" onClick={() => setFilters({})}>
+              <X /> Clear all
+            </Button>
+          </div>
+        )}
+      </Card>
       <div className="flex flex-wrap items-center gap-2 text-sm">
         <span className="font-mono text-xs text-slate-600" aria-live="polite">
           {pins.isFetching && !pins.data ? "Loading…" : `${matches.length} matching · ${selected.size} selected`}
@@ -163,8 +166,8 @@ export function StorePicker({ selected, onChange, planId }: Props) {
               <tr>
                 <th className="w-8 p-2" />
                 <th className="p-2">Store</th>
-                <th className="p-2">City</th>
-                <th className="p-2">Project</th>
+                <th className="p-2">City · DMA</th>
+                <th className="p-2">Project · PA</th>
                 <th className="p-2">Status</th>
               </tr>
             </thead>
@@ -191,10 +194,16 @@ export function StorePicker({ selected, onChange, planId }: Props) {
                     </td>
                     <td className="p-2 text-xs">
                       {store.city} {store.state}
+                      {store.dma && <div className="text-[11px] text-slate-400">{store.dma}</div>}
                     </td>
-                    <td className="p-2 text-xs">{store.project_name}</td>
+                    <td className={cn("p-2 text-xs", store.project_id === "venues" && "text-slate-400")}>
+                      {store.project_name}
+                      {store.pa && <div className="text-[11px] text-slate-400">{store.pa}</div>}
+                    </td>
                     <td className="p-2">
-                      <span className={cn("rounded border px-1.5 py-0.5 text-[10px]", STATUS_META[store.status as StopStatus]?.chip)}>{store.status}</span>
+                      <span className={cn("whitespace-nowrap rounded border px-1.5 py-0.5 text-[10px]", STATUS_META[store.status as StopStatus]?.chip)}>
+                        {store.status in STATUS_META ? storeStatusLabel(store.status as StopStatus) : store.status}
+                      </span>
                     </td>
                   </tr>
                 );

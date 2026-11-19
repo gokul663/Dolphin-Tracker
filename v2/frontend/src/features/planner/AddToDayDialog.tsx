@@ -50,7 +50,7 @@ export function AddToDayDialog({ bundle, installer, day, forecast, open, onClose
   }, [options.data]);
 
   const thisDay = bundle.stops.filter((stop) => stop.installer === installer && stop.day === day);
-  const limits = dayLimits(bundle.plan, forecast ? undefined : day);
+  const limits = dayLimits(bundle.plan, forecast ? undefined : day, installer);
   const chosen = options.data?.options.find((option) => option.position === position);
   const drive = (dayDriveMinutes(thisDay) ?? 0) + (chosen?.extra_minutes ?? 0);
   const alreadyHere = store && thisDay.some((stop) => stop.project_id === store.project_id && stop.stop_uid === store.stop_uid);

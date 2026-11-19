@@ -25,6 +25,7 @@ from dolphin_tracker.domain.schema import (
     with_sheet_fields,
 )
 from dolphin_tracker.domain.validation import stop_details
+from dolphin_tracker.domain.venues import VENUES_PROJECT_ID
 from dolphin_tracker.repositories.projects import ProjectRepository
 from dolphin_tracker.repositories.stores import StoreRepository
 from dolphin_tracker.services.routing import RoutingService
@@ -173,6 +174,8 @@ class ProjectService:
 
     def delete(self, project_id: str, *, confirm: str) -> None:
         """Two-step safeguard from v1: the caller must echo the exact project name."""
+        if project_id == VENUES_PROJECT_ID:
+            raise ValueError("The all-venues list is not a project and cannot be deleted")
         project = self.get(project_id)
         if confirm.strip() != project.name.strip():
             raise ValueError("Confirmation does not match. Type the project name exactly to delete it.")

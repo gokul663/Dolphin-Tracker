@@ -92,6 +92,30 @@ describe("Needs review", () => {
   });
 });
 
+describe("Needs review: several at once", () => {
+  it("ticks rows and adds them together; one Google cannot verify stays ticked with its address step", async () => {
+    const second = { ...ITEM, venue_id: "DD_NEW002", key: "DD_NEW002", store_name: "Second Stop", dma: "Detroit", last_registered: "2026-10-02T10:00:00+00:00" };
+    const { calls } = mockApi({
+      "GET /api/projects/p1/device-sync/review": () => ({ items: [ITEM, second], next_cursor: null, total: 2, snoozed: 0 }),
+      "POST /api/projects/p1/device-sync/review/DD_NEW001/add": () => makeStop({ store_name: "New Gas" }),
+      "POST /api/projects/p1/device-sync/review/DD_NEW002/add": () => jsonError(422, { message: "Google could not verify this address.", suggestions: [], address: "" }),
+    });
+    renderWithProviders(<ReviewDialog project={makeProject({ device_pa: "IBC", device_sync: STATE })} open onClose={() => {}} />);
+    // Each row spells out what the report knows, under its name.
+    const facts = await screen.findByLabelText("Details of DD_NEW002");
+    expect(facts.textContent).toContain("DMADetroit");
+    expect(facts.textContent).toContain("Registered2026-10-02");
+    expect(screen.getByLabelText("Details of DD_NEW001").textContent).toContain("RegisteredNever");
+    expect(screen.queryByRole("button", { name: /selected/ })).toBeNull(); // nothing ticked yet
+    await userEvent.click(screen.getByRole("checkbox", { name: "Select all on this page" }));
+    await userEvent.click(screen.getByRole("button", { name: "Add 2 selected" }));
+    await waitFor(() => expect(calls.filter((call) => call.url.pathname.endsWith("/add"))).toHaveLength(2));
+    expect(await screen.findByText("Google could not verify this address.")).toBeTruthy();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Add 1 selected" })).toBeTruthy());
+    expect(screen.getByRole("checkbox", { name: "Select DD_NEW002" }).getAttribute("aria-checked")).toBe("true");
+  });
+});
+
 describe("Needs review: the address check", () => {
   it("asks for an address Google can verify, then checks it or adds anyway", async () => {
     const noAddress = { ...ITEM, address: "", addr: "", city: "", state: "", zip: "", lat: null, lng: null, store_name: "LA22 Mart- Ponchatoula" };
@@ -135,7 +159,7 @@ describe("Store drawer: Dolphin data", () => {
     await waitFor(() => expect(calls[0]?.body).toEqual({ fields: ["store_name"] }));
     // City, state and ZIP match the sheet: nothing to overwrite there.
     expect(within(screen.getByText("City").closest("tr") as HTMLElement).queryByRole("button")).toBeNull();
-    expect(screen.getByRole("button", { name: /Overwrite all \(3\)/ })).toBeTruthy(); // name, address, location
+    expect(screen.getByRole("button", { name: /Overwrite all \(5\)/ })).toBeTruthy(); // name, address, DMA, venue type, location
   });
 
   it("explains 'not in Dolphin data' and ignores it until the next report", async () => {
@@ -152,7 +176,7 @@ describe("Store drawer: Dolphin data", () => {
     mockApi({});
     const synced = makeStop({
       device, store_name: device.store_name, addr: device.addr, city: device.city, state: device.state, zip: device.zip,
-      lat: device.lat, lng: device.lng,
+      lat: device.lat, lng: device.lng, dma: device.dma, venue_type: device.venue_type,
     });
     const { container } = renderWithProviders(<StoreDeviceSection project={makeProject({ device_sync: STATE })} stop={synced} />);
     expect(container.querySelector("section")).toBeNull();

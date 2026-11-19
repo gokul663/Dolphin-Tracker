@@ -58,8 +58,13 @@ class Screen(ApiModel):
     venue_id: str = Field(default="", max_length=200)  # the "DD code"
     screen_size: str = Field(default="", max_length=50)
     is_dolphin_screen: bool = True  # owned by Dolphin (False: the store's own TV)
-    # Which Dolphin-owned model it is ("Dolphin", "Dell"...), from the project's price list; "" = not chosen.
+    # Its brand: for a Dolphin-owned screen the model from the project's price list ("Dolphin", "Dell"...), for a
+    # store's own TV its make ("LG", "TCL"...); "" = not chosen.
     screen_type: str = Field(default="", max_length=100)
+    # The screen's name in the CMS and what kind of venue the CMS files it under. The device sync writes both from
+    # the report whenever it has a value (the CMS is the main source); a person may fill them before that.
+    cms_name: str = Field(default="", max_length=300)
+    venue_type: str = Field(default="", max_length=200)
     has_mount: bool = False
     has_ceiling_mount: bool = False  # False: wall mount, the default
     needs_mount: bool = False  # a mount still has to be brought and fitted (independent of has_mount)
@@ -78,8 +83,6 @@ class Screen(ApiModel):
     def _dolphin_screen_size(self) -> Self:
         if self.is_dolphin_screen:
             self.screen_size = dolphin_screen_size(self.screen_size)
-        else:
-            self.screen_type = ""  # a store TV is not one of our models
         return self
 
 
@@ -129,6 +132,8 @@ class ScreenPrice(ApiModel):
     size: str = Field(max_length=10)
     type: str = Field(default="", max_length=100)
     cost: float | None = Field(default=None, ge=0)
+    # The size's default: what a Dolphin screen of this size is when no type is chosen. One per size.
+    is_default: bool = False
 
     @model_validator(mode="after")
     def _clean(self) -> Self:
@@ -139,13 +144,31 @@ class ScreenPrice(ApiModel):
         return self
 
 
+class MountPrice(ApiModel):
+    """What the mounts for one screen size cost: the wall mount and the ceiling mount (None = we have none for this
+    size, or it is not priced yet)."""
+
+    size: str = Field(max_length=10)
+    wall: float | None = Field(default=None, ge=0)
+    ceiling: float | None = Field(default=None, ge=0)
+
+    @model_validator(mode="after")
+    def _clean(self) -> Self:
+        self.size = screen_size_label(self.size)
+        if not self.size:
+            raise ValueError("A mount price needs a size in inches")
+        return self
+
+
 class HardwareCosts(ApiModel):
     """What the hardware costs Dolphin, per project (dollars; None = not set). Every installed screen has a stick; a
-    Dolphin screen also costs the screen itself, by size and type (`screens`, the price list the store window offers
-    when a Dolphin screen's size is picked)."""
+    Dolphin screen also costs the screen itself, by its size: the types of a size (`screens`, the list the store
+    window offers when a Dolphin screen's size is picked) all carry that size's one cost."""
 
     stick: float | None = Field(default=None, ge=0)
     screens: list[ScreenPrice] = Field(default_factory=list, max_length=100)
+    # Mounts, by the screen size they hold: counted in the hardware cost only when asked for.
+    mounts: list[MountPrice] = Field(default_factory=list, max_length=50)
 
     @model_validator(mode="before")
     @classmethod
@@ -162,6 +185,17 @@ class HardwareCosts(ApiModel):
         keys = [(row.size, row.type.lower()) for row in self.screens]
         if len(set(keys)) != len(keys):
             raise ValueError("The same screen size and type is priced twice")
+        if len({row.size for row in self.mounts}) != len(self.mounts):
+            raise ValueError("The mounts of the same screen size are priced twice")
+        # Exactly one default per size: the one marked (the first of several), else the size's first row.
+        for size in dict.fromkeys(row.size for row in self.screens):
+            rows = [row for row in self.screens if row.size == size]
+            chosen = next((row for row in rows if row.is_default), rows[0])
+            # A size has one cost, whatever the type: the default's, else the first one set.
+            cost = chosen.cost if chosen.cost is not None else next((r.cost for r in rows if r.cost is not None), None)
+            for row in rows:
+                row.is_default = row is chosen
+                row.cost = cost
         return self
 
 
@@ -237,8 +271,13 @@ class StoreDetails(ApiModel):
     install_type: str = Field(default="", max_length=20)  # "", "Technician", "Self install" or "Rep install"
     committed_dolphin_screens: int | None = Field(default=None, ge=0)
     committed_store_tvs: int | None = Field(default=None, ge=0)
-    # Mounts to bring, typed in by hand (None = not known yet).
+    # Mounts to bring, typed over the number worked out from the Upcoming screens (None = not typed: the worked-out
+    # number stands). The 24 inch wall mount is its own piece; `wall_mounts_needed` is every other size.
     wall_mounts_needed: int | None = Field(default=None, ge=0)
+    wall_24_mounts_needed: int | None = Field(default=None, ge=0)
+    # Hardware used at the store, typed over what its screens add up to (None = the worked-out number).
+    screens_used: int | None = Field(default=None, ge=0)
+    mounts_used: int | None = Field(default=None, ge=0)
     ceiling_mounts_needed: int | None = Field(default=None, ge=0)
     tv_mounts_needed: int | None = Field(default=None, ge=0)
     preferred_area: str = Field(default="", max_length=500)
@@ -373,6 +412,8 @@ def merge_same_code(screens: list[Screen]) -> list[Screen]:
             "stick_number": next((row.stick_number for row in group if row.stick_number.strip()), ""),
             "screen_size": next((row.screen_size for row in group if row.screen_size.strip()), ""),
             "screen_type": next((row.screen_type for row in group if row.screen_type.strip()), ""),
+            "cms_name": next((row.cms_name for row in group if row.cms_name.strip()), ""),
+            "venue_type": next((row.venue_type for row in group if row.venue_type.strip()), ""),
             "has_mount": any(row.has_mount for row in group),
             "has_ceiling_mount": any(row.has_ceiling_mount for row in group),
             "needs_mount": any(row.needs_mount for row in group),
@@ -405,6 +446,8 @@ class ScreenInput(ApiModel):
     screen_size: str = Field(default="", max_length=50)
     is_dolphin_screen: bool = True
     screen_type: str = Field(default="", max_length=100)
+    cms_name: str = Field(default="", max_length=300)
+    venue_type: str = Field(default="", max_length=200)
     has_mount: bool = False
     has_ceiling_mount: bool = False
     needs_mount: bool = False

@@ -5,9 +5,25 @@ import type { Pin, PlanStop, PoolStore, RoutePlan, RoutePlanBundle, StartLocatio
 export const planStopKey = (stop: Pick<PlanStop, "project_id" | "stop_uid">) => `${stop.project_id}#${stop.stop_uid}`;
 export const poolKey = (store: Pick<PoolStore, "project_id" | "uid">) => `${store.project_id}#${store.uid}`;
 
-/** Visited once every stick the store had when it joined has a visit logged against this plan. */
-export function isVisited(stop: Pick<PlanStop, "screen_ids" | "visited_screens">): boolean {
-  return stop.screen_ids.length > 0 && stop.screen_ids.every((id) => stop.visited_screens.includes(id));
+/** Done: marked Done by hand, or every stick the store had when it joined has a visit logged against this plan. */
+export function isVisited(stop: Pick<PlanStop, "screen_ids" | "visited_screens"> & Partial<Pick<PlanStop, "outcome">>): boolean {
+  return stop.outcome === "done" || (stop.screen_ids.length > 0 && stop.screen_ids.every((id) => stop.visited_screens.includes(id)));
+}
+
+/** Where a stop stands: Done, Incomplete (someone went and could not finish: it is planned again), or In route. */
+export type StopState = "done" | "incomplete" | "route";
+export const STOP_STATES: readonly StopState[] = ["done", "incomplete", "route"];
+export const STOP_STATE_LABEL: Record<StopState, string> = { done: "Done", incomplete: "Incomplete", route: "In route" };
+
+export function stopState(stop: Pick<PlanStop, "screen_ids" | "visited_screens" | "outcome">): StopState {
+  return isVisited(stop) ? "done" : stop.outcome === "incomplete" ? "incomplete" : "route";
+}
+
+/** How many of a plan's stores are in each state. */
+export function planSummary(stops: PlanStop[]): Record<StopState, number> {
+  const counts: Record<StopState, number> = { done: 0, incomplete: 0, route: 0 };
+  for (const stop of stops) counts[stopState(stop)] += 1;
+  return counts;
 }
 
 export type DayKind = "past" | "current" | "forecast";
@@ -213,9 +229,31 @@ export function parseMaxHours(text: string): number | null {
 
 export const maxHoursText = (hours: number) => (hours ? String(hours) : "");
 
-/** (stops per day, max driving hours) for a day: its own values when it was planned with them, else the plan's
- *  defaults (forecast days always use the defaults). */
-export function dayLimits(plan: Pick<RoutePlan, "stops_per_day" | "max_day_hours" | "days">, dayNumber?: number): { perDay: number; hours: number } {
+/** (stops per day, max driving hours) for a day and an installer: the day's own values when it was planned with
+ *  them ("Plan next day"), else the installer's own, else the plan's defaults. Forecast days pass no day. */
+export function dayLimits(
+  plan: Pick<RoutePlan, "stops_per_day" | "max_day_hours" | "days"> & Partial<Pick<RoutePlan, "installers">>,
+  dayNumber?: number,
+  installer?: string,
+): { perDay: number; hours: number } {
   const day = dayNumber === undefined ? undefined : plan.days.find((d) => d.number === dayNumber);
-  return { perDay: day?.stops_per_day ?? plan.stops_per_day, hours: day?.max_day_hours ?? plan.max_day_hours };
+  const person = installer === undefined ? undefined : plan.installers?.find((i) => i.name === installer);
+  return {
+    perDay: day?.stops_per_day ?? person?.stops_per_day ?? plan.stops_per_day,
+    hours: day?.max_day_hours ?? person?.max_day_hours ?? plan.max_day_hours,
+  };
+}
+
+/** A line on the map: one installer's day, from its start (when known) through its located stops in order. */
+export interface RouteLine {
+  key: string;
+  color: string;
+  points: { lat: number; lng: number }[];
+  /** The day that was clicked: drawn heavier. */
+  bold?: boolean;
+}
+
+export function dayLine(key: string, color: string, stops: Pick<PlanStop, "lat" | "lng">[], start?: { lat: number; lng: number } | null, bold = false): RouteLine {
+  const points = [...(start ? [{ lat: start.lat, lng: start.lng }] : []), ...stops.flatMap((s) => (s.lat !== null && s.lng !== null ? [{ lat: s.lat, lng: s.lng }] : []))];
+  return { key, color, points, bold };
 }

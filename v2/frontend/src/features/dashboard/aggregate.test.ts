@@ -17,7 +17,7 @@ function project(id: string, overrides: Partial<ProjectSummary["kpi"]> & { insta
   return {
     id, name, pa, device_pa: "", device_sync: null, project_type: "offline", installers, field_agent: "", partner_account: "",
     pa_percentage: 40, dolphin_percentage: 60, store_percentage: null, fa_percentage: null, stops_per_day: 8,
-    hardware_costs: { stick: null, screens: [] },
+    hardware_costs: { stick: null, screens: [], mounts: [] },
     uploads: [],
     field_schema: [], routing_status: "ready", routing_job_id: "", stop_count: 0, version: 1,
     created_at: "", updated_at: "",
@@ -46,6 +46,9 @@ describe("dashboard aggregation", () => {
 
   it("sums installers across projects and drops empty status slices", () => {
     expect(sitesByInstaller([A, B])).toEqual([{ name: "Ann", value: 6 }, { name: "Bo", value: 7 }]);
+    // One slice per installer whatever the case: the spelling with the most sites names it.
+    const mixed = [project("x", { by_installer: { carlos: 2, Sai: 1 } }), project("y", { by_installer: { Carlos: 5 } })];
+    expect(sitesByInstaller(mixed)).toEqual([{ name: "Carlos", value: 7 }, { name: "Sai", value: 1 }]);
     // All eight statuses in precedence order, empty ones dropped.
     expect(statusBreakdown(aggregateTotals([A])).map((entry) => entry.status)).toEqual(["Upcoming", "Shipped", "Offline", "Completed"]);
   });

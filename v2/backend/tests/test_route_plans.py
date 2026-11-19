@@ -15,7 +15,7 @@ from dolphin_tracker.api.deps import (
 )
 from dolphin_tracker.domain.errors import ConflictError, NotFoundError, ValidationFailed
 from dolphin_tracker.domain.lists import NameListKind
-from dolphin_tracker.domain.models import Project, ProjectType, Screen, Stop
+from dolphin_tracker.domain.models import Project, ProjectType, Screen, ScreenStatus, Stop
 from dolphin_tracker.domain.route_plans import (
     NextDay,
     PlanDay,
@@ -35,7 +35,8 @@ from dolphin_tracker.domain.route_plans import (
     last_stop_starts,
     match_clusters,
 )
-from dolphin_tracker.domain.visits import VisitInput
+from dolphin_tracker.domain.statuses import StatusBucket
+from dolphin_tracker.domain.visits import Visit, VisitInput, store_outcome
 from dolphin_tracker.repositories.dynamo import TABLE_DEFINITION
 from dolphin_tracker.repositories.memory import (
     InMemoryListRepository,
@@ -256,6 +257,81 @@ class RoutePlanServiceTests(ServiceTestCase):
         self.assertEqual([s.day for s in preview.stops], [1, 1])
         self.assertEqual(self.stores.get("p1", "w0").route_plan_id, "")
 
+    def test_each_installer_has_their_own_stops_per_day(self):
+        body = RoutePlanCreate(
+            name="x", start_date="2026-11-06", stops_per_day=2,
+            installers=[PlanInstaller(name="West", start=WEST, stops_per_day=4),
+                        PlanInstaller(name="East", start=EAST)],
+            stores=refs(*[f"w{i}" for i in range(4)], *[f"e{i}" for i in range(4)]),
+        )
+        preview = self.service.preview(body)
+        days = lambda name: sorted({stop.day for stop in preview.stops if stop.installer == name})  # noqa: E731
+        self.assertEqual(days("West"), [1])  # all four in one day: their own limit
+        self.assertEqual(days("East"), [1, 2])  # the plan's two a day
+        plan = self.service.create(body).bundle.plan
+        self.assertEqual(plan.installer_limits(), {"West": (4, 0), "East": (2, 0)})
+        # A day planned with its own limits uses them for everyone.
+        self.assertEqual(plan.installer_limits(PlanDay(number=2, date="2026-11-07", stops_per_day=3))["West"], (3, 0))
+
+    def test_an_installer_starting_later_gets_no_stops_until_their_date(self):
+        body = RoutePlanCreate(
+            name="x", start_date="2026-11-06", stops_per_day=2,  # a Friday
+            installers=[PlanInstaller(name="West", start=WEST),
+                        PlanInstaller(name="East", start=EAST, start_date="2026-11-10")],  # the Tuesday after
+            stores=refs(*[f"w{i}" for i in range(4)], *[f"e{i}" for i in range(4)]),
+        )
+        days = lambda stops, name: sorted({stop.day for stop in stops if stop.installer == name})  # noqa: E731
+        preview = self.service.preview(body)
+        self.assertEqual(days(preview.stops, "West"), [1, 2])
+        self.assertEqual(days(preview.stops, "East"), [3, 4])  # Monday and Tuesday are two working days away
+        plan_id = self.service.create(body).bundle.plan.id
+        # Monday: East still has not started, so their route begins the day after.
+        monday = self.service.next_day(plan_id, NextDay(date="2026-11-09"))
+        self.assertEqual(days(monday.stops, "East"), [3, 4])
+        tuesday = self.service.next_day(plan_id, NextDay(date="2026-11-10"))
+        self.assertEqual(days(tuesday.stops, "East"), [3, 4])  # day 3 is their start date: they are on it
+
+    def test_done_incomplete_move_and_pin(self):
+        from dolphin_tracker.domain.route_plans import StopMark, StopMove, StopOutcome
+        plan_id = self.create().bundle.plan.id
+        # Done without a log entry: the store counts as visited and stays where it is.
+        bundle = self.service.mark(plan_id, "p1", "w0", StopMark(outcome=StopOutcome.DONE))
+        w0 = self.by_key(bundle)["p1#w0"]
+        self.assertEqual(w0.state_value.value, "visited")
+        with self.assertRaises(ConflictError):
+            self.service.move(plan_id, "p1", "w0", StopMove(installer="East", day=2))
+        # Move to another installer and day: it lands there, in that day's order, pinned.
+        bundle = self.service.move(plan_id, "p1", "w1", StopMove(installer="east", day=2))
+        w1 = self.by_key(bundle)["p1#w1"]
+        self.assertEqual((w1.installer, w1.day, w1.pinned), ("East", 2, True))
+        day = sorted((s for s in bundle.stops if (s.installer, s.day) == ("East", 2)), key=lambda s: s.seq)
+        self.assertEqual([s.seq for s in day], list(range(len(day))))
+        # A recalculation leaves the pinned store on its day; Incomplete stays open and is planned again.
+        self.service.mark(plan_id, "p1", "w2", StopMark(outcome=StopOutcome.INCOMPLETE))
+        bundle = self.service.update(plan_id, RoutePlanUpdate(stops_per_day=1, replan=Replan.FORECAST))
+        w1 = self.by_key(bundle)["p1#w1"]
+        self.assertEqual((w1.installer, w1.day, w1.pinned), ("East", 2, True))
+        self.assertEqual(self.by_key(bundle)["p1#w2"].state_value.value, "open")
+        # Once its day is over, the pin is released and it is planned like the rest.
+        self.service.next_day(plan_id, NextDay(date="2026-11-09"))
+        bundle = self.service.next_day(plan_id, NextDay(date="2026-11-10"))
+        self.assertFalse(self.by_key(bundle)["p1#w1"].pinned)
+        # Closing counts how it ended.
+        closed = self.service.close(plan_id).plan
+        self.assertEqual((closed.summary.done, closed.summary.incomplete, closed.summary.not_visited), (1, 1, 6))
+
+    def test_move_to_another_plan(self):
+        from dolphin_tracker.domain.route_plans import StopMove
+        first = self.create(["w0", "w1"]).bundle.plan.id
+        second = self.create(["e0"]).bundle.plan.id
+        with self.assertRaises(NotFoundError):  # nobody of that name there: nothing leaves the first plan
+            self.service.move(first, "p1", "w0", StopMove(installer="Nobody", day=1, to_plan_id=second))
+        bundle = self.service.move(first, "p1", "w0", StopMove(installer="West", day=3, to_plan_id=second))
+        self.assertEqual([s.stop_uid for s in bundle.stops], ["w1"])
+        moved = self.by_key(self.service.bundle(second))["p1#w0"]
+        self.assertEqual((moved.installer, moved.day, moved.pinned), ("West", 3, True))
+        self.assertEqual(self.stores.get("p1", "w0").route_plan_id, second)
+
     def test_duplicate_installers_refused(self):
         with self.assertRaises(ValidationFailed):
             self.service.create(RoutePlanCreate(
@@ -353,6 +429,34 @@ class VisitPlanLinkTests(ServiceTestCase):
         later = visits.create("p1", "w0", body)  # no plan any more
         self.assertEqual((later.route_plan_id, later.plan_day), ("", None))
 
+    def test_a_screens_outcome_rolls_up_to_the_stop(self):
+        bundle = self.create(["w0"]).bundle
+        visits = VisitService(InMemoryVisitRepository(self.stores), self.stores, self.projects, self.lists,
+                              self.service)
+        body = VisitInput(screen_id="w0-s0", visit_date="2026-11-06", dd_code="DD", venue_name="V", stick_number="S",
+                          installer="West", dolphin_manager="Zoe", network_type="LTE", latest_apk=True,
+                          kiosk_mode=True, category="Other", subcategory="New screen Added")
+        visits.create("p1", "w0", body)  # no outcome: the stop stays in route
+        self.assertEqual(self.plans.get_stop(bundle.plan.id, "p1#w0").outcome, "")
+        visits.create("p1", "w0", body.model_copy(update={"outcome": "incomplete"}))
+        self.assertEqual(self.plans.get_stop(bundle.plan.id, "p1#w0").outcome, "incomplete")
+        visits.create("p1", "w0", body.model_copy(update={"outcome": "done"}))  # the screen's latest entry wins
+        self.assertEqual(self.plans.get_stop(bundle.plan.id, "p1#w0").outcome, "done")
+
+    def test_store_outcome_needs_every_screen(self):
+        def visit(screen, outcome, plan="plan"):
+            return Visit(screen_id=screen, visit_date="2026-11-06", dd_code="DD", venue_name="V", stick_number="S",
+                         installer="West", dolphin_manager="Zoe", network_type="LTE", latest_apk=True,
+                         kiosk_mode=True, category="Other", subcategory="X", route_plan_id=plan, outcome=outcome,
+                         project_id="p1", stop_uid="w0")
+        self.assertEqual(store_outcome(["a", "b"], [visit("a", "done")], "plan"), "")  # b not logged yet
+        self.assertEqual(store_outcome(["a", "b"], [visit("b", "done"), visit("a", "done")], "plan"), "done")
+        mixed = [visit("b", "incomplete"), visit("a", "done")]
+        self.assertEqual(store_outcome(["a", "b"], mixed, "plan"), "incomplete")
+        # Newest first: a later Done replaces the screen's Incomplete; another plan's entries do not count.
+        self.assertEqual(store_outcome(["a"], [visit("a", "done"), visit("a", "incomplete")], "plan"), "done")
+        self.assertEqual(store_outcome(["a"], [visit("a", "done", "other")], "plan"), "")
+
 
 class StoreSearchTests(ServiceTestCase):
     def setUp(self):
@@ -375,6 +479,33 @@ class StoreSearchTests(ServiceTestCase):
         self.assertEqual([c["value"] for c in facets["cities"]], ["Atlanta", "Macon"])
         self.assertEqual(facets["states"], [{"value": "GA", "count": 2}])
         self.assertEqual(facets["projects"], [{"value": "p2", "label": "Macon", "count": 2}])
+
+    def test_states_have_one_spelling_and_dma_and_status_filter(self):
+        self.stores.update_fields("p2", "m0", {"state": "Georgia", "dma": "Macon GA"})
+        self.stores.update_fields("p2", "m1", {"state": "GEORGIA", "dma": "macon  ga"})
+        facets = self.search.facets(PoolQuery())
+        self.assertEqual([s["value"] for s in facets["states"]], ["GA"])  # not GA, GEORGIA and Georgia
+        self.assertEqual(facets["dmas"], [{"value": "Macon GA", "count": 2}])
+        self.assertEqual({s.uid for s in self.search.pins(PoolQuery(state=["ga"], dma=["MACON GA"]))}, {"m0", "m1"})
+        statuses = {s["value"]: s["count"] for s in facets["statuses"]}
+        self.assertEqual(sum(statuses.values()), 10)
+        self.assertIn("Upcoming", statuses)
+        # The status list ignores its own filter, the others follow it.
+        picked = self.search.facets(PoolQuery(status=[ScreenStatus.UPCOMING]))
+        self.assertEqual({s["value"]: s["count"] for s in picked["statuses"]}, statuses)
+        self.assertEqual(sum(c["count"] for c in picked["cities"]), statuses["Upcoming"])
+        # The status groups the map shows: every group listed, and a filter of their own.
+        facets = self.search.facets(PoolQuery(bucket=[StatusBucket.COMPLETED]))
+        groups = {b["value"]: b["count"] for b in facets["buckets"]}
+        self.assertEqual((groups["Upcoming"], groups["Completed"], groups["Offline"]), (9, 1, 0))
+        self.assertEqual({s.uid for s in self.search.pins(PoolQuery(bucket=[StatusBucket.COMPLETED]))}, {"m1"})
+        # Archived and cancelled stores are not offered at all; the PA is a filter of its own.
+        self.assertNotIn("Archived", groups)
+        self.stores.put_many("p2", [store("gone", -83.62, city="Macon", status="Archived")])
+        self.stores.update_fields("p2", "gone", {"pa": "North"})
+        self.stores.update_fields("p2", "m1", {"pa": "North"})
+        self.assertEqual({s.uid for s in self.search.pins(PoolQuery(pa=["north"]))}, {"m1"})
+        self.assertEqual(self.search.facets(PoolQuery())["pas"], [{"value": "North", "count": 1}])
 
 
 class RoutePlansApiTests(ServiceTestCase):
@@ -461,3 +592,77 @@ class ImportProjectRoutesTests(ServiceTestCase):
         self.assertEqual(preview.bundle.plan.store_count, 3)
         self.assertEqual(self.stores.get("p3", "a").route_plan_id, "")
         self.assertIsNone(self.service.import_project_routes("p2", "2026-11-09"))
+
+
+class AllVenuesTests(ServiceTestCase):
+    """The planner's list of every Dolphin venue, kept outside the projects (domain/venues.py)."""
+
+    def record(self, code, status="Offline", **extra):
+        from dolphin_tracker.domain.device import DeviceRecord
+        return DeviceRecord(**{
+            "venue_id": code, "date": "2026-11-18", "status": status, "store_name": f"Venue {code}",
+            "address": "1 Elm St, Macon, GA 31201", "addr": "1 Elm St", "city": "Macon", "state": "GA",
+            "zip": "31201", "lat": 32.84, "lng": -83.63, "pa_name": "ATM Boss", "dma": "Macon",
+            "first_registered": "2026-01-01T00:00:00Z", "last_registered": "2026-01-01T00:00:00Z", **extra,
+        })
+
+    def setUp(self):
+        super().setUp()
+        from dolphin_tracker.services.venues import VenueCatalogService
+        self.catalog = VenueCatalogService(self.stores, None)
+        self.search = StoreSearchService(self.projects, self.stores)
+        # w0 is the project's store for DD-W0: the venue of that code must not be listed a second time.
+        self.stores.update_screens("p1", "w0", [Screen(id="w0-s0", venue_id="DD-W0")])
+        added = self.catalog.upsert([
+            self.record("DD_W0"), self.record("DD_OFF1"), self.record("DD_ON1", "Online"),
+            self.record("DD_GONE", "Archived"), self.record("DD_TEST", "Testing"),
+        ])
+        self.assertEqual(added, (3, 0))  # archived and test devices are not kept
+
+    def test_the_planner_lists_them_beside_the_projects_stores(self):
+        outside = [s for s in self.search.pins(PoolQuery()) if s.project_id == "venues"]
+        self.assertEqual({s.uid: s.status for s in outside}, {"v-DD_OFF1": "Offline", "v-DD_ON1": "Completed"})
+        self.assertEqual({(s.project_name, s.pa, s.dma) for s in outside}, {("Not in a project", "ATM Boss", "Macon")})
+        offline = self.search.pins(PoolQuery(bucket=[StatusBucket.OFFLINE]))
+        self.assertEqual([s.uid for s in offline], ["v-DD_OFF1"])
+        # A project or PA filter narrows to what belongs to it.
+        self.assertEqual({s.project_id for s in self.search.pins(PoolQuery(project_id=["p1"]))}, {"p1"})
+        self.assertEqual({s.uid for s in self.search.pins(PoolQuery(pa=["atm boss"]))}, {"v-DD_OFF1", "v-DD_ON1"})
+        self.assertEqual({s.uid for s in self.search.pins(PoolQuery(project_id=["venues"]))},
+                         {"v-DD_OFF1", "v-DD_ON1"})  # still without the venue that is a project's store
+        self.assertNotIn("venues", [p.id for p in self.projects.list().items])  # never a listed project
+
+    def test_a_refresh_updates_details_and_keeps_the_plan_and_visits(self):
+        body = RoutePlanCreate(name="x", start_date="2026-11-06", installers=[PlanInstaller(name="A", start=EAST)],
+                               stores=[StoreRef(project_id="venues", stop_uid="v-DD_OFF1"), *refs("e0")])
+        bundle = self.service.create(body).bundle
+        self.assertEqual(bundle.project_names["venues"], "Not in a project")
+        self.assertEqual(self.stores.get("venues", "v-DD_OFF1").route_plan_id, bundle.plan.id)
+        changed = self.catalog.upsert([self.record("DD_OFF1", "Online", store_name="Renamed"),
+                                       self.record("DD_ON1", "Online")])
+        self.assertEqual(changed, (0, 1))  # one changed, one the same
+        venue = self.stores.get("venues", "v-DD_OFF1")
+        self.assertEqual((venue.store_name, venue.status.value, venue.route_plan_id, venue.screens[0].id),
+                         ("Renamed", "Completed", bundle.plan.id, "v-DD_OFF1-s1"))
+        # Archived later: it stays (it may be on a plan) but is no longer offered.
+        self.catalog.upsert([self.record("DD_ON1", "Archived")])
+        self.assertNotIn("v-DD_ON1", {s.uid for s in self.search.pins(PoolQuery())})
+
+    def test_refresh_all_reads_every_pa_and_skips_one_that_fails(self):
+        from dolphin_tracker.domain.device import DeviceSnapshot
+        from dolphin_tracker.services.venues import VenueCatalogService
+        test = self
+
+        class Source:
+            def list_pas(self):
+                return "2026-11-18", ["ATM Boss", "Broken", "Other"]
+
+            def snapshot(self, pa):
+                if pa == "Broken":
+                    raise RuntimeError("unreachable")
+                code = "DD_NEW1" if pa == "Other" else "DD_OFF1"
+                return DeviceSnapshot(pa=pa, date="2026-11-18", records=[test.record(code, pa_name=pa)])
+
+        result = VenueCatalogService(self.stores, Source()).refresh_all()
+        self.assertEqual((result.pas, result.added, result.updated, result.failed, result.venues),
+                         (3, 1, 0, ["Broken"], 4))  # the three kept before and the new one

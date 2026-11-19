@@ -125,16 +125,29 @@ export function inBounds(point: { lat: number; lng: number }, bounds: Bounds): b
 }
 
 /** v1 `projectMarkerIcon`: a pin in its status group's colour with the stack count in its head. */
-export function markerSvg(status: StopStatus, count = 1, emphasis: "normal" | "hover" | "selected" = "normal", overlay: Overlay = NO_OVERLAY): string {
-  const color = BUCKET_META[bucketOf(status)].color;
-  const ink = bucketInk(bucketOf(status));
-  const label = count > 1 ? (count > 99 ? "99+" : String(count)) : "";
+export function markerSvg(
+  status: StopStatus,
+  count = 1,
+  emphasis: "normal" | "hover" | "selected" = "normal",
+  overlay: Overlay = NO_OVERLAY,
+  /** The route planner's pins: the pin takes this colour (its installer's) and the status moves to a small dot. */
+  fill?: string,
+  /** Text for the pin's head instead of the stack count (a stop's place in the day's order). */
+  text?: string,
+): string {
+  const statusColor = BUCKET_META[bucketOf(status)].color;
+  const color = fill ?? statusColor;
+  const ink = fill ? "#0f172a" : bucketInk(bucketOf(status));
+  const label = text ?? (count > 1 ? (count > 99 ? "99+" : String(count)) : "");
+  const wide = label.length > 2;
   const ring = emphasis === "selected" ? "#0f172a" : emphasis === "hover" ? "#0891b2" : "#ffffff";
   const svg =
     `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="50" viewBox="0 0 40 50">` +
     `<path fill="${color}" stroke="${ring}" stroke-width="3" d="M20 3C11.2 3 4 10.2 4 19c0 11.8 16 28 16 28s16-16.2 16-28C36 10.2 28.8 3 20 3z"/>` +
-    `<circle cx="20" cy="19" r="${count > 1 ? 10 : 6}" fill="#ffffff"/>` +
-    `<text x="20" y="${count > 99 ? 22 : 23}" text-anchor="middle" font-family="Arial, sans-serif" font-size="${count > 99 ? 8 : 12}" font-weight="800" fill="${ink}">${label}</text>` +
+    `<circle cx="20" cy="19" r="${label ? 10 : 6}" fill="#ffffff"/>` +
+    `<text x="20" y="${wide ? 22 : 23}" text-anchor="middle" font-family="Arial, sans-serif" font-size="${wide ? 8 : 12}" font-weight="800" fill="${ink}">${label}</text>` +
+    // An installer-coloured pin says its status with a small dot, bottom right.
+    (fill ? `<circle cx="31" cy="31" r="6" fill="${statusColor}" stroke="#fff" stroke-width="2"/>` : "") +
     // In route: a blue badge with an arrow, top left. Visited: a green check, top right; partly: an amber dot.
     (overlay.inRoute
       ? `<circle cx="7" cy="7" r="6.5" fill="${OVERLAY_COLORS.route}" stroke="#fff" stroke-width="1.5"/><path d="M4 7h6M7.5 4.5 10 7l-2.5 2.5" stroke="#fff" stroke-width="1.6" fill="none" stroke-linecap="round"/>`
@@ -170,6 +183,16 @@ export interface MarkerStyle {
   count: number;
   emphasis: Emphasis;
   overlay: Overlay;
+  fill?: string;
+  text?: string;
+}
+
+/** How the route planner draws pins: each installer's colour, and optionally a number per stop. */
+export interface PinPaint {
+  /** installer name → colour. A pin whose installer is listed takes that colour; its status becomes a dot. */
+  installerColors?: Record<string, string>;
+  /** pin uid → text for the pin's head (the stop's place in its day). */
+  labels?: Record<string, string>;
 }
 
 export const OVERLAY_COLORS = { route: "#1d4ed8", visited: "#16a34a", partly: "#f59e0b" } as const;
@@ -180,6 +203,7 @@ export function markerStyles(
   selectedId?: string | null,
   hoveredId?: string | null,
   unit: MapUnit = "locations",
+  paint: PinPaint = {},
 ): Map<string, MarkerStyle> {
   const styles = new Map<string, MarkerStyle>();
   for (const group of groups) {
@@ -187,7 +211,10 @@ export function markerStyles(
     const emphasis: Emphasis = has(selectedId) ? "selected" : has(hoveredId) ? "hover" : "normal";
     // The number in the pin: stores stacked at this address, or the screens there.
     const count = unit === "screens" ? group.screens : group.pins.length;
-    styles.set(group.key, { status: group.status, count, emphasis, overlay: group.overlay });
+    const first = group.pins[0];
+    const fill = first ? paint.installerColors?.[first.installer ?? ""] : undefined;
+    const text = group.pins.length === 1 && first ? paint.labels?.[first.uid] : undefined;
+    styles.set(group.key, { status: group.status, count, emphasis, overlay: group.overlay, ...(fill ? { fill } : {}), ...(text ? { text } : {}) });
   }
   return styles;
 }
@@ -202,6 +229,8 @@ export function changedStyles(previous: ReadonlyMap<string, MarkerStyle>, next: 
       before.status !== style.status ||
       before.count !== style.count ||
       before.emphasis !== style.emphasis ||
+      before.fill !== style.fill ||
+      before.text !== style.text ||
       before.overlay.inRoute !== style.overlay.inRoute ||
       before.overlay.visit !== style.overlay.visit
     ) {

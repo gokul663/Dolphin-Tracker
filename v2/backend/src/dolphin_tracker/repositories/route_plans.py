@@ -23,7 +23,7 @@ from dolphin_tracker.repositories.dynamo import (
 )
 
 WRITE_WORKERS = 16
-ASSIGNMENT_FIELDS = frozenset({"installer", "day", "seq", "drive_minutes"})
+ASSIGNMENT_FIELDS = frozenset({"installer", "day", "seq", "drive_minutes", "outcome", "pinned"})
 PlanStopChange = tuple[str, dict[str, Any]]  # plan stop key, {installer?, day?, seq?, drive_minutes?}
 
 
@@ -54,7 +54,7 @@ class RoutePlanRepository(Protocol):
 def check_assignment(change: dict[str, Any]) -> None:
     extra = set(change) - ASSIGNMENT_FIELDS
     if extra:
-        raise ValueError(f"Assignment writes may only touch installer/day/seq/drive_minutes, got {sorted(extra)}")
+        raise ValueError(f"Assignment writes may only touch {sorted(ASSIGNMENT_FIELDS)}, got {sorted(extra)}")
 
 
 class DynamoRoutePlanRepository:

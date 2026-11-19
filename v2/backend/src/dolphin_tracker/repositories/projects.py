@@ -8,6 +8,7 @@ from botocore.exceptions import ClientError
 from dolphin_tracker.domain.cursors import encode_cursor
 from dolphin_tracker.domain.errors import ConflictError, NotFoundError
 from dolphin_tracker.domain.models import Page, Project, RoutingStatus, now_iso
+from dolphin_tracker.domain.venues import VENUES_PROJECT_ID, venues_project
 from dolphin_tracker.repositories.dynamo import (
     GSI1,
     GSI1_KEY,
@@ -63,6 +64,8 @@ class DynamoProjectRepository:
         self._table.put_item(Item=self._to_item(project))
 
     def get(self, project_id: str) -> Project | None:
+        if project_id == VENUES_PROJECT_ID:  # the planner's all-venues list: not a stored project, never listed
+            return venues_project()
         response = self._table.get_item(Key=Keys.project(project_id))
         item = response.get("Item")
         return self._from_item(item) if item else None

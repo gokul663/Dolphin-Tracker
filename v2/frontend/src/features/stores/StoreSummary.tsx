@@ -1,8 +1,12 @@
 import { Check, HardHat, Monitor, Tv, Wrench } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
+import { SuggestInput } from "@/components/SuggestInput";
 import { Label } from "@/components/ui/label";
-import { actualCounts, fulfillment, hardwareCost, money, type HardwareCosts } from "@/features/stores/details";
+import { actualCounts, fulfillment, hardwareCost, money, sizeLabel, type HardwareCosts } from "@/features/stores/details";
+import { bucketOf } from "@/lib/status";
+import { nameKey, NotAnInstaller } from "@/features/installers/InstallerName";
+import { useInstallers } from "@/features/lists/api";
 import type { ScreenRow } from "@/features/stores/ScreensEditor";
 import { cn } from "@/lib/utils";
 
@@ -15,6 +19,7 @@ const INSTALL_CHOICES = ["Technician", SELF_INSTALL, REP_INSTALL] as const;
 export const COUNT_KEYS = [
   "committed_dolphin_screens",
   "committed_store_tvs",
+  "wall_24_mounts_needed",
   "wall_mounts_needed",
   "ceiling_mounts_needed",
   "tv_mounts_needed",
@@ -30,6 +35,25 @@ export interface SummaryDraft {
   rows: ScreenRow[];
   technician: string;
   installType: string;
+}
+
+/** The three mount pieces, in the card's order: the 24 inch wall mount is its own piece. */
+const MOUNTS = [
+  { kind: "wall_24", field: "wall_24_mounts_needed", label: "Wall 24″" },
+  { kind: "wall", field: "wall_mounts_needed", label: "Wall" },
+  { kind: "ceiling", field: "ceiling_mounts_needed", label: "Ceiling" },
+] as const;
+type MountKind = (typeof MOUNTS)[number]["kind"];
+
+/** Mounts worked out from the screens still to be installed (Upcoming) and the mount picked on each (backend
+ *  `mounts_needed`). */
+export function computedMounts(rows: Pick<ScreenRow, "status" | "has_mount" | "has_ceiling_mount" | "screen_size">[]): Record<MountKind, number> {
+  const counts = { wall_24: 0, wall: 0, ceiling: 0 };
+  for (const row of rows) {
+    if (!row.has_mount || bucketOf(row.status) !== "Upcoming") continue;
+    counts[row.has_ceiling_mount ? "ceiling" : (sizeLabel(row.screen_size) || '24"') === '24"' ? "wall_24" : "wall"] += 1;
+  }
+  return counts;
 }
 
 const toNumber = (text: string) => (/^\d+$/.test(text.trim()) ? Number(text.trim()) : null);
@@ -60,6 +84,7 @@ export function StoreSummary({
     committed_store_tvs: toNumber(counts.committed_store_tvs),
   });
   const rows = actualCounts(draft.rows);
+  const worked = computedMounts(draft.rows);
   const count = (key: CountKey, label: string, icon?: React.ReactNode) => (
     <CountInput field={key} label={label} icon={icon} value={counts[key]} error={draft.errors[key]} onChange={(text) => onCount(key, text)} />
   );
@@ -87,14 +112,34 @@ export function StoreSummary({
         <CardTitle
           title="Mounts needed"
           icon={<Wrench size={13} />}
-          right={<Total value={sum(toNumber(counts.wall_mounts_needed), toNumber(counts.ceiling_mounts_needed), toNumber(counts.tv_mounts_needed))} label="Mounts total" />}
+          right={<Total value={MOUNTS.reduce((total, mount) => total + (toNumber(counts[mount.field]) ?? worked[mount.kind]), 0)} label="Mounts total" />}
         />
+        {/* Per piece: the number worked out from the Upcoming screens' mounts, and a box to type another over it. */}
         <div className="grid grid-cols-3 gap-2">
-          {count("wall_mounts_needed", "Wall")}
-          {count("ceiling_mounts_needed", "Ceiling")}
-          {count("tv_mounts_needed", "TV")}
+          {MOUNTS.map((mount) => (
+            <div key={mount.kind} className="space-y-1">
+              <p className="text-[11px] text-slate-500">{mount.label}</p>
+              <p className="flex items-baseline gap-1" title="Worked out from the Upcoming screens and the mount picked on each">
+                <span
+                  className={cn("text-lg font-semibold leading-none tabular-nums", toNumber(counts[mount.field]) === null ? "text-slate-800" : "text-slate-400 line-through")}
+                  aria-label={`${mount.label} computed`}
+                >
+                  {worked[mount.kind]}
+                </span>
+                <span className="text-[10px] uppercase tracking-wider text-slate-400">computed</span>
+              </p>
+              <CountInput
+                field={mount.field}
+                label="Override"
+                ariaLabel={`${mount.label} override`}
+                value={counts[mount.field]}
+                error={draft.errors[mount.field]}
+                onChange={(text) => onCount(mount.field, text)}
+              />
+            </div>
+          ))}
         </div>
-        <p className="text-xs text-slate-500">To bring and fit at this store</p>
+        <p className="text-xs text-slate-500">To bring and fit at this store. Leave Override empty to use the computed number.</p>
       </section>
       <AssignmentCard technician={draft.technician} installType={draft.installType} technicians={technicians} onTechnician={onTechnician} onInstallType={onInstallType} />
     </div>
@@ -127,6 +172,7 @@ function Total({ value, label, tone }: { value: number | null; label: string; to
 function CountInput({
   field,
   label,
+  ariaLabel,
   icon,
   value,
   error,
@@ -134,6 +180,7 @@ function CountInput({
 }: {
   field: CountKey;
   label: string;
+  ariaLabel?: string;
   icon?: React.ReactNode;
   value: string;
   error?: string;
@@ -148,6 +195,7 @@ function CountInput({
       </Label>
       <Input
         id={id}
+        aria-label={ariaLabel}
         inputMode="numeric"
         className="h-8 tabular-nums"
         placeholder="—"
@@ -260,7 +308,11 @@ function AssignmentCard({
   onInstallType: (type: string) => void;
 }) {
   const type = NO_TECHNICIAN.has(installType) ? installType : "Technician";
-  const options = [...new Set(technicians.filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  // The Installers page's names first in line, then any other name stores of this project already carry.
+  const installers = useInstallers().data?.map((item) => item.value) ?? [];
+  const listed = new Set(installers.map(nameKey));
+  const options = [...installers, ...new Set(technicians.filter((name) => name && !listed.has(nameKey(name))))].sort((a, b) => a.localeCompare(b));
+  const unknown = type === "Technician" && technician.trim() !== "" && installers.length > 0 && !listed.has(nameKey(technician));
   return (
     <section aria-label="Assignment" className="flex flex-col gap-2 rounded-xl bg-white p-4 shadow-sm ring-1 ring-slate-900/5">
       <h3 className="flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-wider text-slate-500">
@@ -285,18 +337,12 @@ function AssignmentCard({
               <Label htmlFor="store-technician" className="sr-only">
                 Technician
               </Label>
-              <Input
-                id="store-technician"
-                list="store-technician-options"
-                placeholder="Assign a technician"
-                value={technician}
-                onChange={(event) => onTechnician(event.target.value)}
-              />
-              <datalist id="store-technician-options">
-                {options.map((option) => (
-                  <option key={option} value={option} />
-                ))}
-              </datalist>
+              <SuggestInput id="store-technician" placeholder="Assign a technician" value={technician} onValueChange={onTechnician} options={options} />
+              {unknown && (
+                <p className="mt-1 flex items-center gap-1 text-xs text-amber-700" role="note">
+                  <NotAnInstaller name={technician.trim()} /> Not in the Installers list
+                </p>
+              )}
             </>
           ) : (
             <span

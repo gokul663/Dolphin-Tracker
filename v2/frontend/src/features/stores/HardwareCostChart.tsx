@@ -24,7 +24,8 @@ export function HardwareCostChart({
   // The sum of the priced lines (`cost.total` is null when a price is missing, but the priced lines still compare).
   const priced = cost ? cost.lines.reduce((sum, line) => sum + line.count * (line.price ?? 0), 0) : 0;
   const screenLines = cost ? cost.lines.filter((line) => line.label !== "Sticks").map((line) => line.label) : [];
-  const tone = (label: string) => (label === "Sticks" ? "#334155" : SCREEN_TONES[Math.min(screenLines.indexOf(label), SCREEN_TONES.length - 1)] ?? "#94a3b8");
+  const pick = (tones: string[], index: number, fallback: string) => tones[Math.min(index, tones.length - 1)] ?? fallback;
+  const tone = (label: string) => (label === "Sticks" ? "#334155" : pick(SCREEN_TONES, screenLines.indexOf(label), "#94a3b8"));
   const shareOf = (line: { count: number; price: number | null }) =>
     line.price === null || priced <= 0 ? null : ((line.count * line.price) / priced) * 100;
   return (

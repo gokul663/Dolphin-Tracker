@@ -370,6 +370,15 @@ export const STORE_FIELDS_FOR_TESTS: StoreFieldSpec[] = [
     "options": []
   },
   {
+    "name": "wall_24_mounts_needed",
+    "label": "Wall mounts (24 inch) needed",
+    "group": "Screens",
+    "kind": "int",
+    "editable": true,
+    "required": false,
+    "options": []
+  },
+  {
     "name": "ceiling_mounts_needed",
     "label": "Ceiling mounts needed",
     "group": "Screens",

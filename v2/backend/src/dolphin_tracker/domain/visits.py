@@ -5,8 +5,9 @@ A visit only records that someone went there: it never changes a screen's status
 from __future__ import annotations
 
 import uuid
+from collections.abc import Iterable
 from enum import StrEnum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import Field, field_validator
 
@@ -43,11 +44,17 @@ class VisitInput(ApiModel):
     network_type: NetworkType
     latest_apk: bool
     kiosk_mode: bool
+    dagent_installed: bool = False  # the third per-stick check (entries before it existed read as "no")
+    # Another WiFi this stick is on, when it is not the store's own (which lives on the store).
+    wifi_ssid: str = Field(default="", max_length=200)
+    wifi_password: str = Field(default="", max_length=200)
     category: str = _required()
     subcategory: str = _required()
     replaced_with: str = Field(default="", max_length=200)  # required for the "replaced with" subcategories
     comments: str = Field(default="", max_length=5000)
     route_plan_id: str = Field(default="", max_length=64)  # "" → the store's active plan, if any
+    # What the visit left this screen as, in its plan: "" for an entry logged outside a plan's store window.
+    outcome: Literal["", "done", "incomplete"] = ""
 
     @field_validator(
         "dd_code", "venue_name", "stick_number", "installer", "dolphin_manager", "category", "subcategory",
@@ -76,3 +83,15 @@ class Visit(VisitInput):
     created_at: str = Field(default_factory=now_iso)
 
 
+def store_outcome(screen_ids: Iterable[str], visits: Iterable[Visit], plan_id: str) -> str:
+    """What a store's screens add up to in a plan, from each screen's latest log entry there (`visits` newest
+    first): "incomplete" when any screen was left incomplete, "done" when every screen is done, else "" (some
+    screen has no outcome yet, so the stop stays as it is)."""
+    latest: dict[str, str] = {}
+    for visit in visits:
+        if visit.route_plan_id == plan_id and visit.outcome:
+            latest.setdefault(visit.screen_id, visit.outcome)
+    outcomes = [latest.get(screen_id, "") for screen_id in screen_ids]
+    if "incomplete" in outcomes:
+        return "incomplete"
+    return "done" if outcomes and all(outcome == "done" for outcome in outcomes) else ""

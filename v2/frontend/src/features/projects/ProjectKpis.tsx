@@ -50,8 +50,8 @@ export function ProjectKpis({
         label={label}
         ariaLabel={`${label} screens`}
         value={count.toLocaleString()}
-        sub={`${stores.toLocaleString()} stores${storeBucket === bucket ? "" : " in progress"}`}
-        note={`${share(count)} of screens · ${BUCKET_META[bucket].members}${onBucket ? " · click to filter the stores" : ""}`}
+        sub={`${stores.toLocaleString()} stores`}
+        note={`${share(count)} of screens · ${BUCKET_META[bucket].members}${storeBucket === bucket ? "" : " (its stores read In Progress)"}${onBucket ? " · click to filter the stores" : ""}`}
         color={bucketInk(bucket)}
         active={activeBuckets.includes(storeBucket)}
         onClick={onBucket ? () => onBucket(storeBucket) : undefined}
@@ -159,7 +159,7 @@ function AlertBubble({
         {icon} {count.toLocaleString()}
       </span>
       <span className="text-balance font-mono text-xs font-medium uppercase leading-tight tracking-wider">{label}</span>
-      {sub && <span className="whitespace-nowrap font-mono text-xs leading-tight opacity-75">{sub}</span>}
+      {sub && <span className="text-balance font-mono text-xs leading-tight opacity-75">{sub}</span>}
     </button>
   );
 }

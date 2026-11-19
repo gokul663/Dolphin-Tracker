@@ -73,6 +73,10 @@ HEADER_MAP: dict[str, str] = {
     "how_many_tvs_are_in_the_store": "committed_store_tvs",
     **dict.fromkeys(("wall_mounts", "wall_mounts_needed", "wall_mount_count"), "wall_mounts_needed"),
     **dict.fromkeys(("ceiling_mounts", "ceiling_mounts_needed", "ceiling_mount_count"), "ceiling_mounts_needed"),
+    **dict.fromkeys(
+        ("wall_mounts_24", "wall_mounts_24_inch", "wall_24_mounts", "wall_24_mounts_needed", "24_inch_wall_mounts"),
+        "wall_24_mounts_needed",
+    ),
     **dict.fromkeys(("tv_mounts", "tv_mounts_needed", "tv_mount_count"), "tv_mounts_needed"),
     "preferred_area_in_store": "preferred_area",
     "spot_visible_from_most_of_store": "spot_visible",

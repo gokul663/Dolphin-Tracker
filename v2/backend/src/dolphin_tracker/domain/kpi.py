@@ -12,6 +12,7 @@ from typing import Any
 from pydantic import Field
 
 from dolphin_tracker.domain.base import ApiModel
+from dolphin_tracker.domain.lists import best_spellings, name_key
 from dolphin_tracker.domain.parsing import clean_cell
 from dolphin_tracker.domain.statuses import (
     BUCKET_OF,
@@ -197,6 +198,18 @@ def kpi_summary(rows: Iterable[Mapping[str, Any]]) -> Kpi:
         _add(kpi.by_dma, row.get("dma") or fields.get("dma", ""), status)
         _add(kpi.by_venue_type, row.get("venue_type") or fields.get("venue_type", ""), status)
         address_groups.setdefault(_address_key(row), []).append(status)
+    # A name is one installer whatever case it was typed in: "carlos" and "Carlos" count together.
+    spelling = best_spellings(kpi.by_installer)
+    by_installer: dict[str, int] = {}
+    for name, count in kpi.by_installer.items():
+        label = spelling[name_key(name)]
+        by_installer[label] = by_installer.get(label, 0) + count
+    by_technician: dict[str, InstallerProgress] = {}
+    for name, progress in kpi.by_technician.items():
+        merged = by_technician.setdefault(spelling.get(name_key(name), name), InstallerProgress())
+        merged.done += progress.done
+        merged.upcoming += progress.upcoming
+    kpi.by_installer, kpi.by_technician = by_installer, by_technician
     kpi.complete = kpi.by_status[ScreenStatus.COMPLETED.value]
     kpi.pending = sum(kpi.by_status[status.value] for status in PENDING_STATUSES)
     kpi.offline = kpi.by_status[ScreenStatus.OFFLINE.value]

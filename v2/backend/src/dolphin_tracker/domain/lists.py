@@ -7,6 +7,7 @@ the portal spells them so its history lines up.
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 from enum import StrEnum
 
 from pydantic import Field, field_validator
@@ -20,8 +21,18 @@ class NameListKind(StrEnum):
 
 
 class NameEntry(ApiModel):
+    """One name of a pick list. An installer also carries how to reach them (the Installers page); a name that was
+    only ever typed somewhere (a visit, a route plan) has these blank until someone fills them in."""
+
+    # Stable through a rename. Blank on a name stored before installers had one, until it is next saved.
+    id: str = ""
     value: str = Field(min_length=1, max_length=200)
     created_at: str = ""
+    phone: str = Field(default="", max_length=50)
+    phone2: str = Field(default="", max_length=50)  # an additional number
+    email: str = Field(default="", max_length=200)
+    email2: str = Field(default="", max_length=200)  # an additional address
+    shipping_address: str = Field(default="", max_length=500)  # where hardware is shipped to them now
 
     @field_validator("value", mode="before")
     @classmethod
@@ -47,7 +58,10 @@ class Category(ApiModel):
 # Subcategories that need the new stick or screen number recorded (ROUTE-PLANNER §5).
 REPLACED_WITH_SUBCATEGORIES = frozenset({"screen replaced with", "Stick Replaced With"})
 
+NEW_INSTALLATION = ("New Installation", ("New installation", "Additional screen installed"))
+
 DEFAULT_CATEGORIES: tuple[tuple[str, tuple[str, ...]], ...] = (
+    NEW_INSTALLATION,
     ("Network Issues", (
         "Modem need to be replaced", "Store Wifi changed", "Wifi Disconnects itself", "Weak WIFI Connection",
         "Unplugged & WiFi Password issue",
@@ -87,6 +101,15 @@ def clean_name(value: str) -> str:
 def name_key(value: str) -> str:
     """Case- and space-insensitive identity, so "ann  smith" does not become a second "Ann Smith"."""
     return re.sub(r"\s+", " ", clean_name(value).lower())
+
+
+def best_spellings(counts: Mapping[str, int]) -> dict[str, str]:
+    """One spelling per name, whatever the case or spacing it was typed in ("carlos", "Carlos" → "Carlos"): the
+    one used most; a tie goes to the one that sorts first (capitals before small letters)."""
+    best: dict[str, str] = {}
+    for name in sorted(counts, key=lambda value: (-counts[value], value)):
+        best.setdefault(name_key(name), name)
+    return best
 
 
 def check_categories(categories: list[Category]) -> list[str]:

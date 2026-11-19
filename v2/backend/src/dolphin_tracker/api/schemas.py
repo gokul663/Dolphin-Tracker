@@ -145,6 +145,9 @@ class StoreDetailsUpdate(ApiModel):
     committed_dolphin_screens: int | None = Field(default=None, ge=0)  # null clears it (unknown)
     committed_store_tvs: int | None = Field(default=None, ge=0)
     wall_mounts_needed: int | None = Field(default=None, ge=0)
+    wall_24_mounts_needed: int | None = Field(default=None, ge=0)
+    screens_used: int | None = Field(default=None, ge=0)
+    mounts_used: int | None = Field(default=None, ge=0)
     ceiling_mounts_needed: int | None = Field(default=None, ge=0)
     tv_mounts_needed: int | None = Field(default=None, ge=0)
     preferred_area: str | None = Field(default=None, max_length=500)
@@ -233,6 +236,10 @@ class HardwareCounts(ApiModel):
     installed_screens: int
     installed_stores: int
     installed_dolphin_by_model: dict[str, int]
+    # Screens with a mount chosen, by the piece it is: wall_24 (a 24 inch screen), wall_other, ceiling.
+    mounts: dict[str, int] = Field(default_factory=dict)
+    # Mounts on installed screens by size and kind ('24"|wall', '43"|ceiling'): with the mount prices, their cost.
+    installed_mounts: dict[str, int] = Field(default_factory=dict)
 
 
 class ProjectUpdate(ApiModel):
@@ -277,7 +284,9 @@ class DeviceOverwrite(ApiModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    fields: list[Literal["store_name", "addr", "city", "state", "zip", "location"]] = Field(min_length=1)
+    fields: list[Literal["store_name", "addr", "city", "state", "zip", "dma", "venue_type", "location"]] = Field(
+        min_length=1
+    )
 
 
 class AppendStops(ApiModel):
@@ -285,6 +294,18 @@ class AppendStops(ApiModel):
     pa: str = Field(default="", max_length=500)
     import_mapping: dict[str, str] = Field(default_factory=dict)  # merged into project.import_mappings
     import_job_id: str = Field(default="", max_length=64)  # the import job the stops came from: its sheet is kept
+
+
+class StoreAdd(ApiModel):
+    """One store typed in by hand (the Stores page's "Add store"). Checked like a sheet row: IBC#, store name and
+    address are required, the IBC# and the address must be new to the project, and Google must verify the address."""
+
+    external_id: str = Field(max_length=100)
+    store_name: str = Field(max_length=300)
+    addr: str = Field(max_length=500)
+    city: str = Field(default="", max_length=200)
+    state: str = Field(default="", max_length=50)
+    zip: str = Field(default="", max_length=20)
 
 
 class AppendResult(ApiModel):
@@ -388,6 +409,29 @@ class NameCreate(ApiModel):
     value: str = Field(min_length=1, max_length=200)
 
 
+class InstallerSave(ApiModel):
+    """An installer's details (the Installers page). `allow_no_phone` saves one without a phone number (it is then
+    flagged); `must_be_new` refuses a name that is already listed (Add, as opposed to Edit)."""
+
+    phone: str = Field(default="", max_length=50)
+    phone2: str = Field(default="", max_length=50)
+    email: str = Field(default="", max_length=200)
+    email2: str = Field(default="", max_length=200)
+    shipping_address: str = Field(default="", max_length=500)
+    allow_no_phone: bool = False
+    must_be_new: bool = False
+    # Edit only: the installer's new name. Store records and active route plans that name them follow.
+    new_name: str = Field(default="", max_length=200)
+
+
+class ScreenSheetUpload(ApiModel):
+    """A screen cost sheet (.csv or .xlsx) sent whole, base64; `apply` writes what the preview showed."""
+
+    filename: str = Field(min_length=1, max_length=300)
+    content_base64: str = Field(min_length=1, max_length=4_200_000)
+    apply: bool = False
+
+
 class CategoriesUpdate(ApiModel):
     categories: list[Category] = Field(max_length=100)
 
@@ -402,3 +446,7 @@ class PoolFacets(ApiModel):
     states: list[FacetValue]
     cities: list[FacetValue]
     projects: list[FacetValue]
+    dmas: list[FacetValue] = Field(default_factory=list)
+    statuses: list[FacetValue] = Field(default_factory=list)
+    buckets: list[FacetValue] = Field(default_factory=list)  # the status groups the map shows
+    pas: list[FacetValue] = Field(default_factory=list)

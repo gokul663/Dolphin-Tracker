@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { keys } from "@/lib/api/keys";
-import { visitsApi } from "@/lib/api/resources";
-import type { VisitInput } from "@/lib/api/types";
+import { storesApi, visitsApi } from "@/lib/api/resources";
+import { ApiError, type VisitInput } from "@/lib/api/types";
 
 /** The store's servicing history, newest first (one page of 100; a store rarely has more). */
 export function useVisits(projectId: string | null, uid: string | null) {
@@ -26,5 +26,29 @@ export function useCreateVisit(projectId: string, uid: string) {
         client.invalidateQueries({ queryKey: keys.routePlans, exact: false }),
         client.invalidateQueries({ queryKey: ["lists"], exact: false }),
       ]),
+  });
+}
+
+/** A DD code as the server matches it (`dd-abc123` → `DD_ABC123`), and the uid of its venue in the all-venues list. */
+export const venueCodeKey = (code: string) => code.replace(/\s+/g, "").toUpperCase().replace(/-/g, "_");
+export const venueUid = (code: string) => `v-${venueCodeKey(code).replace(/[^A-Z0-9_]/g, "")}`;
+
+/** What the Dolphin data (CMS) has for a DD code: its store name, venue name, address, PA, DMA and status. `null`
+ *  when the code is not in the data (or is archived there). Read from the planner's all-venues list. */
+export function useVenue(code: string) {
+  const key = venueCodeKey(code);
+  return useQuery({
+    queryKey: ["venue", key],
+    queryFn: async () => {
+      try {
+        return await storesApi.get("venues", venueUid(code));
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 404) return null;
+        throw error;
+      }
+    },
+    enabled: key.length >= 5,
+    staleTime: 5 * 60_000,
+    retry: false,
   });
 }

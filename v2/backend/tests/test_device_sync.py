@@ -145,6 +145,15 @@ class SyncRuleTests(unittest.TestCase):
         self.assertEqual(device["first_registered"][:10], "2026-10-12")
         self.assertEqual(device["last_registered"][:10], "2026-11-01")
 
+    def test_cms_name_and_venue_type_are_written_on_the_screen(self):
+        row = report_row("DD_HFN64S", **{"OOH Category": "retail.convenience_store"})
+        typed = Screen(venue_id="DD-HFN64S", cms_name="typed by hand", venue_type="Bar")
+        screen = self.run_sync(stop("a", typed), row)["screens"][0]
+        self.assertEqual((screen["cms_name"], screen["venue_type"]), ("CMS_DD_HFN64S", "Convenience Store"))  # CMS wins
+        blank = report_row("DD_HFN64S", **{"Venue Name": "", "OOH Category": ""})
+        kept = self.run_sync(stop("a", typed), blank)["screens"][0]
+        self.assertEqual((kept["cms_name"], kept["venue_type"]), ("typed by hand", "Bar"))  # nothing to take
+
     def test_report_status_sets_work_status(self):
         cases = [("Online", "Upcoming", "Completed"), ("Offline", "Completed", "Offline"),
                  ("Archived", "Completed", "Archived"), ("Online", "Serviced - Needs More Work", "Completed"),
@@ -448,7 +457,9 @@ class ServiceTests(ServiceTestCase):
 
     def test_sync_all_only_projects_with_a_pa(self):
         self.projects.put(Project(id="p2", name="Q", pa="X", project_type=ProjectType.OFFLINE))
-        self.assertEqual(self.service.sync_all(), {"synced": 1, "failed": []})
+        result = self.service.sync_all()
+        self.assertEqual((result["synced"], result["failed"]), (1, []))
+        self.assertIn("venues", result)  # then the planner's all-venues list, from every PA
 
 
 class ApiTests(ServiceTestCase):

@@ -21,11 +21,11 @@ describe("PlanPage", () => {
   it("shows installers, today and forecast days, visit state and live status", async () => {
     renderPlan();
     expect(await screen.findByRole("heading", { name: /GA week/ })).toBeTruthy();
-    expect(screen.getByText(/1 of 4 stores visited · 3 open/)).toBeTruthy();
-    expect(screen.getByRole("tab", { name: /West.*1\/3 visited · 2 days/ })).toBeTruthy();
+    expect(screen.getByText(/1 of 4 stores done · 3 open/)).toBeTruthy();
+    expect(screen.getByRole("tab", { name: /West.*1\/3 done · 2 days/ })).toBeTruthy();
     const today = screen.getByRole("region", { name: "West, day 1" });
     expect(within(today).getByText("Today")).toBeTruthy();
-    expect(within(today).getByText("Visited")).toBeTruthy();
+    expect(within(today).getByText("Done")).toBeTruthy(); // store a: its stick has a log entry
     expect(within(today).getByText("Offline")).toBeTruthy(); // store b's live status
     const forecast = screen.getByRole("region", { name: "West, day 2" });
     expect(within(forecast).getByText("Forecast")).toBeTruthy();
@@ -73,45 +73,65 @@ describe("PlanPage", () => {
     await userEvent.click(within(dialog).getByRole("button", { name: /Recalculate and plan day 2/ }));
     await waitFor(() => expect(api.calls.some((call) => call.url.pathname.endsWith("/next-day"))).toBe(true));
     const body = api.calls.find((call) => call.url.pathname.endsWith("/next-day"))!.body as Record<string, unknown>;
-    expect(body).toMatchObject({ date: "2026-11-09", stops_per_day: 10, max_day_hours: 0, version: 3 });
+    // Limits left blank: every installer keeps their own.
+    expect(body).toMatchObject({ date: "2026-11-09", stops_per_day: null, max_day_hours: null, version: 3 });
     expect((body.starts as Record<string, { lat: number }>).West!.lat).toBe(33.7);
   });
 
-  it("reassigns an open stop after confirming", async () => {
-    const api = renderPlan(makeBundle(), {
-      "POST /api/route-plans/plan1/stops/p1/b/reassign": () => makeBundle(),
-    });
-    await userEvent.click(await screen.findByRole("combobox", { name: "Installer for Store b" }));
-    await userEvent.click(await screen.findByRole("option", { name: "East" }));
-    await userEvent.click(await screen.findByRole("button", { name: "Reassign" }));
-    await waitFor(() => expect(api.calls.some((call) => call.url.pathname.endsWith("/reassign"))).toBe(true));
-    expect(api.calls.find((call) => call.url.pathname.endsWith("/reassign"))!.body).toEqual({ installer: "East", version: 3 });
-  });
-
-  it("edit mode: move a store to the next day, and lock a day", async () => {
+  it("a stop is marked Done, Incomplete or In route; the summary counts them and lists their stores", async () => {
     let current = makeBundle();
     const api = renderPlan(current, {
       "GET /api/route-plans/plan1": () => current,
-      "POST /api/route-plans/plan1/stops/p1/b/next-day": () => current,
-      "POST /api/route-plans/plan1/days/lock": () => {
-        current = makeBundle({ plan: makeRoutePlan({ locked_days: [{ installer: "West", day: 2 }] }) });
+      "POST /api/route-plans/plan1/stops/p1/b/mark": () => {
+        current = makeBundle();
+        current.stops = current.stops.map((stop) => (stop.stop_uid === "b" ? { ...stop, outcome: "incomplete" as const } : stop));
         return current;
       },
     });
-    const today = await screen.findByRole("region", { name: "West, day 1" });
-    expect(within(today).queryByRole("button", { name: /Move Store b to the next day/ })).toBeNull(); // only in edit mode
-    await userEvent.click(within(today).getByRole("button", { name: "Edit West, day 1" }));
-    expect(within(today).queryByRole("button", { name: /Move Store a/ })).toBeNull(); // visited
-    await userEvent.click(within(today).getByRole("button", { name: "Move Store b to the next day" }));
-    await waitFor(() => expect(api.calls.some((call) => call.url.pathname.endsWith("/b/next-day"))).toBe(true));
-    expect(api.calls.find((call) => call.url.pathname.endsWith("/b/next-day"))!.body).toEqual({ version: 3 });
+    const summary = await screen.findByRole("region", { name: "Plan summary" });
+    expect(within(summary).getByRole("button", { name: /Done 1/ })).toBeTruthy();
+    expect(within(summary).getByRole("button", { name: /In route 3/ })).toBeTruthy();
+    await userEvent.click(screen.getByRole("combobox", { name: "Visit of Store b" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Incomplete" }));
+    await waitFor(() => expect(api.calls.some((call) => call.url.pathname.endsWith("/b/mark"))).toBe(true));
+    expect(api.calls.find((call) => call.url.pathname.endsWith("/b/mark"))!.body).toEqual({ outcome: "incomplete" });
+    await userEvent.click(await within(summary).findByRole("button", { name: /Incomplete 1/ }));
+    expect(within(within(summary).getByRole("list", { name: "Incomplete stores" })).getByText("Store b")).toBeTruthy();
+    expect(screen.queryByRole("combobox", { name: "Visit of Store a" })).toBeNull(); // done by its log entry: not a mark to take back
+  });
 
-    await userEvent.click(screen.getByRole("button", { name: "Lock West, day 2" }));
-    await waitFor(() => expect(api.calls.some((call) => call.url.pathname.endsWith("/days/lock"))).toBe(true));
-    expect(api.calls.find((call) => call.url.pathname.endsWith("/days/lock"))!.body).toEqual({ installer: "West", day: 2, locked: true, version: 3 });
-    const locked = await screen.findByRole("region", { name: "West, day 2" });
-    expect(await within(locked).findByText("Locked")).toBeTruthy();
-    expect(within(locked).getByRole("button", { name: "Unlock West, day 2" })).toBeTruthy();
+  it("Move: another installer and day in this plan (or another plan), or remove; no Lock button", async () => {
+    const api = renderPlan(makeBundle(), {
+      "GET /api/route-plans": () => ({ items: [makeRoutePlan(), makeRoutePlan({ id: "plan2", name: "TX week" })], next_cursor: null }),
+      "POST /api/route-plans/plan1/stops/p1/b/move": () => makeBundle(),
+    });
+    const today = await screen.findByRole("region", { name: "West, day 1" });
+    expect(screen.queryByRole("button", { name: /^Lock West/ })).toBeNull();
+    expect(within(today).queryByRole("button", { name: "Move Store a" })).toBeNull(); // done
+    await userEvent.click(within(today).getByRole("button", { name: "Move Store b" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByRole("combobox", { name: "Plan" }).textContent).toContain("GA week (this plan)");
+    expect((within(dialog).getByRole("button", { name: "Move" }) as HTMLButtonElement).disabled).toBe(true); // nothing changed yet
+    expect(within(dialog).getByRole("button", { name: /Remove from plan/ })).toBeTruthy();
+    await userEvent.click(within(dialog).getByRole("combobox", { name: "Move to installer" }));
+    await userEvent.click(await screen.findByRole("option", { name: "East" }));
+    await userEvent.clear(within(dialog).getByLabelText("Day"));
+    await userEvent.type(within(dialog).getByLabelText("Day"), "2");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Move" }));
+    await waitFor(() => expect(api.calls.some((call) => call.url.pathname.endsWith("/b/move"))).toBe(true));
+    expect(api.calls.find((call) => call.url.pathname.endsWith("/b/move"))!.body).toEqual({ installer: "East", day: 2, to_plan_id: null, version: 3 });
+  });
+
+  it("clicking a day shows only that day on the map, as a chip that clears; the same day again clears too", async () => {
+    renderPlan();
+    const day2 = await screen.findByRole("region", { name: "West, day 2" });
+    await userEvent.click(within(day2).getByRole("button", { name: "Show only West, day 2 on the map" }));
+    expect(screen.getByRole("status").textContent).toContain("West · Day 2 · 1 stops");
+    await userEvent.click(screen.getByRole("button", { name: "Show every day on the map" }));
+    expect(screen.queryByRole("status")).toBeNull();
+    await userEvent.click(within(day2).getByRole("button", { name: "Show only West, day 2 on the map" }));
+    await userEvent.click(within(day2).getByRole("button", { name: /Show every day on the map \(now only West, day 2\)/ }));
+    expect(screen.queryByRole("status")).toBeNull();
   });
 
   it("adds a store from another day where chosen, showing each place between two stores", async () => {
@@ -126,8 +146,7 @@ describe("PlanPage", () => {
       "POST /api/route-plans/plan1/days/insert": () => makeBundle(),
     });
     const day2 = await screen.findByRole("region", { name: "West, day 2" });
-    await userEvent.click(within(day2).getByRole("button", { name: "Edit West, day 2" }));
-    await userEvent.click(within(day2).getByRole("button", { name: /Add store to this day/ }));
+    await userEvent.click(within(day2).getByRole("button", { name: /Add store/ }));
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).queryByText("Store a")).toBeNull(); // visited
     expect(within(dialog).queryByText("Store c")).toBeNull(); // already on this day
@@ -147,8 +166,10 @@ describe("PlanPage", () => {
     renderPlan(makeBundle({ plan: makeRoutePlan({ status: "closed" }) }));
     expect(await screen.findByText("(closed)")).toBeTruthy();
     expect(screen.queryByRole("button", { name: /Plan next day/ })).toBeNull();
-    expect(screen.queryByRole("button", { name: /Log visit/ })).toBeNull();
-    expect(screen.queryByRole("button", { name: /^Edit West/ })).toBeNull();
-    expect(screen.queryByRole("button", { name: /^Lock West/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Log entry/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Move Store/ })).toBeNull();
+    expect(screen.queryByRole("combobox", { name: /^Visit of/ })).toBeNull();
+    // What is left is the record: the summary, with "Not visited" for what was never done.
+    expect(within(screen.getByRole("region", { name: "Plan summary" })).getByRole("button", { name: /Not visited 3/ })).toBeTruthy();
   });
 });

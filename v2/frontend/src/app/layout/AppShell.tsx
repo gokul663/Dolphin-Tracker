@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 const NAV = [
   { to: "/", label: "Projects", match: (path: string) => path === "/" || path.startsWith("/projects") },
   { to: "/planner", label: "Route Planner", match: (path: string) => path.startsWith("/planner") },
+  { to: "/installers", label: "Installers", match: (path: string) => path.startsWith("/installers") },
 ];
 
 export function AppShell() {

@@ -12,11 +12,11 @@ const pins: Pin[] = [
 ];
 
 describe("MapView", () => {
-  it("explains a missing browser key but keeps the legend and counts", async () => {
+  it("explains a missing browser key but keeps the legend and counts (stores at one address share a pin)", async () => {
     mockApi({ "GET /api/config/maps": () => ({ google_maps_browser_key: "" }) });
     renderWithProviders(<MapView pins={pins} />);
     expect(await screen.findByText(/no Google Maps browser key is configured/)).toBeTruthy();
-    expect(screen.getByText("3 records · 2 pins · 2 at 1 shared addresses")).toBeTruthy();
+    expect(screen.getByText("2 pins · 3 stores")).toBeTruthy();
   });
 
   it("the legend only explains the colours: every status group has its tag, in one order, no toggles", async () => {

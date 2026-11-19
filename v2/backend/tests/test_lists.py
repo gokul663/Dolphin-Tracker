@@ -28,8 +28,11 @@ PORTAL_CATEGORIES = [
 
 class DefaultTreeTests(unittest.TestCase):
     def test_portal_categories_hold_all_48_reasons_once(self):
-        self.assertEqual(sorted(name for name, _ in DEFAULT_CATEGORIES), sorted(PORTAL_CATEGORIES))
-        reasons = [sub for _, subs in DEFAULT_CATEGORIES for sub in subs]
+        # The portal's nine, after our own "New Installation" (an install visit is not an offline fix).
+        self.assertEqual(DEFAULT_CATEGORIES[0][0], "New Installation")
+        portal = DEFAULT_CATEGORIES[1:]
+        self.assertEqual(sorted(name for name, _ in portal), sorted(PORTAL_CATEGORIES))
+        reasons = [sub for _, subs in portal for sub in subs]
         self.assertEqual(len(reasons), 48)
         self.assertEqual(len(set(reasons)), 48)
         self.assertLessEqual(REPLACED_WITH_SUBCATEGORIES, set(reasons))
@@ -69,6 +72,17 @@ class ListRepositoryContract:
         self.repo.delete_name(NameListKind.INSTALLERS, "B")
         self.assertEqual([e.value for e in self.repo.list_names(NameListKind.INSTALLERS).items], ["a", "c"])
 
+    def test_entry_details_are_saved_over_a_typed_name(self):
+        from dolphin_tracker.domain.lists import NameEntry
+        typed = self.repo.add_name(NameListKind.INSTALLERS, "Sai")  # typed on a visit: no details yet
+        details = NameEntry(value="sai", phone="555 010 2000", email="sai@example.com", shipping_address="1 Elm St")
+        saved = self.repo.save_entry(NameListKind.INSTALLERS, details)
+        self.assertEqual(saved.created_at, typed.created_at)
+        listed = self.repo.list_names(NameListKind.INSTALLERS).items
+        self.assertEqual([(e.phone, e.email, e.shipping_address) for e in listed],
+                         [("555 010 2000", "sai@example.com", "1 Elm St")])
+        self.assertIsNone(self.repo.save_entry(NameListKind.INSTALLERS, details, must_be_new=True))
+
     def test_categories_roundtrip(self):
         self.assertIsNone(self.repo.get_categories())
         tree = [Category(name="Power Issues", subcategories=["TV Off"])]
@@ -101,10 +115,11 @@ class ListServiceTests(unittest.TestCase):
         self.service = ListService(InMemoryListRepository())
 
     def test_defaults_until_saved(self):
-        self.assertEqual(len(self.service.categories()), 9)
+        self.assertEqual(len(self.service.categories()), 10)
         saved = self.service.replace_categories([Category(name=" Power  Issues ", subcategories=["TV Off"])])
         self.assertEqual(saved[0].name, "Power Issues")
-        self.assertEqual(len(self.service.categories()), 1)
+        # A saved tree without "New Installation" still offers it, first.
+        self.assertEqual([c.name for c in self.service.categories()], ["New Installation", "Power Issues"])
 
     def test_tree_rules(self):
         with self.assertRaises(ValidationFailed):
@@ -142,11 +157,28 @@ class ListsApiTests(unittest.TestCase):
         self.assertEqual(self.client.get("/api/lists/nope").status_code, 422)
         self.assertEqual(self.client.post("/api/lists/installers", json={"value": "  "}).status_code, 422)
 
+    def test_installer_details(self):
+        url = "/api/lists/installers/Sai%20Kumar"
+        missing = self.client.put(url, json={"email": "nope"})
+        self.assertEqual(missing.status_code, 422)
+        self.assertEqual(set(missing.json()["detail"]["fields"]), {"phone", "email"})
+        saved = self.client.put(url, json={"phone": "(555) 010-2000", "email": "sai@example.com",
+                                           "shipping_address": "1 Elm St,  Macon GA", "must_be_new": True})
+        self.assertEqual(saved.status_code, 200, saved.text)
+        self.assertEqual(saved.json()["shipping_address"], "1 Elm St, Macon GA")
+        self.assertEqual(self.client.put(url, json={"phone": "5550102000", "must_be_new": True}).status_code, 422)
+        self.assertEqual(self.client.put(url, json={"phone": "5550109999"}).json()["phone"], "5550109999")  # an edit
+        # No phone: only when asked to, and it lists with a blank phone (flagged on the page).
+        self.assertEqual(self.client.put("/api/lists/installers/Bo", json={}).status_code, 422)
+        self.assertEqual(self.client.put("/api/lists/installers/Bo", json={"allow_no_phone": True}).status_code, 200)
+        listed = self.client.get("/api/lists/installers").json()["items"]
+        self.assertEqual([(item["value"], item["phone"]) for item in listed], [("Bo", ""), ("Sai Kumar", "5550109999")])
+
     def test_categories(self):
         tree = self.client.get("/api/lists/categories").json()
-        self.assertEqual(len(tree), 9)
+        self.assertEqual(len(tree), 10)
         tree = {"categories": [{"name": "A", "subcategories": ["x"]}]}
         response = self.client.put("/api/lists/categories", json=tree)
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(self.client.get("/api/lists/categories").json(), [{"name": "A", "subcategories": ["x"]}])
+        self.assertEqual(self.client.get("/api/lists/categories").json()[-1], {"name": "A", "subcategories": ["x"]})
         self.assertEqual(self.client.put("/api/lists/categories", json={"categories": []}).status_code, 422)

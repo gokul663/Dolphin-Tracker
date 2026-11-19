@@ -33,6 +33,7 @@ from dolphin_tracker.domain.route_plans import (
     PlanStop,
     PlanStopState,
     PlanStoresAdd,
+    PlanSummary,
     Reassign,
     Replan,
     RoutePlan,
@@ -41,6 +42,9 @@ from dolphin_tracker.domain.route_plans import (
     RoutePlanUpdate,
     SkippedStore,
     StartLocation,
+    StopMark,
+    StopMove,
+    StopOutcome,
     StoreRef,
     assign,
     chain_legs,
@@ -48,6 +52,7 @@ from dolphin_tracker.domain.route_plans import (
     estimate_leg_minutes,
     insertion_options,
     last_stop_starts,
+    next_working_day,
     plan_stop_key,
     reorder_day,
     skip_locked,
@@ -200,9 +205,16 @@ class RoutePlanService:
         return changes
 
     def _assign(
-        self, stops: list[PlanStop], starts: dict[str, StartLocation], per_day: int, first_day: int, hours: float
+        self, stops: list[PlanStop], starts: dict[str, StartLocation], limits: dict[str, tuple[int, float]],
+        first_day: int, first_days: dict[str, int] | None = None,
     ) -> Assignment:
-        return assign(stops, starts, per_day, first_day, max_day_hours=hours, drive_times=self._drive_times)
+        """`limits`: installer → (stops per day, max driving hours), from `RoutePlan.installer_limits`;
+        `first_days`: installer → the day they can begin on, from `RoutePlan.first_days`."""
+        return assign(
+            stops, starts, {name: per_day for name, (per_day, _) in limits.items()}, first_day,
+            max_day_hours={name: hours for name, (_, hours) in limits.items()}, drive_times=self._drive_times,
+            first_days=first_days,
+        )
 
     @staticmethod
     def _forecast_starts(plan: RoutePlan, stops: list[PlanStop]) -> dict[str, StartLocation]:
@@ -225,19 +237,33 @@ class RoutePlanService:
             return []
         current = plan.days[-1]
         locked = plan.locked()
+        first = current.number if scope == Replan.TODAY else current.number + 1
         open_stops = [stop for stop in stops if stop.state_value == PlanStopState.OPEN
-                      and (stop.installer, stop.day) not in locked]
+                      and (stop.installer, stop.day) not in locked and not (stop.pinned and stop.day >= first)]
         if scope == Replan.TODAY:
             pool = open_stops
             starts = {i.name: current.starts.get(i.name, i.start) for i in plan.installers}
             first_day = current.number
-            per_day, hours = plan.limits(current)  # today keeps the limits it was planned with
+            limits = plan.installer_limits(current)  # today keeps the limits it was planned with
+            begins = plan.first_days(first_day, current.date)
         else:
             pool = [stop for stop in open_stops if stop.day > current.number or stop.day == 0]
             starts = self._forecast_starts(plan, stops)
             first_day = current.number + 1
-            per_day, hours = plan.limits()  # days not started yet: the plan's defaults
-        return self._apply(pool, skip_locked(self._assign(pool, starts, per_day, first_day, hours), locked))
+            limits = plan.installer_limits()  # days not started yet: each installer's own, else the plan's
+            begins = plan.first_days(first_day, next_working_day(current.date))
+        changes = self._apply(pool, skip_locked(self._assign(pool, starts, limits, first_day, begins), locked))
+        return [*changes, *self._settle_pinned(plan, stops, first_day)]
+
+    def _settle_pinned(self, plan: RoutePlan, stops: list[PlanStop], first_day: int) -> list[tuple[str, dict]]:
+        """After a recalculation: each day that holds a pinned store gets one visiting order again (the pinned
+        store kept its day; the stores laid out around it were numbered without it)."""
+        days = {(s.installer, s.day) for s in stops if s.pinned and s.day >= first_day
+                and s.state_value == PlanStopState.OPEN}
+        changes: list[tuple[str, dict]] = []
+        for installer, day in sorted(days):
+            changes.extend(self._reseq(plan, stops, [s for s in stops if (s.installer, s.day) == (installer, day)]))
+        return changes
 
     def _write(self, plan_id: str, changes: list[tuple[str, dict]]) -> None:
         self._plans.update_assignments(plan_id, changes)
@@ -255,7 +281,10 @@ class RoutePlanService:
         at = now_iso()
         stops = [snapshot(project_id, stop, at) for project_id, stop in found]
         starts = {installer.name: installer.start for installer in body.installers}
-        self._apply(stops, self._assign(stops, starts, body.stops_per_day, 1, body.max_day_hours))
+        draft = RoutePlan(name=body.name, stops_per_day=body.stops_per_day, max_day_hours=body.max_day_hours,
+                          installers=body.installers, days=[PlanDay(number=1, date=body.start_date, starts=starts)])
+        begins = draft.first_days(1, body.start_date)
+        self._apply(stops, self._assign(stops, starts, draft.installer_limits(), 1, begins))
         return PlanPreview(stops=order(stops), skipped=skipped)
 
     @staticmethod
@@ -283,7 +312,8 @@ class RoutePlanService:
         if not stops:
             raise ConflictError("Every store was claimed by another plan meanwhile")
         try:
-            self._apply(stops, self._assign(stops, plan.days[0].starts, plan.stops_per_day, 1, plan.max_day_hours))
+            self._apply(stops, self._assign(stops, plan.days[0].starts, plan.installer_limits(), 1,
+                                            plan.first_days(1, body.start_date)))
             plan = plan.model_copy(update={"store_count": len(stops)})
             self._plans.put(plan)
             self._plans.put_stops(plan.id, stops)
@@ -480,6 +510,59 @@ class RoutePlanService:
         best = next((o.position for o in options if o.best), len(self._day(stops, store.installer, target)))
         return self._place(plan, stops, store, True, store.installer, target, best)
 
+    def move(self, plan_id: str, project_id: str, stop_uid: str, body: StopMove) -> RoutePlanBundle:
+        """Put an open store on a chosen installer's chosen day (where it adds the least driving) and pin it there;
+        or, with `to_plan_id`, take it out of this plan and put it on that day of another active plan."""
+        plan = self._active(plan_id, body.version)
+        ref = StoreRef(project_id=project_id, stop_uid=stop_uid)
+        if body.to_plan_id and body.to_plan_id != plan_id:
+            target = self._active(body.to_plan_id)
+            self._installer(target, body.installer)  # 404 before anything is taken out of this plan
+            if body.day < target.current_day:
+                raise ValidationFailed(
+                    f"Day {body.day} of {target.name} is over; pick day {target.current_day} or later")
+            if self._find(plan_id, project_id, stop_uid).visited_screens:
+                raise ConflictError("A store with a visit logged in this plan stays in it")
+            bundle = self.remove_stop(plan_id, project_id, stop_uid)
+            self._put_on_day(target, ref, body.installer, body.day)
+            return bundle
+        if body.day < plan.current_day:
+            raise ValidationFailed(f"Day {body.day} is over; pick day {plan.current_day} or later")
+        return self._put_on_day(plan, ref, body.installer, body.day)
+
+    def _put_on_day(self, plan: RoutePlan, ref: StoreRef, installer: str, day: int) -> RoutePlanBundle:
+        installer = self._installer(plan, installer)
+        stops = self._plans.list_stops(plan.id)
+        store, inside = self._candidate(plan.id, ref, stops)
+        options = self._options(plan, stops, installer, day, store) if store.located else []
+        best = next((o.position for o in options if o.best), len(self._day(stops, installer, day, without=store.key)))
+        bundle = self._place(plan, stops, store, inside, installer, day, best)
+        self._write(plan.id, [(store.key, {"pinned": True})])
+        for stop in bundle.stops:
+            if stop.key == store.key:
+                stop.pinned = True
+        return bundle
+
+    def mark(self, plan_id: str, project_id: str, stop_uid: str, body: StopMark) -> RoutePlanBundle:
+        """Mark a stop Done, Incomplete or back to in route; or release its pin."""
+        plan = self._active(plan_id)
+        stop = self._find(plan_id, project_id, stop_uid)
+        change: dict = {}
+        if body.outcome is not None and body.outcome != stop.outcome:
+            change["outcome"] = body.outcome.value
+        if body.pinned is not None and body.pinned != stop.pinned:
+            change["pinned"] = body.pinned
+        if change:
+            self._write(plan_id, [(stop.key, change)])
+            plan = self._plans.update(plan_id, {})  # bumps the version
+        return self._bundle(plan, self._plans.list_stops(plan_id))
+
+    def set_outcome(self, plan_id: str, project_id: str, stop_uid: str, outcome: str) -> None:
+        """A log entry's roll-up: the stop is Done or Incomplete. Nothing for a closed plan (its summary is kept)."""
+        plan = self._plans.get(plan_id)
+        if plan is not None and plan.status == PlanStatus.ACTIVE:
+            self.mark(plan_id, project_id, stop_uid, StopMark(outcome=StopOutcome(outcome)))
+
     def _place(self, plan: RoutePlan, stops: list[PlanStop], store: PlanStop, inside: bool, installer: str,
                day: int, position: int) -> RoutePlanBundle:
         source = (store.installer, store.day) if inside else None
@@ -559,15 +642,21 @@ class RoutePlanService:
         starts = {name: body.starts.get(name, defaults[name]) for name in plan.installer_names()}
         day = PlanDay(number=current.number + 1, date=body.date, starts=starts,
                       stops_per_day=body.stops_per_day, max_day_hours=body.max_day_hours)
-        per_day, hours = plan.limits(day)
+        limits = plan.installer_limits(day)
         plan = self._plans.update(
             plan_id, {"days": [*(d.model_dump() for d in plan.days), day.model_dump()]}, expected_version=plan.version
         )
         locked = {(installer, number) for installer, number in plan.locked() if number >= day.number}
         pool = [stop for stop in stops
-                if stop.state_value == PlanStopState.OPEN and (stop.installer, stop.day) not in locked]
-        assignment = skip_locked(self._assign(pool, starts, per_day, day.number, hours), locked)
-        self._write(plan_id, self._apply(pool, assignment))
+                if stop.state_value == PlanStopState.OPEN and (stop.installer, stop.day) not in locked
+                and not (stop.pinned and stop.day >= day.number)]  # a pin holds until its day is over
+        assignment = skip_locked(
+            self._assign(pool, starts, limits, day.number, plan.first_days(day.number, day.date)), locked)
+        changes = self._apply(pool, assignment)
+        released = [(stop.key, {"pinned": False}) for stop in pool if stop.pinned]
+        for stop in pool:
+            stop.pinned = False
+        self._write(plan_id, [*changes, *released, *self._settle_pinned(plan, stops, day.number)])
         return self._bundle(plan, stops)
 
     def close(self, plan_id: str) -> RoutePlanBundle:
@@ -575,7 +664,12 @@ class RoutePlanService:
         plan = self._active(plan_id)
         stops = self._plans.list_stops(plan_id)
         self._release(plan_id, stops)
-        plan = self._plans.update(plan_id, {"status": PlanStatus.CLOSED.value, "closed_at": now_iso()})
+        done = sum(1 for stop in stops if stop.state_value == PlanStopState.VISITED)
+        incomplete = sum(1 for stop in stops if stop.state_value == PlanStopState.OPEN
+                         and stop.outcome == StopOutcome.INCOMPLETE)
+        summary = PlanSummary(done=done, incomplete=incomplete, not_visited=len(stops) - done - incomplete)
+        plan = self._plans.update(plan_id, {"status": PlanStatus.CLOSED.value, "closed_at": now_iso(),
+                                            "summary": summary.model_dump()})
         return self._bundle(plan, stops)
 
     # ---- moving project routes into plans (RP8) ----------------------------------------------------------------

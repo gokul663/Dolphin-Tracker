@@ -1,6 +1,7 @@
 """In-memory fakes for tests and local experiments. Same contracts as the DynamoDB implementations."""
 from __future__ import annotations
 
+import uuid
 from typing import Any
 
 from dolphin_tracker.domain.cursors import encode_cursor, offset_from_cursor
@@ -9,6 +10,7 @@ from dolphin_tracker.domain.errors import ConflictError, NotFoundError
 from dolphin_tracker.domain.lists import Category, NameEntry, NameListKind, name_key
 from dolphin_tracker.domain.models import Job, JobStatus, Page, Project, RoutingStatus, Screen, Stop, now_iso
 from dolphin_tracker.domain.route_plans import PlanStatus, PlanStop, RoutePlan
+from dolphin_tracker.domain.venues import VENUES_PROJECT_ID, venues_project
 from dolphin_tracker.domain.visits import Visit
 from dolphin_tracker.repositories.projects import IMMUTABLE_FIELDS
 from dolphin_tracker.repositories.route_plans import PlanStopChange, check_assignment
@@ -37,6 +39,8 @@ class InMemoryProjectRepository:
         self._items[project.id] = project.model_copy(deep=True)
 
     def get(self, project_id: str) -> Project | None:
+        if project_id == VENUES_PROJECT_ID:
+            return venues_project()
         project = self._items.get(project_id)
         return project.model_copy(deep=True) if project else None
 
@@ -281,8 +285,24 @@ class InMemoryListRepository:
         bucket = self._names.setdefault(kind, {})
         key = name_key(value)
         if key not in bucket:
-            bucket[key] = NameEntry(value=value, created_at=now_iso())
+            bucket[key] = NameEntry(id=uuid.uuid4().hex, value=value, created_at=now_iso())
         return bucket[key].model_copy()
+
+    def save_entry(self, kind: NameListKind, entry: NameEntry, *, must_be_new: bool = False) -> NameEntry | None:
+        bucket = self._names.setdefault(kind, {})
+        key = name_key(entry.value)
+        if key in bucket and must_be_new:
+            return None
+        old = bucket.get(key)
+        bucket[key] = entry.model_copy(update={
+            "id": entry.id or (old.id if old else "") or uuid.uuid4().hex,
+            "created_at": entry.created_at or (old.created_at if old else "") or now_iso(),
+        })
+        return bucket[key].model_copy()
+
+    def get_entry(self, kind: NameListKind, value: str) -> NameEntry | None:
+        entry = self._names.get(kind, {}).get(name_key(value))
+        return entry.model_copy() if entry else None
 
     def delete_name(self, kind: NameListKind, value: str) -> None:
         self._names.get(kind, {}).pop(name_key(value), None)

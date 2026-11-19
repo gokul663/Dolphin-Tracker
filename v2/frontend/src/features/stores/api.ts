@@ -4,6 +4,7 @@ import { storesApi, type StoreFilters } from "@/lib/api/resources";
 import {
   deriveStatus,
   type AppendStops,
+  type StoreAdd,
   type Pin,
   type ProgressUpdate,
   type RoutesBundle,
@@ -18,11 +19,22 @@ export const STORE_PAGE_SIZES = [15, 20, 30, 50] as const;
 export const DEFAULT_STORE_PAGE_SIZE = 20;
 
 /** One numbered page of the filtered, sorted stores (with the total), optionally only those in the map view. */
-export function useStoreList(projectId: string, filters: StoreFilters, page: StorePageParams) {
+export function useStoreList(projectId: string, filters: StoreFilters, page: StorePageParams, enabled = true) {
   return useQuery({
     queryKey: keys.storeList(projectId, filters, page),
     queryFn: () => storesApi.list(projectId, filters, page),
     placeholderData: keepPreviousData,
+    enabled,
+  });
+}
+
+/** One numbered page of the screens (the Screens view), one row each; off while the Stores view shows. */
+export function useScreenList(projectId: string, filters: StoreFilters, page: StorePageParams, enabled = true) {
+  return useQuery({
+    queryKey: keys.screenList(projectId, filters, page),
+    queryFn: () => storesApi.screens(projectId, filters, page),
+    placeholderData: keepPreviousData,
+    enabled,
   });
 }
 
@@ -206,6 +218,15 @@ export function useUpdateScreens(projectId: string) {
     onError: (_error, { uid }, snapshot) => rollback(client, projectId, uid, snapshot),
     onSuccess: (stop) => store(stop),
     onSettled: () => settle(client, projectId),
+  });
+}
+
+/** Add one store by hand; the server checks it like a sheet row (IBC#, name, address; duplicates; Google). */
+export function useAddStore(projectId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: StoreAdd) => storesApi.add(projectId, body),
+    onSuccess: () => client.invalidateQueries({ queryKey: keys.projects }),
   });
 }
 

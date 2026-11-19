@@ -60,6 +60,38 @@ export function useAddReviewed(projectId: string) {
   });
 }
 
+/** Add several reviewed records, one after another (each address is checked with Google). Never rejects: every
+ *  key comes back with its store or its error, so the ones that need an address can be dealt with one by one. */
+export function useAddReviewedMany(projectId: string) {
+  const refresh = useRefreshProject(projectId);
+  return useMutation({
+    mutationFn: async (reviewKeys: string[]) => {
+      const results: { key: string; error?: unknown }[] = [];
+      for (const key of reviewKeys) {
+        try {
+          await deviceSyncApi.add(projectId, key, {});
+          results.push({ key });
+        } catch (error) {
+          results.push({ key, error });
+        }
+      }
+      return results;
+    },
+    onSettled: () => refresh(),
+  });
+}
+
+/** "Not now" for several records. */
+export function useSnoozeReviewedMany(projectId: string) {
+  const refresh = useRefreshProject(projectId);
+  return useMutation({
+    mutationFn: async (reviewKeys: string[]) => {
+      for (const key of reviewKeys) await deviceSyncApi.snooze(projectId, key);
+    },
+    onSettled: () => refresh(),
+  });
+}
+
 export function useSnoozeReviewed(projectId: string) {
   const refresh = useRefreshProject(projectId);
   return useMutation({ mutationFn: (key: string) => deviceSyncApi.snooze(projectId, key), onSuccess: () => refresh() });

@@ -2,6 +2,7 @@ import { useProjectContext } from "@/features/projects/ProjectPage";
 import { DetailsSection } from "@/features/settings/DetailsSection";
 import { DeviceSettings } from "@/features/device/DeviceSettings";
 import { HardwareCostsSection } from "@/features/settings/HardwareCostsSection";
+import { ScreenSheetSection } from "@/features/settings/ScreenSheetSection";
 import { SchemaEditor } from "@/features/settings/SchemaEditor";
 import { UploadsSection } from "@/features/settings/UploadsSection";
 
@@ -9,12 +10,19 @@ import { UploadsSection } from "@/features/settings/UploadsSection";
 export function SettingsTab() {
   const project = useProjectContext();
   return (
-    <div className="max-w-4xl space-y-4">
-      <DetailsSection project={project} />
-      <HardwareCostsSection project={project} />
-      <UploadsSection project={project} />
-      <DeviceSettings project={project} />
-      <SchemaEditor project={project} />
+    // Two columns on a wide screen (each stacks its own cards, so a tall card does not leave a gap beside it); one
+    // column below that.
+    <div className="grid items-start gap-4 xl:grid-cols-2">
+      <div className="min-w-0 space-y-4">
+        <DetailsSection project={project} />
+        <DeviceSettings project={project} />
+        <UploadsSection project={project} />
+        <ScreenSheetSection project={project} />
+      </div>
+      <div className="min-w-0 space-y-4">
+        <HardwareCostsSection project={project} />
+        <SchemaEditor project={project} />
+      </div>
     </div>
   );
 }

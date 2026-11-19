@@ -34,7 +34,7 @@ from dolphin_tracker.domain.validation import normalize_external_id
 # Closed in the tracker: the report only says which of the two it is (did the device ever register).
 KEEP_STATUSES = frozenset({ScreenStatus.CANCELLED, ScreenStatus.ARCHIVED})
 NOT_REVIEWED = frozenset({"archived"})
-OVERWRITABLE = ("store_name", "addr", "city", "state", "zip", "location")
+OVERWRITABLE = ("store_name", "addr", "city", "state", "zip", "dma", "venue_type", "location")
 
 
 def device_status(record: DeviceRecord) -> ScreenStatus | None:
@@ -79,6 +79,11 @@ def sync_screen(screen: Screen, record: DeviceRecord | None, now: str) -> Screen
     if record is None:
         return screen.model_copy(update={"device": None})
     update: dict[str, Any] = {"device": screen_device(record)}
+    # The screen's own CMS name and venue type follow the report wherever it has a value.
+    if record.venue_name:
+        update["cms_name"] = record.venue_name
+    if record.venue_type:
+        update["venue_type"] = record.venue_type
     target = device_status(record)
     closed = screen.status in KEEP_STATUSES and target not in KEEP_STATUSES
     if target is not None and not closed and target != screen.status:

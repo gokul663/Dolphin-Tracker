@@ -6,7 +6,7 @@ export function makeProject(overrides: Partial<Project> = {}): Project {
   return {
     id: "p1", name: "Atlanta refresh", pa: "North", device_pa: "", device_sync: null, project_type: "new_installation", installers: ["Ann", "Bo"],
     field_agent: "Fay", partner_account: "Acme", pa_percentage: 40, dolphin_percentage: 60, store_percentage: null,
-    fa_percentage: null, hardware_costs: { stick: null, screens: [] }, uploads: [], stops_per_day: 8, field_schema: DEFAULT_SCHEMA_FOR_TESTS, import_mappings: {},
+    fa_percentage: null, hardware_costs: { stick: null, screens: [], mounts: [] }, uploads: [], stops_per_day: 8, field_schema: DEFAULT_SCHEMA_FOR_TESTS, import_mappings: {},
     routing_status: "ready", routing_job_id: "", stop_count: 3, version: 1, created_at: "2026-10-01T00:00:00+00:00",
     updated_at: "2026-10-01T00:00:00+00:00", ...overrides,
   };
@@ -41,7 +41,7 @@ export function makeSummary(overrides: Partial<ProjectSummary> = {}): ProjectSum
 
 export function makeScreen(overrides: Partial<Screen> = {}): Screen {
   return {
-    id: "sc1", stick_number: "", venue_id: "", screen_size: "", is_dolphin_screen: true, screen_type: "", has_mount: false,
+    id: "sc1", stick_number: "", venue_id: "", screen_size: "", is_dolphin_screen: true, screen_type: "", cms_name: "", venue_type: "", has_mount: false,
     has_ceiling_mount: false, needs_mount: false, status: "Upcoming", status_changed_at: "", device: null, ...overrides,
   };
 }
@@ -58,7 +58,7 @@ export function makeStop(overrides: Partial<Stop> = {}): Stop {
     owner_name: "", owner_phone: "", owner_email: "", best_contact_time: "", preferred_language: "",
     products_to_avoid: "", store_ssid: "", store_ssid_password: "", installation_notes: "", image_url: "",
     cms_details_added: false, outlet_status: "", install_type: "", committed_dolphin_screens: null, committed_store_tvs: null,
-    wall_mounts_needed: null, ceiling_mounts_needed: null, tv_mounts_needed: null,
+    wall_mounts_needed: null, wall_24_mounts_needed: null, ceiling_mounts_needed: null, tv_mounts_needed: null, screens_used: null, mounts_used: null,
     preferred_area: "", ceiling_type: "", ceiling_height: "", nearest_power_outlet: "", ethernet_route: "",
     blocked_dates_notes: "", preferred_install_datetime: "", spot_visible: null, power_within_6ft: null,
     ethernet_possible: null, low_volume_audio_ok: null, ceiling_suitable: null,

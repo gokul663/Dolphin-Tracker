@@ -102,6 +102,9 @@ STORE_FIELDS: tuple[StoreField, ...] = (
     StoreField("committed_dolphin_screens", "Dolphin screens (committed)", Group.SCREENS, Kind.INT),
     StoreField("committed_store_tvs", "Store TVs (committed)", Group.SCREENS, Kind.INT),
     # Mounts to bring (typed in; independent of the per-screen Needs mount flag)
+    StoreField("wall_24_mounts_needed", "Wall mounts (24 inch) needed", Group.SCREENS, Kind.INT),
+    StoreField("screens_used", "Screens used", Group.SCREENS, Kind.INT),
+    StoreField("mounts_used", "Mounts used", Group.SCREENS, Kind.INT),
     StoreField("wall_mounts_needed", "Wall mounts needed", Group.SCREENS, Kind.INT),
     StoreField("ceiling_mounts_needed", "Ceiling mounts needed", Group.SCREENS, Kind.INT),
     StoreField("tv_mounts_needed", "TV mounts needed", Group.SCREENS, Kind.INT),

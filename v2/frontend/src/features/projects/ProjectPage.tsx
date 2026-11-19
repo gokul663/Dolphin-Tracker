@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import { ArrowLeft, Loader2, Settings } from "lucide-react";
 import {
   Link,
   NavLink,
   Outlet,
+  useMatch,
   useNavigate,
   useOutletContext,
   useParams,
@@ -24,10 +25,13 @@ import { cn } from "@/lib/utils";
 
 const NO_BUCKETS: string[] = [];
 
-const TABS = [
-  { to: "stores", label: "Stores" },
-  { to: "settings", label: "Settings" },
-];
+/** The list, by store or by screen: one switch for the table, the map and the chart. */
+const VIEWS = [
+  { unit: "locations", label: "Stores" },
+  { unit: "screens", label: "Screens" },
+] as const;
+const tabClass = (active: boolean) =>
+  cn("rounded-md px-3 py-1.5 font-mono text-xs uppercase tracking-wider", active ? "bg-brand text-white" : "text-slate-600 hover:bg-slate-100");
 
 /** Tabs read the loaded project from the outlet context instead of refetching it. */
 export function useProjectContext(): Project {
@@ -41,6 +45,8 @@ export function ProjectPage() {
   useRefreshWhenRoutingFinishes(query.data);
   const autoSync = useAutoDeviceSync(query.data);
   const [reviewing, setReviewing] = useState(false);
+  const onList = useMatch("/projects/:projectId/stores") !== null;
+  const unit = useStoresUi((state) => (state.projectId === projectId ? state.unit : "locations"));
   const activeBuckets = useStoresUi((state) => (state.projectId === projectId ? state.facets.bucket : NO_BUCKETS));
 
   if (query.isPending)
@@ -118,22 +124,24 @@ export function ProjectPage() {
             aria-label="Project sections"
             className="flex justify-center gap-1 rounded-lg border bg-white p-1"
           >
-            {TABS.map((tab) => (
-              <NavLink
-                key={tab.to}
-                to={tab.to}
-                className={({ isActive }) =>
-                  cn(
-                    "rounded-md px-3 py-1.5 font-mono text-xs uppercase tracking-wider",
-                    isActive
-                      ? "bg-brand text-white"
-                      : "text-slate-600 hover:bg-slate-100",
-                  )
-                }
+            {VIEWS.map((view) => (
+              <button
+                key={view.unit}
+                type="button"
+                aria-current={onList && unit === view.unit ? "page" : undefined}
+                className={tabClass(onList && unit === view.unit)}
+                onClick={() => {
+                  useStoresUi.getState().enterProject(project.id);
+                  useStoresUi.getState().setUnit(view.unit);
+                  navigate("stores");
+                }}
               >
-                {tab.label}
-              </NavLink>
+                {view.label}
+              </button>
             ))}
+            <NavLink to="settings" aria-label="Settings" title="Settings" className={({ isActive }) => cn(tabClass(isActive), "flex items-center px-2")}>
+              <Settings size={15} />
+            </NavLink>
           </nav>
           {/* Under the tabs: when the Dolphin data was last synced. */}
           {autoSync.isPending ? (

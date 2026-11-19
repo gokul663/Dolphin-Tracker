@@ -22,6 +22,8 @@ export function deviceRows(stop: Stop): Row[] {
         { field: "city", label: "City", sheet: stop.city, report: device.city },
         { field: "state", label: "State", sheet: stop.state, report: device.state },
         { field: "zip", label: "ZIP", sheet: stop.zip, report: device.zip },
+        { field: "dma", label: "DMA", sheet: stop.dma, report: device.dma },
+        { field: "venue_type", label: "Venue type", sheet: stop.venue_type, report: device.venue_type },
         { field: "location", label: "Map location", sheet: fmt(stop.lat, stop.lng), report: fmt(device.lat, device.lng) },
       ]
     : [];

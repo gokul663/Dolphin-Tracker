@@ -5,12 +5,13 @@ import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Input } from "@/components/ui/input";
+import { SuggestInput } from "@/components/SuggestInput";
 import { Label } from "@/components/ui/label";
 import { DEVICE_TONE, DeviceBadge } from "@/features/device/DeviceBits";
 import { useDevicePas, useOverwriteFromDevice, useSyncNow } from "@/features/device/api";
 import { useUpdateProject } from "@/features/projects/api";
 import { SectionTitle } from "@/features/settings/DetailsSection";
+import { centralTime } from "@/lib/time";
 import type { OverwriteField, Project } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
 
@@ -20,6 +21,8 @@ export const OVERWRITE_FIELDS: { field: OverwriteField; label: string }[] = [
   { field: "city", label: "City" },
   { field: "state", label: "State" },
   { field: "zip", label: "ZIP" },
+  { field: "dma", label: "DMA" },
+  { field: "venue_type", label: "Venue type" },
   { field: "location", label: "Map location" },
 ];
 
@@ -73,18 +76,13 @@ export function DeviceSettings({ project }: { project: Project }) {
       <div className="flex flex-wrap items-end gap-2">
         <div className="min-w-72 flex-1 space-y-1.5">
           <Label htmlFor="device-pa">Sync with PA</Label>
-          <Input
+          <SuggestInput
             id="device-pa"
-            list="device-pa-options"
             placeholder={pas.isPending ? "Loading PA names…" : "Pick the PA name as the CMS writes it"}
             value={pa}
-            onChange={(event) => setPa(event.target.value)}
+            onValueChange={setPa}
+            options={known}
           />
-          <datalist id="device-pa-options">
-            {known.map((name) => (
-              <option key={name} value={name} />
-            ))}
-          </datalist>
           {pas.isError && <p className="text-xs text-rose-700">Could not load the PA list: {pas.error.message}</p>}
           {unknownPa && <p className="text-xs text-amber-700">Not a PA name in the report's latest day; nothing would match.</p>}
         </div>
@@ -99,7 +97,7 @@ export function DeviceSettings({ project }: { project: Project }) {
               <DeviceBadge date={state.snapshot_date} />
               <span>
                 {state.matched_screens} screens matched · {state.status_changes} status changes last sync · {state.review_count} to review ·{" "}
-                {state.not_reporting} not in Dolphin data · synced {state.synced_at.slice(0, 16).replace("T", " ")} UTC
+                {state.not_reporting} not in Dolphin data · synced {centralTime(state.synced_at)}
               </span>
             </>
           ) : (

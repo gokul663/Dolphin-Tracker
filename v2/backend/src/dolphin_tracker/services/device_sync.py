@@ -3,6 +3,7 @@ on "Sync now", and daily from the worker), review report records the project lac
 report's, and ignore a "not in Dolphin data" alert until the next report day. Rules: `domain/device_sync.py`."""
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from dolphin_tracker.domain.base import ApiModel
@@ -40,6 +41,9 @@ from dolphin_tracker.repositories.projects import ProjectRepository
 from dolphin_tracker.repositories.stores import StoreRepository
 from dolphin_tracker.services.geocoding import Geocoder, resolve_address
 from dolphin_tracker.services.stores import StoreService
+from dolphin_tracker.services.venues import VenueCatalogService
+
+logger = logging.getLogger(__name__)
 
 
 class PaList(ApiModel):
@@ -81,6 +85,7 @@ class DeviceSyncService:
         store_service: StoreService | None = None,
         geocoder: Geocoder | None = None,
     ) -> None:
+        self._venues = VenueCatalogService(stores, source)
         self._geocoder = geocoder
         self._projects = projects
         self._stores = stores
@@ -118,6 +123,10 @@ class DeviceSyncService:
             return SyncResult(synced=False, state=state)
 
         snapshot = source.snapshot(pa)
+        try:  # the planner's all-venues list takes this PA's latest too; it never fails the project's sync
+            self._venues.upsert(snapshot.records)
+        except Exception:
+            logger.exception("Could not update the all-venues list")
         codes = index_records(snapshot.records)
         now = now_iso()
         stops = self._stores.list_all(project_id)
@@ -145,6 +154,10 @@ class DeviceSyncService:
         self._projects.update(project_id, {"device_sync": state.model_dump(mode="json")})
         return SyncResult(synced=True, state=state, stores_updated=written)
 
+    def refresh_venues(self) -> dict[str, Any]:
+        """Bring the planner's all-venues list up to date with every PA of the report."""
+        return self._venues.refresh_all().model_dump()
+
     def sync_all(self) -> dict[str, Any]:
         """Every project with a PA chosen (the daily schedule). One project failing does not stop the others."""
         synced, failed, cursor = 0, [], None
@@ -160,7 +173,13 @@ class DeviceSyncService:
                     failed.append({"project_id": project.id, "error": f"{type(exc).__name__}: {exc}"})
             cursor = page.next_cursor
             if not cursor:
-                return {"synced": synced, "failed": failed}
+                break
+        # Then every venue of every PA, for the Route Planner (domain/venues.py).
+        try:
+            venues: dict[str, Any] = self._venues.refresh_all().model_dump()
+        except Exception as exc:
+            venues = {"error": f"{type(exc).__name__}: {exc}"}
+        return {"synced": synced, "failed": failed, "venues": venues}
 
     # ---- review -----------------------------------------------------------------------------------------
 

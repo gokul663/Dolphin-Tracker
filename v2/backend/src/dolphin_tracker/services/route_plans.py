@@ -89,6 +89,7 @@ class RoutePlanService:
         self._projects = projects
         self._lists = lists
         self._drive_times = drive_times  # Google driving times in the app; the straight-line estimate otherwise
+        self._aside: dict[str, list[PlanStop]] = {}  # per plan, as last read by _stops
 
     # ---- reads ------------------------------------------------------------------------------------------------
 
@@ -126,18 +127,27 @@ class RoutePlanService:
                     statuses[key] = item.get("status") or "Upcoming"
         return statuses
 
+    def _stops(self, plan_id: str) -> list[PlanStop]:
+        """The plan's stores that are routed. The ones set aside are kept apart (for the bundle and for closing):
+        nothing that lays out days ever sees them."""
+        everything = self._plans.list_stops(plan_id)
+        self._aside[plan_id] = [stop for stop in everything if stop.removed]
+        return [stop for stop in everything if not stop.removed]
+
     def _bundle(self, plan: RoutePlan, stops: list[PlanStop]) -> RoutePlanBundle:
+        aside = sorted(self._aside.get(plan.id, []), key=lambda stop: (stop.removed_at, stop.key))
         return RoutePlanBundle(
             plan=plan,
             stops=order(stops),
-            project_names=self._project_names({stop.project_id for stop in stops}),
+            project_names=self._project_names({stop.project_id for stop in [*stops, *aside]}),
             next_starts=last_stop_starts(plan, stops),
-            store_status=self._statuses(stops),
+            store_status=self._statuses([*stops, *aside]),
+            removed=aside,
         )
 
     def bundle(self, plan_id: str) -> RoutePlanBundle:
         plan = self._plan(plan_id)
-        return self._bundle(plan, self._plans.list_stops(plan_id))
+        return self._bundle(plan, self._stops(plan_id))
 
     # ---- loading stores ---------------------------------------------------------------------------------------
 
@@ -325,7 +335,7 @@ class RoutePlanService:
 
     def update(self, plan_id: str, body: RoutePlanUpdate) -> RoutePlanBundle:
         plan = self._active(plan_id, body.version)
-        stops = self._plans.list_stops(plan_id)
+        stops = self._stops(plan_id)
         changes: dict = {}
         if body.name is not None:
             changes["name"] = body.name.strip()
@@ -358,7 +368,7 @@ class RoutePlanService:
         found, skipped = self._load(body.stores, plan_id)
         at = now_iso()
         added, lost = self._claim(plan_id, found, at)
-        existing = self._plans.list_stops(plan_id)
+        existing = self._stops(plan_id)
         try:
             self._plans.put_stops(plan_id, added)  # day 0: placed by the replan below
             plan = self._plans.update(plan_id, {"store_count": len(existing) + len(added)},
@@ -386,12 +396,42 @@ class RoutePlanService:
             raise ConflictError("A visited store stays in the plan's history")
         self._plans.delete_stop(plan_id, stop.key)
         self._release(plan_id, [stop])
-        stops = self._plans.list_stops(plan_id)
+        stops = self._stops(plan_id)  # also for a store that was set aside: it is gone from that list too
         locks = [lock.model_dump() for lock in self._live_locks(plan, stops)]  # an emptied locked day unlocks
         plan = self._plans.update(plan_id, {"store_count": len(stops), "locked_days": locks})
         same_day = [s for s in stops if (s.installer, s.day) == (stop.installer, stop.day)]
         self._write(plan_id, self._reseq(plan, stops, same_day))
         return self._bundle(plan, stops)
+
+    def set_aside(self, plan_id: str, project_id: str, stop_uid: str, by: str = "") -> RoutePlanBundle:
+        """Take a store off its day but keep it with the plan: it stays claimed and shows as removed, until someone
+        who manages the plan puts it back on a day (`restore`) or takes it out for good (`remove_stop`)."""
+        plan = self._active(plan_id)
+        stop = self._find(plan_id, project_id, stop_uid)
+        if stop.removed:
+            return self._bundle(plan, self._stops(plan_id))
+        if stop.state_value == PlanStopState.VISITED:
+            raise ConflictError("A visited store stays in the plan's history")
+        was = (stop.installer, stop.day)
+        self._write(plan_id, [(stop.key, {"removed": True, "removed_by": by, "removed_at": now_iso(),
+                                          "installer": "", "day": 0, "seq": 0, "pinned": False})])
+        stops = self._stops(plan_id)
+        locks = [lock.model_dump() for lock in self._live_locks(plan, stops)]  # an emptied locked day unlocks
+        plan = self._plans.update(plan_id, {"store_count": len(stops), "locked_days": locks})
+        self._write(plan_id, self._reseq(plan, stops, [s for s in stops if (s.installer, s.day) == was]))
+        return self._bundle(plan, stops)
+
+    def restore(self, plan_id: str, project_id: str, stop_uid: str, body: StopMove) -> RoutePlanBundle:
+        """Put a set-aside store back on a chosen installer's chosen day (pinned there, like a move)."""
+        plan = self._active(plan_id, body.version)
+        stop = self._find(plan_id, project_id, stop_uid)
+        if not stop.removed:
+            raise ConflictError("That store is not set aside")
+        if body.day < plan.current_day:
+            raise ValidationFailed(f"Day {body.day} is over; pick day {plan.current_day} or later")
+        self._installer(plan, body.installer)  # 404 before the store is brought back
+        self._write(plan_id, [(stop.key, {"removed": False, "removed_by": "", "removed_at": ""})])
+        return self._put_on_day(plan, StoreRef(project_id=project_id, stop_uid=stop_uid), body.installer, body.day)
 
     @staticmethod
     def _day_origin(plan: RoutePlan, stops: list[PlanStop], installer: str, day: int) -> dict:
@@ -444,7 +484,7 @@ class RoutePlanService:
             locks.append(DayLock(installer=installer, day=body.day))
         plan = self._plans.update(plan_id, {"locked_days": [lock.model_dump() for lock in locks]},
                                   expected_version=plan.version)
-        return self._bundle(plan, self._plans.list_stops(plan_id))
+        return self._bundle(plan, self._stops(plan_id))
 
     @staticmethod
     def _installer(plan: RoutePlan, name: str) -> str:
@@ -461,6 +501,9 @@ class RoutePlanService:
             if inside.state_value == PlanStopState.VISITED:
                 raise ConflictError("A visited store stays where it was visited")
             return inside, True
+        aside = self._plans.get_stop(plan_id, key)
+        if aside is not None and aside.removed:
+            raise ConflictError("That store was set aside: someone who manages the plan can put it back on a day")
         found, skipped = self._load([ref], plan_id)
         if not found:
             reason = skipped[0].reason if skipped else "not_found"
@@ -476,7 +519,7 @@ class RoutePlanService:
     def insert_options(self, plan_id: str, body: InsertQuery) -> InsertOptions:
         plan = self._plan(plan_id)
         installer = self._installer(plan, body.installer)
-        stops = self._plans.list_stops(plan_id)
+        stops = self._stops(plan_id)
         store, _ = self._candidate(plan_id, body.store, stops)
         options = self._options(plan, stops, installer, body.day, store)
         return InsertOptions(store_name=store.store_name, options=options)
@@ -496,14 +539,14 @@ class RoutePlanService:
         installer = self._installer(plan, body.installer)
         if body.day < plan.current_day:
             raise ValidationFailed(f"Day {body.day} is over; add to day {plan.current_day} or later")
-        stops = self._plans.list_stops(plan_id)
+        stops = self._stops(plan_id)
         store, inside = self._candidate(plan_id, body.store, stops)
         return self._place(plan, stops, store, inside, installer, body.day, body.position)
 
     def move_to_next_day(self, plan_id: str, project_id: str, stop_uid: str, body: MoveToNextDay) -> RoutePlanBundle:
         """Take an open store off its day and put it on the installer's next day, where it adds the least driving."""
         plan = self._active(plan_id, body.version)
-        stops = self._plans.list_stops(plan_id)
+        stops = self._stops(plan_id)
         store, _ = self._candidate(plan_id, StoreRef(project_id=project_id, stop_uid=stop_uid), stops)
         target = max(store.day, plan.current_day) + 1
         options = self._options(plan, stops, store.installer, target, store) if store.located else []
@@ -532,7 +575,7 @@ class RoutePlanService:
 
     def _put_on_day(self, plan: RoutePlan, ref: StoreRef, installer: str, day: int) -> RoutePlanBundle:
         installer = self._installer(plan, installer)
-        stops = self._plans.list_stops(plan.id)
+        stops = self._stops(plan.id)
         store, inside = self._candidate(plan.id, ref, stops)
         options = self._options(plan, stops, installer, day, store) if store.located else []
         best = next((o.position for o in options if o.best), len(self._day(stops, installer, day, without=store.key)))
@@ -555,7 +598,7 @@ class RoutePlanService:
         if change:
             self._write(plan_id, [(stop.key, change)])
             plan = self._plans.update(plan_id, {})  # bumps the version
-        return self._bundle(plan, self._plans.list_stops(plan_id))
+        return self._bundle(plan, self._stops(plan_id))
 
     def set_outcome(self, plan_id: str, project_id: str, stop_uid: str, outcome: str) -> None:
         """A log entry's roll-up: the stop is Done or Incomplete. Nothing for a closed plan (its summary is kept)."""
@@ -595,9 +638,8 @@ class RoutePlanService:
             except Exception:
                 self._release(plan.id, [store])
                 raise
-        update: dict = {"locked_days": [lock.model_dump() for lock in self._live_locks(plan, stops)]}
-        if not inside:
-            update["store_count"] = len(stops)
+        update: dict = {"locked_days": [lock.model_dump() for lock in self._live_locks(plan, stops)],
+                        "store_count": len(stops)}  # also right after a set-aside store comes back
         plan = self._plans.update(plan.id, update, expected_version=plan.version)  # bumps the version
         return self._bundle(plan, stops)
 
@@ -616,7 +658,7 @@ class RoutePlanService:
         moved = self._find(plan_id, project_id, stop_uid)
         if moved.state_value == PlanStopState.VISITED:
             raise ConflictError("A visited store cannot be reassigned")
-        stops = self._plans.list_stops(plan_id)
+        stops = self._stops(plan_id)
         source = moved.installer
         for stop in stops:
             if stop.key == moved.key:
@@ -637,7 +679,7 @@ class RoutePlanService:
         unknown = sorted(set(body.starts) - set(plan.installer_names()))
         if unknown:
             raise ValidationFailed(f"Not on this plan: {', '.join(unknown)}")
-        stops = self._plans.list_stops(plan_id)
+        stops = self._stops(plan_id)
         defaults = last_stop_starts(plan, stops)
         starts = {name: body.starts.get(name, defaults[name]) for name in plan.installer_names()}
         day = PlanDay(number=current.number + 1, date=body.date, starts=starts,
@@ -662,12 +704,14 @@ class RoutePlanService:
     def close(self, plan_id: str) -> RoutePlanBundle:
         """Stop working the plan: every store is released (it keeps `last_planned_at`); the plan stays as history."""
         plan = self._active(plan_id)
-        stops = self._plans.list_stops(plan_id)
-        self._release(plan_id, stops)
+        stops = self._stops(plan_id)
+        aside = self._aside.get(plan_id, [])
+        self._release(plan_id, [*stops, *aside])
         done = sum(1 for stop in stops if stop.state_value == PlanStopState.VISITED)
         incomplete = sum(1 for stop in stops if stop.state_value == PlanStopState.OPEN
                          and stop.outcome == StopOutcome.INCOMPLETE)
-        summary = PlanSummary(done=done, incomplete=incomplete, not_visited=len(stops) - done - incomplete)
+        summary = PlanSummary(done=done, incomplete=incomplete, not_visited=len(stops) - done - incomplete,
+                              removed=len(aside))
         plan = self._plans.update(plan_id, {"status": PlanStatus.CLOSED.value, "closed_at": now_iso(),
                                             "summary": summary.model_dump()})
         return self._bundle(plan, stops)

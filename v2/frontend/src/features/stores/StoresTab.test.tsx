@@ -332,9 +332,14 @@ describe("StoresTab", () => {
     await userEvent.click(within(screen.getByRole("columnheader", { name: /^Screens$/ })).getByRole("button"));
     await waitFor(() => expect(lastList(calls)?.searchParams.get("sort")).toBe("screens"));
 
-    const csv = screen.getByRole("link", { name: /CSV/ }).getAttribute("href") ?? "";
-    expect(csv).toContain("/api/projects/p1/stores/export.csv");
-    expect(new URL(csv).searchParams.getAll("status")).toEqual(["Completed"]);
+    // The CSV is fetched (with the sign-in), not a plain link, under the same filters.
+    await userEvent.click(screen.getByRole("button", { name: /CSV/ }));
+    const csv = await waitFor(() => {
+      const call = calls.find((item) => item.url.pathname === "/api/projects/p1/stores/export.csv");
+      expect(call).toBeTruthy();
+      return call!;
+    });
+    expect(csv.url.searchParams.getAll("status")).toEqual(["Completed"]);
   });
 
   it("the Installer column shows the technician's name, or a Self / Rep pill", async () => {

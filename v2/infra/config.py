@@ -15,6 +15,11 @@ class EnvConfig:
     # but it can also come from `-c google_browser_key=...` so it need not be committed.
     google_browser_key: str = ""
     google_map_id: str = ""  # Google Cloud Map ID (public); the user creates it
+    # Sign-in through the shared Dolphin Nexus login (its Cognito user pool). While all three are empty the API has
+    # no login (everyone is a Super Admin): set all three to turn it on. None is a secret.
+    auth_issuer: str = ""     # https://cognito-idp.us-east-1.amazonaws.com/us-east-1_U2DnRTmXT
+    auth_jwks_url: str = ""   # <auth_issuer>/.well-known/jwks.json
+    auth_client_id: str = ""  # the "dolphin-tracker" app client: output TrackerClientId of the Nexus deploy
 
     @property
     def prefix(self) -> str:
@@ -35,6 +40,23 @@ class EnvConfig:
             )
         return origins
 
+    def auth_env(self) -> dict[str, str]:
+        """The API's sign-in variables: none while sign-in is off; all three settings or synth fails (a half-set
+        login must not deploy as no login)."""
+        values = {"auth_issuer": self.auth_issuer, "auth_jwks_url": self.auth_jwks_url,
+                  "auth_client_id": self.auth_client_id}
+        if not any(values.values()):
+            return {}
+        missing = [key for key, value in values.items() if not value]
+        if missing:
+            raise ValueError(f"[{self.name}] sign-in is half set: also set {', '.join(missing)} in infra/config.py")
+        return {
+            "DT_AUTH_MODE": "jwt",
+            "DT_AUTH_ISSUER": self.auth_issuer,
+            "DT_AUTH_JWKS_URL": self.auth_jwks_url,
+            "DT_AUTH_AUDIENCE": self.auth_client_id,
+        }
+
     @property
     def ssm_google_server_key(self) -> str:
         return f"/dolphin-tracker/{self.name}/google-maps-server-key"
@@ -53,6 +75,10 @@ ENVIRONMENTS: dict[str, EnvConfig] = {
         certificate_arn="arn:aws:acm:us-east-1:519747127986:certificate/ac51e029-8352-408c-979b-ece470505075",
         cloudfront_domain="d2nm60ijusfh0v.cloudfront.net",  # the live site (DolphinTracker-Dev-Web)
         log_retention_days=14,
+        # Sign-in through the shared Dolphin Nexus login. Remove these three lines to deploy without a login.
+        auth_issuer="https://cognito-idp.us-east-1.amazonaws.com/us-east-1_U2DnRTmXT",
+        auth_jwks_url="https://cognito-idp.us-east-1.amazonaws.com/us-east-1_U2DnRTmXT/.well-known/jwks.json",
+        auth_client_id="1cpblkn568vqoogddkfl64br7g",  # the pool's "dolphin-tracker" app client
     ),
     "prod": EnvConfig(
         name="prod",

@@ -7,7 +7,7 @@ export function makePlanStop(uid: string, overrides: Partial<PlanStop> = {}): Pl
   return {
     project_id: "p1", stop_uid: uid, external_id: `IBC-${uid}`, store_name: `Store ${uid}`, addr: `${uid} Main St`, city: "Atlanta",
     state: "GA", zip: "30303", lat: 33.7, lng: -84.4, screen_ids: [`${uid}-s1`], installer: "West", day: 1, seq: 0,
-    drive_minutes: null, visited_screens: [], outcome: "", pinned: false, added_at: "2026-11-06T00:00:00Z", ...overrides,
+    drive_minutes: null, visited_screens: [], outcome: "", pinned: false, removed: false, removed_by: "", removed_at: "", added_at: "2026-11-06T00:00:00Z", ...overrides,
   };
 }
 
@@ -34,6 +34,7 @@ export function makeBundle(overrides: Partial<RoutePlanBundle> = {}): RoutePlanB
     project_names: { p1: "Atlanta refresh" },
     next_starts: { West: { address: "a Main St, Atlanta, GA 30303", lat: 33.7, lng: -84.4 }, East: EAST },
     store_status: { "p1#a": "Upcoming", "p1#b": "Offline", "p1#c": "Upcoming", "p1#d": "Delivered" },
+    removed: [],
     ...overrides,
   };
 }

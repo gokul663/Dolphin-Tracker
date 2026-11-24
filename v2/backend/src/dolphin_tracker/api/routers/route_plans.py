@@ -4,8 +4,10 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+from dolphin_tracker.api.auth import PrincipalDep, require
 from dolphin_tracker.api.deps import get_route_plan_service, get_store_search_service, get_worker_invoker
 from dolphin_tracker.api.schemas import PoolFacets
+from dolphin_tracker.domain.auth import Permission
 from dolphin_tracker.domain.models import Page, ScreenStatus
 from dolphin_tracker.domain.route_plans import (
     DayInsert,
@@ -148,9 +150,28 @@ def reassign_stop(plan_id: str, project_id: str, stop_uid: str, body: Reassign, 
 
 
 @router.post("/route-plans/{plan_id}/stops/{project_id}/{stop_uid}/move", response_model=RoutePlanBundle)
-def move_stop(plan_id: str, project_id: str, stop_uid: str, body: StopMove, service: PlanDep) -> RoutePlanBundle:
-    """Put a store on a chosen installer's chosen day and keep it there; `to_plan_id` moves it to another plan."""
+def move_stop(
+    plan_id: str, project_id: str, stop_uid: str, body: StopMove, service: PlanDep, who: PrincipalDep
+) -> RoutePlanBundle:
+    """Put a store on a chosen installer's chosen day and keep it there; `to_plan_id` moves it to another plan
+    (which takes it out of this one: only for someone who manages plans)."""
+    if body.to_plan_id and body.to_plan_id != plan_id:
+        require(who, Permission.ROUTES_MANAGE, "Only someone who manages plans can move a store to another plan")
     return service.move(plan_id, project_id, stop_uid, body)
+
+
+@router.post("/route-plans/{plan_id}/stops/{project_id}/{stop_uid}/set-aside", response_model=RoutePlanBundle)
+def set_stop_aside(
+    plan_id: str, project_id: str, stop_uid: str, service: PlanDep, who: PrincipalDep
+) -> RoutePlanBundle:
+    """Take a store off its day and keep it with the plan, shown as removed, for a manager to decide on."""
+    return service.set_aside(plan_id, project_id, stop_uid, by=who.label)
+
+
+@router.post("/route-plans/{plan_id}/stops/{project_id}/{stop_uid}/restore", response_model=RoutePlanBundle)
+def restore_stop(plan_id: str, project_id: str, stop_uid: str, body: StopMove, service: PlanDep) -> RoutePlanBundle:
+    """Put a set-aside store back on a day."""
+    return service.restore(plan_id, project_id, stop_uid, body)
 
 
 @router.post("/route-plans/{plan_id}/stops/{project_id}/{stop_uid}/mark", response_model=RoutePlanBundle)

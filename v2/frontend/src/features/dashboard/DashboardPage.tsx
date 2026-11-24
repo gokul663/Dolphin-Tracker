@@ -1,3 +1,4 @@
+import { useCan } from "@/lib/auth/me";
 import { lazy, Suspense, useMemo, useState } from "react";
 import { AlertTriangle, Briefcase, CheckCircle2, Clock, MapPin, MonitorPlay, Plus, Users, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -53,6 +54,7 @@ export function DashboardPage() {
   const [editing, setEditing] = useState<Project | null>(null);
   const [deleting, setDeleting] = useState<Project | null>(null);
   const [importing, setImporting] = useState<{ appendTo: Project | null } | null>(null);
+  const canEdit = useCan("projects.edit");
 
   const scoped = useMemo(() => applySelection(projects, selected), [projects, selected]);
   const totals = useMemo(() => aggregateTotals(scoped), [scoped]);
@@ -64,9 +66,11 @@ export function DashboardPage() {
     <div className="space-y-8">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="font-mono text-xs uppercase tracking-[2px] text-slate-500">Dashboard</h1>
+        {canEdit && (
         <Button onClick={() => setImporting({ appendTo: null })} className="font-mono font-semibold uppercase tracking-wider">
           <Plus /> Add new project
         </Button>
+        )}
       </div>
 
       <section className="space-y-3">
@@ -129,7 +133,7 @@ export function DashboardPage() {
               ? "No completed projects yet."
               : tab === "ongoing"
                 ? "No ongoing projects."
-                : "No projects yet. Click “Add new project” to begin."}
+                : canEdit ? "No projects yet. Click “Add new project” to begin." : "No projects yet."}
           </Card>
         ) : (
           <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">

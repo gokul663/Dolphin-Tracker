@@ -3,15 +3,16 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { PlanPage } from "@/features/planner/PlanPage";
 import { mockApi, renderWithProviders } from "@/test/render";
-import { makeBundle, makeRoutePlan } from "@/test/planFixtures";
+import { makeBundle, makePlanStop, makeRoutePlan } from "@/test/planFixtures";
+import type { Role } from "@/lib/api/types";
 
-function renderPlan(bundle = makeBundle(), extra: Parameters<typeof mockApi>[0] = {}) {
+function renderPlan(bundle = makeBundle(), extra: Parameters<typeof mockApi>[0] = {}, role: Role = "super_admin") {
   const api = mockApi({
     "GET /api/route-plans/plan1": () => bundle,
     "GET /api/config/maps": () => ({ google_maps_browser_key: "" }),
     ...extra,
   });
-  renderWithProviders(<PlanPage />, { path: "/planner/:planId", route: "/planner/plan1" });
+  renderWithProviders(<PlanPage />, { path: "/planner/:planId", route: "/planner/plan1", role });
   return api;
 }
 
@@ -172,4 +173,42 @@ describe("PlanPage", () => {
     // What is left is the record: the summary, with "Not visited" for what was never done.
     expect(within(screen.getByRole("region", { name: "Plan summary" })).getByRole("button", { name: /Not visited 3/ })).toBeTruthy();
   });
+
+  it("an Operator arranges the plan but does not manage it: a store comes off its day, not out of the plan", async () => {
+    const api = renderPlan(makeBundle(), { "POST /api/route-plans/plan1/stops/p1/b/set-aside": () => makeBundle() }, "operator");
+    const today = await screen.findByRole("region", { name: "West, day 1" });
+    for (const name of [/Plan next day/, /Add stores/, /Edit plan/, /Close plan/, /Add store/]) expect(screen.queryByRole("button", { name }), String(name)).toBeNull();
+    expect(within(today).getAllByRole("button", { name: /Log entry/ }).length).toBeGreaterThan(0);
+    await userEvent.click(within(today).getByRole("button", { name: "Move Store b" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).queryByRole("combobox", { name: "Plan" })).toBeNull(); // another plan would take it out of this one
+    expect(within(dialog).queryByRole("button", { name: /Remove from plan/ })).toBeNull();
+    await userEvent.click(within(dialog).getByRole("button", { name: /Remove from this day/ }));
+    await waitFor(() => expect(api.calls.some((call) => call.url.pathname.endsWith("/b/set-aside"))).toBe(true));
+  });
+
+  it("removed stores stay listed; an Admin puts one back on a day or takes it out, an Operator only sees them", async () => {
+    const aside = makePlanStop("z", { installer: "", day: 0, removed: true, removed_by: "Olly", removed_at: "2026-11-06T10:00:00Z" });
+    const bundle = makeBundle({ removed: [aside] });
+    const api = renderPlan(bundle, { "POST /api/route-plans/plan1/stops/p1/z/restore": () => makeBundle() });
+    const removed = await screen.findByRole("region", { name: "Removed stores" });
+    expect(removed.textContent).toContain("Store z");
+    expect(removed.textContent).toContain("by Olly");
+    expect(within(removed).getByRole("button", { name: "Remove Store z from the plan" })).toBeTruthy();
+    await userEvent.click(within(removed).getByRole("button", { name: "Put Store z back on a day" }));
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.click(within(dialog).getByRole("button", { name: /Put back/ }));
+    await waitFor(() => expect(api.calls.some((call) => call.url.pathname.endsWith("/z/restore"))).toBe(true));
+    expect(api.calls.find((call) => call.url.pathname.endsWith("/z/restore"))!.body).toMatchObject({ installer: "West", day: 1 });
+  });
+
+  it("a Viewer sees the plan and changes nothing", async () => {
+    renderPlan(makeBundle({ removed: [makePlanStop("z", { installer: "", day: 0, removed: true })] }), {}, "viewer");
+    const today = await screen.findByRole("region", { name: "West, day 1" });
+    for (const name of [/Plan next day/, /Close plan/, /Log entry/, /^Move /, /Put .* back/]) expect(screen.queryByRole("button", { name })).toBeNull();
+    expect(within(today).queryByRole("combobox")).toBeNull(); // no Done / Incomplete picker
+    expect(screen.getByRole("region", { name: "Removed stores" })).toBeTruthy();
+    expect(screen.getAllByRole("button", { name: /CSV/ }).length).toBeGreaterThan(0); // reading is fine
+  });
 });
+

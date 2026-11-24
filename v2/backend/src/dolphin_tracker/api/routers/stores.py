@@ -4,6 +4,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
+from dolphin_tracker.api.auth import PrincipalDep
 from dolphin_tracker.api.deps import get_store_service, get_upload_service
 from dolphin_tracker.api.schemas import (
     AppendResult,
@@ -17,6 +18,13 @@ from dolphin_tracker.api.schemas import (
     StoreAdd,
     StoreDetailsUpdate,
     StoreFilterOptions,
+)
+from dolphin_tracker.domain.auth import (
+    SERVICE_PROGRESS_FIELDS,
+    SERVICE_STORE_FIELDS,
+    Permission,
+    Principal,
+    store_edit_problem,
 )
 from dolphin_tracker.domain.models import ScreenStatus, Stop
 from dolphin_tracker.domain.statuses import StatusBucket
@@ -203,13 +211,32 @@ def get_store(project_id: str, stop_uid: str, service: ServiceDep) -> Stop:
     return service.get(project_id, stop_uid)
 
 
+def _may_edit(
+    who: Principal, service: StoreService, project_id: str, stop_uid: str, fields: set[str],
+    allowed: frozenset[str] | None,
+) -> None:
+    """Someone who edits projects may; someone who only logs visits may while the store is on a route, and then
+    only the fields a visit touches."""
+    if who.can(Permission.PROJECTS_EDIT):
+        return
+    on_route = bool(service.get(project_id, stop_uid).route_plan_id)
+    problem = store_edit_problem(who, on_route, fields, allowed)
+    if problem:
+        raise HTTPException(status_code=403, detail=problem)
+
+
 @router.patch("/{stop_uid}", response_model=Stop)
-def update_store(project_id: str, stop_uid: str, body: StoreDetailsUpdate, service: ServiceDep) -> Stop:
-    return service.update_details(project_id, stop_uid, body.model_dump(exclude_unset=True))
+def update_store(
+    project_id: str, stop_uid: str, body: StoreDetailsUpdate, service: ServiceDep, who: PrincipalDep
+) -> Stop:
+    changes = body.model_dump(exclude_unset=True)
+    _may_edit(who, service, project_id, stop_uid, set(changes), SERVICE_STORE_FIELDS)
+    return service.update_details(project_id, stop_uid, changes)
 
 
 @router.put("/{stop_uid}/screens", response_model=Stop)
-def update_screens(project_id: str, stop_uid: str, body: ScreensUpdate, service: ServiceDep) -> Stop:
+def update_screens(project_id: str, stop_uid: str, body: ScreensUpdate, service: ServiceDep, who: PrincipalDep) -> Stop:
+    _may_edit(who, service, project_id, stop_uid, set(), None)
     return service.update_screens(project_id, stop_uid, body.screens, updated_by=body.updated_by)
 
 
@@ -220,5 +247,9 @@ def set_external_id(project_id: str, stop_uid: str, body: ExternalIdSet, service
 
 
 @router.patch("/{stop_uid}/progress", response_model=Stop)
-def update_progress(project_id: str, stop_uid: str, body: ProgressUpdate, service: ServiceDep) -> Stop:
-    return service.update_progress(project_id, stop_uid, body.model_dump(exclude_unset=True))
+def update_progress(
+    project_id: str, stop_uid: str, body: ProgressUpdate, service: ServiceDep, who: PrincipalDep
+) -> Stop:
+    changes = body.model_dump(exclude_unset=True)
+    _may_edit(who, service, project_id, stop_uid, set(changes), SERVICE_PROGRESS_FIELDS)
+    return service.update_progress(project_id, stop_uid, changes)

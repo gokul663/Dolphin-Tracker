@@ -1,3 +1,4 @@
+import { useCan } from "@/lib/auth/me";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Cable, Check, ClipboardCheck, Eye, EyeOff, Loader2, Lock, Package, Pencil, Plus, Send, Signal, Trash2, Wifi } from "lucide-react";
@@ -500,6 +501,7 @@ interface Who {
 function PlanStore({ stop, project, planId, installer, visitDate, plan }: { stop: Stop; project: Project; planId: string; installer: string; visitDate: string; plan: PlanVisit }) {
   const visits = useVisits(project.id, stop.uid).data?.items ?? [];
   const update = useUpdateScreens(project.id);
+  const canLog = useCan("visits.log"); // without it the store is shown, nothing can be changed
   const [who, setWho] = useState<Who>(() => ({ visit_date: visitDate, installer: installer || stop.installer_name || "", dolphin_manager: window.localStorage.getItem(MANAGER_KEY) ?? "" }));
   const [open, setOpen] = useState<string | null>(null); // the key of the line being logged
   const [adding, setAdding] = useState<ScreenRow | null>(null); // a screen not saved yet
@@ -538,7 +540,7 @@ function PlanStore({ stop, project, planId, installer, visitDate, plan }: { stop
       <InventoryBand stop={stop} />
       <div className="grid min-h-0 flex-1 overflow-y-auto lg:grid-cols-[minmax(0,1fr)_420px] lg:overflow-hidden">
         <div className="space-y-5 bg-slate-50 p-5 lg:overflow-y-auto">
-          <section aria-label="This visit" className="grid gap-4 rounded-xl border bg-white p-4 shadow-sm sm:grid-cols-3">
+          <section aria-label="This visit" hidden={!canLog} className="grid gap-4 rounded-xl border bg-white p-4 shadow-sm sm:grid-cols-3">
             <Field label="Date" required htmlFor="visit-date">
               <Input id="visit-date" type="date" value={who.visit_date} onChange={(e) => setWho({ ...who, visit_date: e.target.value })} />
             </Field>
@@ -557,6 +559,7 @@ function PlanStore({ stop, project, planId, installer, visitDate, plan }: { stop
               <Button
                 size="sm"
                 variant="outline"
+                hidden={!canLog}
                 disabled={adding !== null}
                 onClick={() => {
                   const row = newRow();
@@ -604,6 +607,7 @@ function PlanStore({ stop, project, planId, installer, visitDate, plan }: { stop
                       <span className="text-xs text-slate-400">Not logged</span>
                     )}
                     <Button
+                      hidden={!canLog}
                       onClick={() => {
                         setAdding(null);
                         setAddedId(null);
@@ -617,6 +621,7 @@ function PlanStore({ stop, project, planId, installer, visitDate, plan }: { stop
                       size="icon"
                       variant="ghost"
                       className="size-8"
+                      hidden={!canLog}
                       aria-label={`Delete screen ${index + 1}`}
                       disabled={saved.length === 1 || update.isPending}
                       title={saved.length === 1 ? "A store needs at least one screen" : undefined}
@@ -631,9 +636,12 @@ function PlanStore({ stop, project, planId, installer, visitDate, plan }: { stop
           </Section>
 
           <Section title="Store" accent="#0F5B7C">
-            <StoreComment stop={stop} projectId={project.id} />
-            <div className="border-t" />
-            <UsedCounts stop={stop} projectId={project.id} />
+            {/* View only without the permission: every box and button inside is off. */}
+            <fieldset disabled={!canLog} className="min-w-0 space-y-4">
+              <StoreComment stop={stop} projectId={project.id} />
+              <div className="border-t" />
+              <UsedCounts stop={stop} projectId={project.id} />
+            </fieldset>
           </Section>
         </div>
         <aside className="space-y-4 border-l bg-white p-5 lg:overflow-y-auto" aria-label="Store details">
@@ -1024,6 +1032,7 @@ function LockedGroup({ stop, projectId, title, fields, stacked = false }: { stop
   const [reveal, setReveal] = useState(false);
   const [form, setForm] = useState<LockedValues>(() => lockedValues(stop, keys));
   const update = useUpdateStoreDetails(projectId);
+  const canEdit = useCan("visits.log");
   useEffect(() => {
     if (!editing) setForm(lockedValues(stop, keys)); // `keys` comes from a static field list
   }, [stop, editing]);
@@ -1058,7 +1067,7 @@ function LockedGroup({ stop, projectId, title, fields, stacked = false }: { stop
               {update.isPending && <Loader2 className="animate-spin" />} Save
             </Button>
           </div>
-        ) : (
+        ) : !canEdit ? null : (
           <Button size="sm" variant="outline" onClick={() => setEditing(true)} aria-label={`Edit ${title}`}>
             <Pencil /> Edit
           </Button>

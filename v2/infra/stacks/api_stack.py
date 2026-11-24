@@ -86,6 +86,8 @@ class ApiStack(cdk.Stack):
             "POWERTOOLS_SERVICE_NAME": "dolphin-tracker",
             "LOG_LEVEL": "INFO",
         }
+        # Sign-in on (issuer, JWKS URL and client ID set): every request must carry the Nexus login's ID token.
+        common_env.update(cfg.auth_env())
 
         # The only function that holds the Mongo secret: reads the CMS device report for the API and the worker.
         self.device_data_fn = lambda_.Function(

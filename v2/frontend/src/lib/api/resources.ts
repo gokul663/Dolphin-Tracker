@@ -279,6 +279,12 @@ export const routePlansApi = {
   /** Mark a stop Done / Incomplete / in route, or release its pin. */
   mark: (id: string, projectId: string, uid: string, body: StopMark) =>
     api<RoutePlanBundle>(`${plan(id)}/stops/${enc(projectId)}/${enc(uid)}/mark`, { method: "POST", body }),
+  /** Take a store off its day and keep it with the plan (shown as removed) for a manager to decide on. */
+  setAside: (id: string, projectId: string, uid: string) =>
+    api<RoutePlanBundle>(`${plan(id)}/stops/${enc(projectId)}/${enc(uid)}/set-aside`, { method: "POST" }),
+  /** Put a set-aside store back on a day. */
+  restore: (id: string, projectId: string, uid: string, body: StopMove) =>
+    api<RoutePlanBundle>(`${plan(id)}/stops/${enc(projectId)}/${enc(uid)}/restore`, { method: "POST", body }),
   close: (id: string) => api<RoutePlanBundle>(`${plan(id)}/close`, { method: "POST" }),
 };
 

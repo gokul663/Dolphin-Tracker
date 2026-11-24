@@ -1,3 +1,4 @@
+import { useCan } from "@/lib/auth/me";
 import { ArrowRight, CheckCircle2, Loader2, Pencil, Trash2, Upload } from "lucide-react";
 import { useNavigate } from "react-router";
 import { Badge } from "@/components/ui/badge";
@@ -29,6 +30,7 @@ function Stat({ value, label, tone }: { value: string | number; label: string; t
 const pct = (value: number | null) => (value === null ? "—" : `${value}%`);
 
 export function ProjectCard({ project, onAppend, onEdit, onDelete }: Props) {
+  const canEdit = useCan("projects.edit"); // append a sheet, edit, delete
   const navigate = useNavigate();
   const { kpi } = project;
   const completed = isCompleted(project);
@@ -73,7 +75,7 @@ export function ProjectCard({ project, onAppend, onEdit, onDelete }: Props) {
             <span className="text-slate-400">Type:</span> {PROJECT_TYPE_LABELS[project.project_type]}
           </div>
         </div>
-        <div className="flex shrink-0 gap-1">
+        <div hidden={!canEdit} className="flex shrink-0 gap-1">
           <button
             type="button"
             onClick={stop(onAppend)}

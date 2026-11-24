@@ -34,6 +34,7 @@ from dolphin_tracker.services.routing import RoutingService
 from dolphin_tracker.services.screen_sheet import ScreenSheetService
 from dolphin_tracker.services.store_search import StoreSearchService
 from dolphin_tracker.services.stores import StoreService
+from dolphin_tracker.services.technician import TechnicianService
 from dolphin_tracker.services.uploads import UploadService
 from dolphin_tracker.services.visits import VisitService
 
@@ -179,6 +180,16 @@ def get_route_plan_service(
     settings: SettingsDep,
 ) -> RoutePlanService:
     return RoutePlanService(plans, stores, projects, lists, _drive_times(resolve_google_server_key(settings)))
+
+
+def get_technician_service(
+    lists: Annotated[ListService, Depends(get_list_service)],
+    plans: Annotated[RoutePlanService, Depends(get_route_plan_service)],
+    plan_repo: Annotated[RoutePlanRepository, Depends(get_route_plan_repository)],
+    projects: Annotated[ProjectRepository, Depends(get_project_repository)],
+    stores: Annotated[StoreRepository, Depends(get_store_repository)],
+) -> TechnicianService:
+    return TechnicianService(lists, plans, plan_repo, projects, stores)
 
 
 def get_store_search_service(

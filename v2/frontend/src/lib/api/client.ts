@@ -1,5 +1,5 @@
 import { ApiError } from "@/lib/api/types";
-import { getAccessToken } from "@/lib/auth/token";
+import { authHeaders, cognitoOn, signInAgain } from "@/lib/auth/token";
 
 const BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "/api").replace(/\/$/, "");
 
@@ -49,17 +49,30 @@ async function toApiError(response: Response): Promise<ApiError> {
   return new ApiError(response.status, errorMessage(detail, `${response.status} ${response.statusText}`), detail);
 }
 
-/** Thin fetch wrapper: base URL, JSON, bearer token when present, typed errors. */
+/** `fetch` to our own API with the sign-in. A 401 is tried once more with a token renewed from the refresh token;
+ *  when that fails too, the person goes back to the managed login (and returns to this page). */
+async function send(url: string, init: RequestInit & { headers?: Record<string, string> } = {}): Promise<Response> {
+  const call = async (renew: boolean) => {
+    const auth = await authHeaders(renew);
+    return { signedIn: "Authorization" in auth, response: await fetch(url, { ...init, headers: { ...auth, ...init.headers } }) };
+  };
+  let { signedIn, response } = await call(false);
+  if (response.status === 401 && cognitoOn()) {
+    if (signedIn) ({ signedIn, response } = await call(true));
+    if (response.status === 401) void signInAgain();
+  }
+  return response;
+}
+
+/** Thin fetch wrapper: base URL, JSON, the sign-in's token, typed errors. */
 export async function api<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { body, query, headers, ...init } = options;
-  const token = getAccessToken();
-  const response = await fetch(apiUrl(path, query), {
+  const response = await send(apiUrl(path, query), {
     ...init,
     headers: {
       Accept: "application/json",
       ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...headers,
+      ...(headers as Record<string, string> | undefined),
     },
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
@@ -73,19 +86,33 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
  * equal the one sent to `POST /jobs/imports`: S3 signs it.
  */
 export async function uploadFile(uploadUrl: string, file: Blob, contentType: string): Promise<void> {
-  const isApiRoute = uploadUrl.startsWith("/");
-  const token = isApiRoute ? getAccessToken() : null;
-  const response = await fetch(uploadUrl, {
+  // Our own route carries the sign-in; a presigned S3 URL must not (it is signed already).
+  const response = await (uploadUrl.startsWith("/") ? send : fetch)(uploadUrl, {
     method: "PUT",
     body: file,
-    headers: { "Content-Type": contentType, ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    headers: { "Content-Type": contentType },
   });
   if (!response.ok) throw await toApiError(response);
 }
 
 /** GET a JSON document from a presigned URL or a local `/api/...` route (job results). */
 export async function fetchJson<T>(url: string): Promise<T> {
-  const response = await fetch(url, { headers: { Accept: "application/json" } });
+  // Our own route carries the sign-in; a presigned S3 URL must not (it is signed already).
+  const response = await (url.startsWith("/") ? send : fetch)(url, { headers: { Accept: "application/json" } });
   if (!response.ok) throw await toApiError(response);
   return (await response.json()) as T;
+}
+
+/** Download a file from our API with the sign-in (a plain link would not carry it) and save it in the browser. */
+export async function downloadFile(url: string, filename: string): Promise<void> {
+  const response = await send(url);
+  if (!response.ok) throw await toApiError(response);
+  const href = URL.createObjectURL(await response.blob());
+  const link = document.createElement("a");
+  link.href = href;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(href);
 }

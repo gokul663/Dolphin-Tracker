@@ -4,10 +4,26 @@ import { render } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { vi } from "vitest";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { keys } from "@/lib/api/keys";
+import type { Me, Permission, Role } from "@/lib/api/types";
 
-/** Render with a fresh query client (no retries), a router at `path`, and the tooltip provider. */
-export function renderWithProviders(ui: ReactElement, { path = "/", route = "/" }: { path?: string; route?: string } = {}) {
+const VIEW: Permission[] = ["projects.view", "routes.view"];
+const ALL: Permission[] = [...VIEW, "projects.edit", "installers.manage", "routes.manage", "routes.arrange", "visits.log"];
+/** The server's role table, for tests (backend domain/auth.py ROLE_PERMISSIONS). */
+export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
+  super_admin: ALL,
+  admin: ALL,
+  operator: [...VIEW, "routes.arrange", "visits.log"],
+  viewer: VIEW,
+  technician: ["routes.own"],
+};
+export const makeMe = (role: Role = "super_admin"): Me => ({ id: "u1", name: "Test User", email: "", role, installer_id: "", acting_by: "", permissions: ROLE_PERMISSIONS[role] });
+
+/** Render with a fresh query client (no retries), a router at `path`, and the tooltip provider. The signed-in person
+ *  is a Super Admin unless `role` says otherwise. */
+export function renderWithProviders(ui: ReactElement, { path = "/", route = "/", role = "super_admin" }: { path?: string; route?: string; role?: Role } = {}) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+  client.setQueryData(keys.me, makeMe(role));
   const wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={client}>
       <TooltipProvider>

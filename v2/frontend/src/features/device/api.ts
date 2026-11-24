@@ -1,3 +1,4 @@
+import { useCan } from "@/lib/auth/me";
 import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
 import { keys } from "@/lib/api/keys";
@@ -27,7 +28,8 @@ export function useAutoDeviceSync(project: Project | undefined) {
     mutationFn: (projectId: string) => deviceSyncApi.sync(projectId, true),
     onSuccess: (result) => (result.synced ? refresh() : undefined),
   });
-  const target = project?.device_pa ? `${project.id}:${project.device_pa}` : "";
+  const canSync = useCan("projects.edit"); // a sync writes to the project
+  const target = canSync && project?.device_pa ? `${project.id}:${project.device_pa}` : "";
   useEffect(() => {
     if (!project || !target || tried.current === target) return;
     tried.current = target;

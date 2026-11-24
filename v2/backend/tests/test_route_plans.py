@@ -320,6 +320,42 @@ class RoutePlanServiceTests(ServiceTestCase):
         closed = self.service.close(plan_id).plan
         self.assertEqual((closed.summary.done, closed.summary.incomplete, closed.summary.not_visited), (1, 1, 6))
 
+    def test_set_aside_keeps_the_store_with_the_plan_until_restored_or_removed(self):
+        from dolphin_tracker.domain.route_plans import StopMove
+        bundle = self.create().bundle
+        plan_id = bundle.plan.id
+        aside = self.service.set_aside(plan_id, "p1", "w0", by="Olly")
+        self.assertNotIn("p1#w0", self.by_key(aside))  # on no day
+        self.assertEqual([(s.stop_uid, s.removed_by, s.day, s.installer) for s in aside.removed],
+                         [("w0", "Olly", 0, "")])
+        self.assertEqual(aside.plan.store_count, 7)
+        self.assertEqual(self.stores.get("p1", "w0").route_plan_id, plan_id)  # still claimed: no other plan takes it
+        self.assertEqual(aside.store_status["p1#w0"], "Upcoming")
+        # Laying the plan out again leaves it aside.
+        again = self.service.update(plan_id, RoutePlanUpdate(replan=Replan.TODAY))
+        self.assertNotIn("p1#w0", self.by_key(again))
+        self.assertEqual([s.stop_uid for s in again.removed], ["w0"])
+        self.assertEqual([s.stop_uid for s in self.service.bundle(plan_id).removed], ["w0"])
+        with self.assertRaises(ConflictError):  # not by a plain move
+            self.service.move(plan_id, "p1", "w0", StopMove(installer="East", day=1))
+        back = self.service.restore(plan_id, "p1", "w0", StopMove(installer="East", day=2))
+        stop = self.by_key(back)["p1#w0"]
+        self.assertEqual((stop.installer, stop.day, stop.removed, stop.pinned), ("East", 2, False, True))
+        self.assertEqual((back.removed, back.plan.store_count), ([], 8))
+        with self.assertRaises(ConflictError):
+            self.service.restore(plan_id, "p1", "w0", StopMove(installer="East", day=2))
+        # Set aside again, then taken out for good: the store is free.
+        self.service.set_aside(plan_id, "p1", "w1")
+        gone = self.service.remove_stop(plan_id, "p1", "w1")
+        self.assertEqual((gone.removed, self.stores.get("p1", "w1").route_plan_id), ([], ""))
+
+    def test_closing_releases_set_aside_stores_and_counts_them(self):
+        plan_id = self.create().bundle.plan.id
+        self.service.set_aside(plan_id, "p1", "w0")
+        closed = self.service.close(plan_id)
+        self.assertEqual((closed.plan.summary.removed, closed.plan.summary.not_visited), (1, 7))
+        self.assertEqual(self.stores.get("p1", "w0").route_plan_id, "")
+
     def test_move_to_another_plan(self):
         from dolphin_tracker.domain.route_plans import StopMove
         first = self.create(["w0", "w1"]).bundle.plan.id
@@ -456,6 +492,68 @@ class VisitPlanLinkTests(ServiceTestCase):
         # Newest first: a later Done replaces the screen's Incomplete; another plan's entries do not count.
         self.assertEqual(store_outcome(["a"], [visit("a", "done"), visit("a", "incomplete")], "plan"), "done")
         self.assertEqual(store_outcome(["a"], [visit("a", "done", "other")], "plan"), "")
+
+
+class TechnicianViewTests(ServiceTestCase):
+    def setUp(self):
+        super().setUp()
+        from dolphin_tracker.services.technician import TechnicianService
+        self.west = self.lists.save_installer("West", phone="555 010 1000", email="west@example.com")
+        self.lists.save_installer("East", phone="555 010 2000", email="east@example.com", shipping_address="9 East Rd")
+        self.tech = TechnicianService(self.lists, self.service, self.plans, self.projects, self.stores)
+
+    def who(self, **fields):
+        from dolphin_tracker.domain.auth import Role, principal
+        return principal(id="t1", role=Role.TECHNICIAN, **fields)
+
+    def test_only_their_own_days_and_nobody_elses_start(self):
+        plan_id = self.create().bundle.plan.id
+        mine = self.tech.route(self.who(installer_id=self.west.id))
+        self.assertEqual(mine.installer.value, "West")
+        (bundle,) = mine.plans
+        self.assertEqual({stop.installer for stop in bundle.stops}, {"West"})
+        self.assertEqual(len(bundle.stops), 4)
+        self.assertEqual([person.name for person in bundle.plan.installers], ["West"])
+        self.assertEqual([set(day.starts) for day in bundle.plan.days], [{"West"}])  # not East's home
+        self.assertEqual(set(bundle.next_starts), {"West"})
+        self.assertEqual(set(bundle.store_status), {stop.key for stop in bundle.stops})
+        # Linked by the email on the Installers page when the sign-in carries no installer id.
+        self.assertEqual(self.tech.route(self.who(email="EAST@example.com")).installer.value, "East")
+        # A link to nobody, or no link at all, shows nothing (never someone else's route).
+        self.assertEqual(self.tech.route(self.who(installer_id="gone", email="east@example.com")).plans, [])
+        self.assertIsNone(self.tech.route(self.who()).installer)
+        # What they finished in a plan that is closed now is still counted.
+        from dolphin_tracker.domain.route_plans import StopMark, StopOutcome
+        self.service.mark(plan_id, "p1", "w0", StopMark(outcome=StopOutcome.DONE))
+        self.service.close(plan_id)
+        after = self.tech.route(self.who(installer_id=self.west.id))
+        self.assertEqual((after.plans, after.serviced_before), ([], 1))
+
+    def test_past_fixed_stores_by_kind_of_project(self):
+        def done(uid, lng, technician, status="Completed"):
+            return store(uid, lng, status=status).model_copy(update={"installer_name": technician})
+        self.projects.put(Project(id="n1", name="New wave", project_type=ProjectType.NEW_INSTALLATION))
+        self.stores.put_many("n1", [
+            done("n0", -84.0, "west"),  # theirs, whatever the spelling
+            done("n1", -84.1, "West"),
+            done("n2", -84.2, "West", status="Upcoming"),  # not done yet
+            done("n3", -84.3, "East"),  # someone else's
+        ])
+        self.stores.put_many("p1", [done("x0", -84.4, "West")])  # an offline project
+        fixed = self.tech.route(self.who(installer_id=self.west.id)).fixed
+        self.assertEqual((fixed.new_installation, fixed.offline, fixed.mixed), (2, 1, 0))
+
+    def test_they_change_only_their_additional_phone_and_address(self):
+        from dolphin_tracker.services.technician import MyProfileUpdate
+        saved = self.tech.update_profile(self.who(installer_id=self.west.id),
+                                         MyProfileUpdate(phone2="555 010 1999", shipping_address=" 1 West St "))
+        self.assertEqual((saved.id, saved.value, saved.phone, saved.email), (self.west.id, "West", "555 010 1000",
+                                                                            "west@example.com"))
+        self.assertEqual((saved.phone2, saved.shipping_address), ("555 010 1999", "1 West St"))
+        with self.assertRaises(ValidationFailed):
+            self.tech.update_profile(self.who(installer_id=self.west.id), MyProfileUpdate(phone2="12"))
+        with self.assertRaises(NotFoundError):
+            self.tech.update_profile(self.who(), MyProfileUpdate(phone2="555 010 1999"))
 
 
 class StoreSearchTests(ServiceTestCase):

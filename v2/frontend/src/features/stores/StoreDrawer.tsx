@@ -1,3 +1,4 @@
+import { useCan } from "@/lib/auth/me";
 import { useEffect, useState } from "react";
 import { Link } from "react-router";
 import { useRoutePlans } from "@/features/planner/api";
@@ -62,6 +63,7 @@ interface Sections {
  *  reference material (pictures, WiFi, Dolphin data, contacts, installation, site notes and checklist, other
  *  imported data), which a switch swaps for the logs (the CMS's servicing log and the visits logged here). Every section stays collapsible and editable. */
 export function StoreDrawer({ project, stopId, open, onClose }: Props) {
+  const canLog = useCan("visits.log");
   const store = useStore(project.id, open ? stopId : null);
   const specs = useStoreFields();
   const stop = store.data;
@@ -107,7 +109,7 @@ export function StoreDrawer({ project, stopId, open, onClose }: Props) {
               ) : (
                 <span>Not in a route</span>
               )}
-              {stop && (
+              {stop && canLog && (
                 <Button type="button" size="sm" variant="outline" className="h-7 text-xs" onClick={() => setLogging(true)}>
                   <ClipboardCheck /> Log visit
                 </Button>
@@ -390,6 +392,8 @@ function IdentityMeta({ stop, project, specs }: { stop: Stop; project: Project; 
 /** Edit, then View to see the section as text again. Neither saves nor drops anything: the window's Save and
  *  Discard do that for every section at once. */
 function EditToggle({ label, editing, disabled = false, onEdit, onView }: { label: string; editing: boolean; disabled?: boolean; onEdit: () => void; onView: () => void }) {
+  const canEdit = useCan("projects.edit");
+  if (!canEdit) return null; // view only: no section opens for editing
   return editing ? (
     <Button type="button" size="xs" variant="outline" aria-label={`View ${label}`} disabled={disabled} title={disabled ? "Fix the highlighted value first" : "Back to the text view; the changes stay until you save or discard"} onClick={onView}>
       <Eye /> View
@@ -529,6 +533,7 @@ function DetailsEditor({
   const progress = useUpdateProgress(project.id);
   const screensSave = useUpdateScreens(project.id);
   const validate = useValidateAddress();
+  const canEdit = useCan("projects.edit");
   // Everything in the window is one draft, sent by the single Save at the bottom: the store details (counts and
   // install type included), the technician, the manager's notes and the screen rows.
   const [rows, setRows] = useState<ScreenRow[]>(() => toRows(stop));
@@ -920,7 +925,7 @@ function DetailsEditor({
           )}
         </aside>
       </div>
-      <div className="sticky bottom-0 -mx-6 mt-3 flex justify-end gap-2 border-t border-white/60 bg-white/70 px-6 py-3 shadow-[0_-8px_24px_-12px_rgb(15_23_42/0.18)] backdrop-blur-xl backdrop-saturate-150">
+      <div hidden={!canEdit} className="sticky bottom-0 -mx-6 mt-3 flex justify-end gap-2 border-t border-white/60 bg-white/70 px-6 py-3 shadow-[0_-8px_24px_-12px_rgb(15_23_42/0.18)] backdrop-blur-xl backdrop-saturate-150">
         {dirty && <span className="mr-auto self-center text-xs text-amber-700">Unsaved changes</span>}
         <Button variant="ghost" disabled={!dirty || saving} onClick={discard}>
           Discard
@@ -1077,6 +1082,8 @@ function OtherData({ project, stop }: { project: Project; stop: Stop }) {
 function ExternalIdInput({ projectId, uid }: { projectId: string; uid: string }) {
   const [value, setValue] = useState("");
   const save = useSetExternalId(projectId);
+  const canEdit = useCan("projects.edit");
+  if (!canEdit) return <p className="text-xs text-amber-800">IBC# missing</p>;
   return (
     <div className="space-y-1.5">
       <Label htmlFor="store-external_id" className="flex items-center gap-1 text-amber-800">

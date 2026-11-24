@@ -1,5 +1,6 @@
+import { useCan } from "@/lib/auth/me";
 import { useMemo, useState } from "react";
-import { useNavigate } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { ArrowLeft, ArrowRight, Loader2, Route } from "lucide-react";
 import { toast } from "sonner";
 import { MapView } from "@/components/map/MapView";
@@ -37,6 +38,18 @@ function defaultName(stores: PoolStore[], date: string): string {
 
 /** Plan a Route: stores from any project → installers and their starts → stops per day and start date → preview. */
 export function PlanWizard() {
+  const canManage = useCan("routes.manage");
+  if (!canManage) {
+    return (
+      <div className="rounded-xl border bg-white p-8 text-center text-sm text-slate-600">
+        Planning a route needs an Admin. <Link to="/planner" className="text-brand underline">Back to the plans</Link>
+      </div>
+    );
+  }
+  return <Wizard />;
+}
+
+function Wizard() {
   const navigate = useNavigate();
   const [step, setStep] = useState(0);
   const [selected, setSelected] = useState<Map<string, PoolStore>>(new Map());

@@ -1,3 +1,4 @@
+import { useCan } from "@/lib/auth/me";
 import { AlertTriangle, Loader2, Replace } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -50,6 +51,7 @@ export function StoreDeviceSection({
 }) {
   const overwrite = useOverwriteFromDevice(project.id);
   const ignore = useIgnoreDeviceAlert(project.id);
+  const canEdit = useCan("projects.edit");
   const device = stop.device;
   const missing = stop.needs_attention.includes("not_reporting");
   const day = project.device_sync?.snapshot_date ?? device?.date ?? "";
@@ -78,7 +80,7 @@ export function StoreDeviceSection({
       <div className="flex flex-wrap items-center gap-2">
         <h3 className="font-mono text-[11px] uppercase tracking-wider text-cyan-900">Dolphin data</h3>
         {day && <DeviceBadge date={day} />}
-        {open.length > 0 && (
+        {open.length > 0 && canEdit && (
           <Button size="xs" variant="outline" className="ml-auto" disabled={overwrite.isPending} onClick={() => run(open)}>
             {overwrite.isPending ? <Loader2 className="animate-spin" /> : <Replace />} Overwrite all ({open.length})
           </Button>
@@ -94,6 +96,7 @@ export function StoreDeviceSection({
           <Button
             size="xs"
             variant="outline"
+            hidden={!canEdit}
             disabled={ignore.isPending}
             onClick={() => ignore.mutate(stop.uid, { onError: (error) => toast.error(error instanceof Error ? error.message : "Could not ignore") })}
           >
@@ -124,7 +127,7 @@ export function StoreDeviceSection({
                       <span className="whitespace-nowrap text-xs font-medium text-amber-700" title="Taken into the store's changes: Save details writes it, Discard drops it">
                         Unsaved
                       </span>
-                    ) : differs ? (
+                    ) : differs && canEdit ? (
                       <Button size="xs" variant="ghost" disabled={overwrite.isPending} onClick={() => run([row.field as OverwriteField])}>
                         Overwrite
                       </Button>

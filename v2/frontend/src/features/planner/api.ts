@@ -113,6 +113,14 @@ export function usePlanMutations(planId: string) {
       mutationFn: ({ projectId, uid, body }: { projectId: string; uid: string; body: StopMark }) => routePlansApi.mark(planId, projectId, uid, body),
       ...done,
     }),
+    setAside: useMutation({
+      mutationFn: ({ projectId, uid }: { projectId: string; uid: string }) => routePlansApi.setAside(planId, projectId, uid),
+      ...done,
+    }),
+    restore: useMutation({
+      mutationFn: ({ projectId, uid, body }: { projectId: string; uid: string; body: StopMove }) => routePlansApi.restore(planId, projectId, uid, body),
+      ...done,
+    }),
     close: useMutation({ mutationFn: () => routePlansApi.close(planId), ...done }),
   };
 }

@@ -1,11 +1,12 @@
 """FastAPI application factory. Routers do HTTP only; see docs/PLAN.md → Backend layering."""
 from __future__ import annotations
 
-from fastapi import APIRouter, FastAPI, Request
+from fastapi import APIRouter, Depends, FastAPI, Request
 from fastapi.responses import JSONResponse
 from starlette.middleware.cors import CORSMiddleware
 
 from dolphin_tracker import __version__
+from dolphin_tracker.api.auth import PrincipalDep, enforce
 from dolphin_tracker.api.routers import (
     device_sync,
     health,
@@ -16,9 +17,11 @@ from dolphin_tracker.api.routers import (
     route_plans,
     screen_sheet,
     stores,
+    technician,
     visits,
 )
 from dolphin_tracker.config import Settings, get_settings
+from dolphin_tracker.domain.auth import Principal
 from dolphin_tracker.domain.errors import ConflictError, NotFoundError, ValidationFailed
 from dolphin_tracker.repositories.device_data import DeviceDataUnavailable
 
@@ -41,11 +44,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             allow_headers=["*"],
         )
 
-    api = APIRouter(prefix="/api")
+    # Every route under /api is checked against the caller's role (api/auth.py POLICY).
+    api = APIRouter(prefix="/api", dependencies=[Depends(enforce)])
 
     @api.get("", tags=["health"])
     def root() -> dict[str, str]:
         return {"message": "Dolphin Tracker API", "version": __version__}
+
+    @api.get("/me", tags=["auth"], response_model=Principal)
+    def me(who: PrincipalDep) -> Principal:
+        """Who is signed in, their role, and what it lets them do (the screens hide what it does not)."""
+        return who
 
     api.include_router(health.router)
     api.include_router(places.router)
@@ -57,6 +66,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     api.include_router(route_plans.router)
     api.include_router(device_sync.router)
     api.include_router(screen_sheet.router)
+    api.include_router(technician.router)
     app.include_router(api)
 
     @app.exception_handler(NotFoundError)

@@ -1,3 +1,4 @@
+import { useCan } from "@/lib/auth/me";
 import { useState } from "react";
 import { ArrowLeft, Loader2, Settings } from "lucide-react";
 import {
@@ -43,6 +44,7 @@ export function ProjectPage() {
   const query = useProject(projectId);
   const navigate = useNavigate();
   useRefreshWhenRoutingFinishes(query.data);
+  const canEdit = useCan("projects.edit");
   const autoSync = useAutoDeviceSync(query.data);
   const [reviewing, setReviewing] = useState(false);
   const onList = useMatch("/projects/:projectId/stores") !== null;
@@ -139,9 +141,11 @@ export function ProjectPage() {
                 {view.label}
               </button>
             ))}
-            <NavLink to="settings" aria-label="Settings" title="Settings" className={({ isActive }) => cn(tabClass(isActive), "flex items-center px-2")}>
-              <Settings size={15} />
-            </NavLink>
+            {canEdit && (
+              <NavLink to="settings" aria-label="Settings" title="Settings" className={({ isActive }) => cn(tabClass(isActive), "flex items-center px-2")}>
+                <Settings size={15} />
+              </NavLink>
+            )}
           </nav>
           {/* Under the tabs: when the Dolphin data was last synced. */}
           {autoSync.isPending ? (

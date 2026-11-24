@@ -128,6 +128,7 @@ class PlanSummary(ApiModel):
     done: int = 0
     incomplete: int = 0
     not_visited: int = 0
+    removed: int = 0  # set aside when the plan was closed
 
 
 class RoutePlan(ApiModel):
@@ -237,6 +238,11 @@ class PlanStop(ApiModel):
     outcome: StopOutcome = StopOutcome.NONE
     # Put on its day (and installer) by hand: recalculations leave it there, until that day is over.
     pinned: bool = False
+    # Taken off its day but kept with the plan (the store stays claimed): on no day until someone who manages the
+    # plan puts it back, or takes it out for good.
+    removed: bool = False
+    removed_by: str = ""
+    removed_at: str = ""
     added_at: str = Field(default_factory=now_iso)
 
     @property
@@ -638,6 +644,8 @@ class RoutePlanBundle(ApiModel):
     next_starts: dict[str, StartLocation]
     # Live from the stores (plan stops are snapshots): the derived status per plan stop key, for chips and pins.
     store_status: dict[str, str] = Field(default_factory=dict)
+    # Stores taken off their day and kept with the plan: on no day, not in `stops`.
+    removed: list[PlanStop] = Field(default_factory=list)
 
 
 class PlanResult(ApiModel):

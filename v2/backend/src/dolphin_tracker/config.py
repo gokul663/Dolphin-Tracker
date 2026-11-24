@@ -30,6 +30,16 @@ class Settings(BaseSettings):
     mongo_uri: str = ""  # direct value for local dev
     mongo_uri_param: str = ""  # SSM SecureString name, used in Lambda when the direct value is empty
     device_data_function_name: str = ""  # the device-data Lambda; when set, the report is read through it
+    # Sign-in. "off": no login, everyone is a Super Admin (and an X-Dev-Role header tries another role), for local
+    # work. "jwt": every request carries the ID token of the shared Dolphin Nexus login (a Cognito user pool),
+    # checked here.
+    auth_mode: Literal["off", "jwt"] = "off"
+    auth_issuer: str = ""  # the token's `iss`: https://cognito-idp.<region>.amazonaws.com/<user pool id>
+    auth_audience: str = ""  # the token's `aud`: Tracker's app client ID in that pool
+    auth_jwks_url: str = ""  # the pool's public keys: <issuer>/.well-known/jwks.json
+    auth_public_key: str = ""  # or one public key (PEM), instead of the JWKS URL
+    auth_role_claim: str = "cognito:groups"  # a list of "<app>:<role>" groups, granted in Nexus Admin
+    auth_app: str = "tracker"  # this app's group prefix: "tracker:admin" makes an Admin here
 
     @property
     def cors_origin_list(self) -> list[str]:

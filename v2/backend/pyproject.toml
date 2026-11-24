@@ -17,6 +17,7 @@ dependencies = [
   "aws-lambda-powertools>=3.0,<4",
   "boto3>=1.35",
   "pymongo>=4,<5",
+  "pyjwt[crypto]>=2.8,<3",
 ]
 
 [project.optional-dependencies]

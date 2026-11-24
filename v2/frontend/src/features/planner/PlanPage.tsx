@@ -14,6 +14,7 @@ import { MoveStopDialog } from "@/features/planner/MoveStopDialog";
 import { dayLimits, dayLine, fullAddress, groupPlan, planCsv, planPins, planProgress, planStopKey, planSummary, STOP_STATE_LABEL, STOP_STATES, stopState, type StopState } from "@/features/planner/planModel";
 import { filenameSlug, installerColor } from "@/features/routes/routeModel";
 import { VisitPanel } from "@/features/visits/VisitPanel";
+import { useCan } from "@/lib/auth/me";
 import { downloadText } from "@/lib/download";
 import type { PlanStop } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
@@ -30,6 +31,7 @@ export function PlanPage() {
   const { planId = "" } = useParams();
   const query = useRoutePlan(planId);
   const mutations = usePlanMutations(planId);
+  const canManage = useCan("routes.manage");
   const [tab, setTab] = useState(ALL);
   const [dialog, setDialog] = useState<"next" | "edit" | "add" | "close" | null>(null);
   const [moving, setMoving] = useState<PlanStop | null>(null);
@@ -106,7 +108,7 @@ export function PlanPage() {
           </p>
         </div>
         <div className="flex flex-wrap gap-1.5">
-          {active && (
+          {active && canManage && (
             <>
               <Button onClick={() => setDialog("next")}>
                 <CalendarPlus /> Plan next day
@@ -122,7 +124,7 @@ export function PlanPage() {
           <Button variant="outline" onClick={() => downloadText(planCsv(bundle), `${filenameSlug(plan.name)}_plan.csv`)}>
             <Download /> CSV
           </Button>
-          {active && (
+          {active && canManage && (
             <Button variant="ghost" onClick={() => setDialog("close")}>
               <Lock /> Close plan
             </Button>
@@ -168,6 +170,47 @@ export function PlanPage() {
           </ul>
         )}
       </Card>
+
+      {/* Stores taken off their day: still with the plan (no other plan can take them) until an Admin decides. */}
+      {bundle.removed.length > 0 && (
+        <Card className="gap-2 border-amber-300 bg-amber-50/50 p-3" role="region" aria-label="Removed stores">
+          <div className="flex flex-wrap items-baseline gap-x-3">
+            <span className="font-mono text-xs uppercase tracking-[2px] text-amber-900">Removed from their day · {bundle.removed.length}</span>
+            <span className="text-xs text-slate-600">
+              {active
+                ? canManage
+                  ? "Still held by this plan. Put each back on a day, or take it out of the plan."
+                  : "Still held by this plan. An Admin puts each back on a day or takes it out of the plan."
+                : "Set aside when the plan was closed."}
+            </span>
+          </div>
+          <ul className="divide-y rounded-lg border bg-white">
+            {bundle.removed.map((stop) => (
+              <li key={planStopKey(stop)} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-1.5 text-sm">
+                <button type="button" className="font-medium text-slate-900 hover:underline" onClick={() => setOpened(stop)}>
+                  {stop.store_name}
+                </button>
+                <span className="min-w-0 flex-1 truncate text-xs text-slate-500">{fullAddress(stop)}</span>
+                <span className="font-mono text-[11px] text-slate-500">
+                  {bundle.project_names[stop.project_id] ?? stop.project_id}
+                  {stop.removed_by ? ` · by ${stop.removed_by}` : ""}
+                  {stop.removed_at ? ` · ${stop.removed_at.slice(0, 10)}` : ""}
+                </span>
+                {active && canManage && (
+                  <span className="flex gap-1.5">
+                    <Button size="xs" variant="outline" aria-label={`Put ${stop.store_name} back on a day`} onClick={() => setMoving(stop)}>
+                      Put back
+                    </Button>
+                    <Button size="xs" variant="outline" className="text-rose-700" aria-label={`Remove ${stop.store_name} from the plan`} onClick={() => setRemoving(stop)}>
+                      Remove from plan
+                    </Button>
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
 
       <div role="tablist" aria-label="Installers" className="flex flex-wrap gap-1.5">
         {installers.map((installer) => (
@@ -299,7 +342,7 @@ export function PlanPage() {
           opened && active
             ? {
                 // The stop as the plan has it now (it may have been marked since the window opened).
-                state: stopState(bundle.stops.find((stop) => planStopKey(stop) === planStopKey(opened)) ?? opened),
+                state: stopState([...bundle.stops, ...bundle.removed].find((stop) => planStopKey(stop) === planStopKey(opened)) ?? opened),
               }
             : undefined
         }
@@ -315,7 +358,19 @@ export function PlanPage() {
       >
         Every store leaves the plan and loses the "in route" marker; {progress.open} open stores can then join another plan. The plan and its visits stay as history.
       </ConfirmDialog>
-      <MoveStopDialog bundle={bundle} stop={moving} onClose={() => setMoving(null)} onRemove={setRemoving} />
+      <MoveStopDialog
+        bundle={bundle}
+        stop={moving}
+        onClose={() => setMoving(null)}
+        onRemove={setRemoving}
+        onSetAside={(stop) =>
+          void run(
+            () => mutations.setAside.mutateAsync({ projectId: stop.project_id, uid: stop.stop_uid }),
+            `${stop.store_name} is off ${stop.installer}'s day ${stop.day}, kept with the plan as removed`,
+            "Could not remove it from the day",
+          )
+        }
+      />
       <ConfirmDialog
         open={removing !== null}
         title="Remove this store from the plan?"

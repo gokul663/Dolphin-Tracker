@@ -1,3 +1,4 @@
+import { useCan } from "@/lib/auth/me";
 import { useProjectContext } from "@/features/projects/ProjectPage";
 import { DetailsSection } from "@/features/settings/DetailsSection";
 import { DeviceSettings } from "@/features/device/DeviceSettings";
@@ -9,6 +10,8 @@ import { UploadsSection } from "@/features/settings/UploadsSection";
 /** Project settings: metadata, hardware prices, the uploaded sheets and the store field schema. Installers and routing live in route plans. */
 export function SettingsTab() {
   const project = useProjectContext();
+  const canEdit = useCan("projects.edit");
+  if (!canEdit) return <div className="rounded-xl border bg-white p-8 text-center text-sm text-slate-600">Project settings need an Admin.</div>;
   return (
     // Two columns on a wide screen (each stacks its own cards, so a tall card does not leave a gap beside it); one
     // column below that.

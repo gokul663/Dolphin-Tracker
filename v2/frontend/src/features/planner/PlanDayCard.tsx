@@ -1,3 +1,4 @@
+import { useCan } from "@/lib/auth/me";
 import { useState } from "react";
 import { ArrowRightLeft, Check, ChevronDown, ChevronUp, ClipboardCheck, ClipboardCopy, Download, Lock, LockOpen, Map as MapIcon, Pin, Plus, X } from "lucide-react";
 import { toast } from "sonner";
@@ -60,6 +61,9 @@ const STATE_TONE: Record<StopState, string> = {
 /** One installer's day in a plan: stops in order, visit state, live status, route links and exports. */
 export function PlanDayCard({ bundle, installer, color, day, active, onOpen, onMove, onMark, onUnpin, onUnlock, onAdd, picked, onPick }: Props) {
   const [collapsed, setCollapsed] = useState(day.kind === "past");
+  const canArrange = useCan("routes.arrange"); // another day or installer, Done / Incomplete
+  const canManage = useCan("routes.manage"); // stores into the plan
+  const canLog = useCan("visits.log");
   const editable = active && day.kind !== "past";
   const locked = bundle.plan.locked_days.some((lock) => lock.installer === installer && lock.day === day.number);
   const [copied, setCopied] = useState(false);
@@ -112,7 +116,7 @@ export function PlanDayCard({ bundle, installer, color, day, active, onOpen, onM
               </Badge>
             )}
           </div>
-          {editable && locked && (
+          {editable && locked && canArrange && (
             <div className="mt-2">
               <Button size="xs" variant="outline" aria-label={`Unlock ${label}`} title="Unlock: recalculations may change this day again" onClick={onUnlock}>
                 <LockOpen /> Unlock
@@ -157,7 +161,7 @@ export function PlanDayCard({ bundle, installer, color, day, active, onOpen, onM
                     </button>
                     <div className="flex flex-wrap items-center gap-1.5">
                       <span className={cn("inline-flex h-6 items-center rounded-md border px-2 text-[11px]", STATUS_META[status]?.chip)}>{status}</span>
-                      {active && !byVisits ? (
+                      {active && !byVisits && canArrange ? (
                         <Select value={state} onValueChange={(next) => next !== state && onMark(stop, next as StopState)}>
                           <SelectTrigger size="sm" aria-label={`Visit of ${stop.store_name}`} className={cn("h-6 text-[11px] font-medium", STATE_TONE[state])}>
                             <SelectValue />
@@ -180,12 +184,12 @@ export function PlanDayCard({ bundle, installer, color, day, active, onOpen, onM
                           {stop.visited_screens.length}/{stop.screen_ids.length} sticks logged
                         </span>
                       )}
-                      {active && (
+                      {active && canLog && (
                         <Button size="xs" variant="outline" onClick={() => onOpen(stop)}>
                           <ClipboardCheck /> Log entry
                         </Button>
                       )}
-                      {active && state !== "done" && (
+                      {active && canArrange && state !== "done" && (
                         <Button size="xs" variant="outline" aria-label={`Move ${stop.store_name}`} onClick={() => onMove(stop)}>
                           <ArrowRightLeft /> Move
                         </Button>
@@ -193,7 +197,7 @@ export function PlanDayCard({ bundle, installer, color, day, active, onOpen, onM
                       {stop.pinned && state !== "done" && (
                         <span className="inline-flex h-6 items-center gap-1 rounded-md border border-slate-300 bg-slate-50 pl-1.5 pr-0.5 text-[11px] text-slate-700" title="Put on this day by hand: recalculations leave it here">
                           <Pin size={11} /> Kept on this day
-                          {active && (
+                          {active && canArrange && (
                             <button type="button" aria-label={`Let ${stop.store_name} be recalculated again`} className="rounded p-0.5 hover:bg-slate-200" onClick={() => onUnpin(stop)}>
                               <X size={11} />
                             </button>
@@ -220,7 +224,7 @@ export function PlanDayCard({ bundle, installer, color, day, active, onOpen, onM
                 </Button>
               ))
             )}
-            {editable && (
+            {editable && canManage && (
               <Button size="sm" variant="outline" onClick={onAdd} title="You choose where it goes, between which stores">
                 <Plus /> Add store
               </Button>

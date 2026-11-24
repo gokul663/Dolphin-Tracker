@@ -1,3 +1,4 @@
+import { useCan } from "@/lib/auth/me";
 import { useState } from "react";
 import { AlertTriangle, Loader2, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -20,6 +21,7 @@ export function InstallersPage() {
   const remove = useRemoveName("installers");
   const work = useInstallerWork();
   const sync = useSyncInstallers();
+  const canManage = useCan("installers.manage");
   const workOf = new Map((work.data?.installers ?? []).map((item) => [nameKey(item.name), item]));
   const toSync = (work.data?.installers ?? []).reduce((sum, item) => sum + item.to_sync, 0);
   const unlisted = work.data?.unlisted ?? [];
@@ -50,10 +52,10 @@ export function InstallersPage() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {/* Records typed as "carlos" for the installer "Carlos": the same person, brought to the list's spelling. */}
-          <Button variant="outline" onClick={onSync} disabled={sync.isPending || toSync === 0} title={toSync === 0 ? "No store record differs from the list's spelling" : "Store records that match an installer in another case take the list's spelling"}>
+          <Button hidden={!canManage} variant="outline" onClick={onSync} disabled={sync.isPending || toSync === 0} title={toSync === 0 ? "No store record differs from the list's spelling" : "Store records that match an installer in another case take the list's spelling"}>
             {sync.isPending ? <Loader2 className="animate-spin" /> : <RefreshCw />} Sync names{toSync > 0 ? ` (${toSync})` : ""}
           </Button>
-          <Button onClick={() => setEditing("new")}>
+          <Button hidden={!canManage} onClick={() => setEditing("new")}>
             <Plus /> Add installer
           </Button>
         </div>
@@ -123,10 +125,10 @@ export function InstallersPage() {
                       {count(work.data ? (workOf.get(nameKey(item.value))?.screens_upcoming ?? 0) : undefined)}
                     </td>
                     <td className="whitespace-nowrap px-3 py-2.5 text-right">
-                      <Button size="icon" variant="ghost" className="size-8" aria-label={`Edit ${item.value}`} onClick={() => setEditing(item)}>
+                      <Button hidden={!canManage} size="icon" variant="ghost" className="size-8" aria-label={`Edit ${item.value}`} onClick={() => setEditing(item)}>
                         <Pencil />
                       </Button>
-                      <Button size="icon" variant="ghost" className="size-8" aria-label={`Remove ${item.value}`} onClick={() => setRemoving(item)}>
+                      <Button hidden={!canManage} size="icon" variant="ghost" className="size-8" aria-label={`Remove ${item.value}`} onClick={() => setRemoving(item)}>
                         <Trash2 />
                       </Button>
                     </td>
@@ -152,7 +154,7 @@ export function InstallersPage() {
                 <span className="font-mono text-xs text-slate-600">
                   {item.stores} {item.stores === 1 ? "store" : "stores"} · {item.screens_done} done · {item.screens_upcoming} upcoming
                 </span>
-                <Button size="sm" variant="outline" aria-label={`Add ${item.name} as an installer`} onClick={() => setEditing({ add: item.name })}>
+                <Button hidden={!canManage} size="sm" variant="outline" aria-label={`Add ${item.name} as an installer`} onClick={() => setEditing({ add: item.name })}>
                   <Plus /> Add
                 </Button>
               </li>

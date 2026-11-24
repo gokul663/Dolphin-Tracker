@@ -23,7 +23,9 @@ from dolphin_tracker.repositories.dynamo import (
 )
 
 WRITE_WORKERS = 16
-ASSIGNMENT_FIELDS = frozenset({"installer", "day", "seq", "drive_minutes", "outcome", "pinned"})
+ASSIGNMENT_FIELDS = frozenset({
+    "installer", "day", "seq", "drive_minutes", "outcome", "pinned", "removed", "removed_by", "removed_at",
+})
 PlanStopChange = tuple[str, dict[str, Any]]  # plan stop key, {installer?, day?, seq?, drive_minutes?}
 
 

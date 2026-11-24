@@ -5,6 +5,7 @@ import { VisitPanel } from "@/features/visits/VisitPanel";
 import { mockApi, renderWithProviders } from "@/test/render";
 import { makeKpi, makeProject, makeScreen, makeStop } from "@/test/fixtures";
 import { STORE_FIELDS_FOR_TESTS } from "@/test/storeFields";
+import type { Role } from "@/lib/api/types";
 
 const STOP = makeStop({
   uid: "u1",
@@ -117,7 +118,7 @@ describe("VisitPanel from a route plan", () => {
     project_id: "p1", stop_uid: "u1", store_name: "", addr: "", pa: "", fa: "", owner_name: "", owner_phone: "", owner_email: "",
     store_contact_name: "", store_contact_phone: "", plan_day: 1, created_at: "2026-11-06T10:00:00Z" };
 
-  function renderFromPlan(stop = STOP, visits: unknown[] = []) {
+  function renderFromPlan(stop = STOP, visits: unknown[] = [], role: Role = "super_admin") {
     const api = mockApi({
       "GET /api/projects/p1": () => ({ kpi: makeKpi(), ...makeProject({ field_agent: "Fay" }) }),
       "GET /api/projects/p1/stores/u1": () => stop,
@@ -133,7 +134,7 @@ describe("VisitPanel from a route plan", () => {
       "GET /api/projects/venues/stores/v-DD_100": () =>
         makeStop({ uid: "v-DD_100", store_name: "CMS Mart", pa: "ATM Boss", dma: "Macon", geocoded: "1 Elm St, Macon, GA 31201", screens: [makeScreen({ id: "v-DD_100-s1", venue_id: "DD_100", cms_name: "D_005_KIOSK", status: "Offline" })] }),
     });
-    renderWithProviders(<VisitPanel projectId="p1" stopUid="u1" planId="plan1" installer="Ann" visitDate="2026-11-06" onClose={() => {}} plan={{ state: "route" }} />);
+    renderWithProviders(<VisitPanel projectId="p1" stopUid="u1" planId="plan1" installer="Ann" visitDate="2026-11-06" onClose={() => {}} plan={{ state: "route" }} />, { role });
     return { api };
   }
 
@@ -242,4 +243,15 @@ describe("VisitPanel from a route plan", () => {
     expect(put.updated_by).toBe("Ann");
     expect(api.calls.find((call) => call.method === "POST")!.body).toMatchObject({ screen_id: "s2", stick_number: "ST-9", network_type: "LTE", wifi_ssid: "", outcome: "done" });
   });
+
+  it("a Viewer sees the store and its history, with nothing to log or edit", async () => {
+    renderFromPlan(STOP, [], "viewer");
+    const lines = within(await screen.findByRole("list", { name: "Screens of this store" })).getAllByRole("listitem");
+    expect(lines).toHaveLength(2);
+    for (const name of [/Log visit/, /Add screen/, /Delete screen/, /Edit Store WiFi/]) expect(screen.queryByRole("button", { name }), String(name)).toBeNull();
+    expect(screen.queryByRole("region", { name: "This visit" })).toBeNull();
+    expect(screen.getByRole("textbox", { name: "Store comment" }).matches(":disabled")).toBe(true); // its group is off
+    expect(screen.getByRole("complementary", { name: "Store details" })).toBeTruthy();
+  });
 });
+

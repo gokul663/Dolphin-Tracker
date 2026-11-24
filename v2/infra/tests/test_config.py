@@ -37,5 +37,31 @@ class AllowedOriginsTests(unittest.TestCase):
         self.assertEqual(cfg.cloudfront_domain, load("dev").cloudfront_domain)  # a None override keeps the configured value
 
 
+class SignInTests(unittest.TestCase):
+    ISSUER = "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_U2DnRTmXT"
+
+    def test_off_until_set(self):
+        self.assertEqual(EnvConfig(name="dev", retain_data=False).auth_env(), {})
+        self.assertEqual(load("prod").auth_env(), {})
+
+    def test_dev_signs_in_through_the_nexus_pool(self):
+        env = load("dev").auth_env()
+        self.assertEqual((env["DT_AUTH_MODE"], env["DT_AUTH_ISSUER"], env["DT_AUTH_JWKS_URL"]),
+                         ("jwt", self.ISSUER, self.ISSUER + "/.well-known/jwks.json"))
+        self.assertRegex(env["DT_AUTH_AUDIENCE"], r"^[a-z0-9]{20,}$")  # a Cognito client ID, not a Google one
+
+    def test_issuer_jwks_and_client_id_turn_it_on(self):
+        cfg = EnvConfig(name="dev", retain_data=False, auth_issuer=self.ISSUER,
+                        auth_jwks_url=self.ISSUER + "/.well-known/jwks.json", auth_client_id="client123")
+        self.assertEqual(cfg.auth_env(), {
+            "DT_AUTH_MODE": "jwt", "DT_AUTH_ISSUER": self.ISSUER,
+            "DT_AUTH_JWKS_URL": self.ISSUER + "/.well-known/jwks.json", "DT_AUTH_AUDIENCE": "client123",
+        })
+
+    def test_half_set_fails(self):
+        with self.assertRaisesRegex(ValueError, "auth_jwks_url, auth_client_id"):
+            EnvConfig(name="dev", retain_data=False, auth_issuer=self.ISSUER).auth_env()
+
+
 if __name__ == "__main__":
     unittest.main()

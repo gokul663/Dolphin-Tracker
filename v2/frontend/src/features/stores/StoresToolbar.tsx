@@ -1,3 +1,6 @@
+import { downloadFile } from "@/lib/api/client";
+import { toast } from "sonner";
+import { useCan } from "@/lib/auth/me";
 import { useEffect, useState, type ReactNode } from "react";
 import { AlertTriangle, Download, Plus, Search, Upload, X } from "lucide-react";
 import { AddStoreDialog } from "@/features/stores/AddStoreDialog";
@@ -23,6 +26,7 @@ export function StoresListActions({ project, filters, onAdded }: { project: Proj
   const setOnlyInView = useStoresUi((state) => state.setOnlyInView);
   const [adding, setAdding] = useState(false);
   const [importing, setImporting] = useState(false);
+  const canEdit = useCan("projects.edit"); // add a store, upload a sheet
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
       <div className="flex items-center gap-1.5">
@@ -32,16 +36,22 @@ export function StoresListActions({ project, filters, onAdded }: { project: Proj
         </Label>
       </div>
       <div className="flex items-center gap-1.5">
+        {canEdit && (
+          <>
         <Button size="sm" onClick={() => setAdding(true)}>
           <Plus /> Add store
         </Button>
         <Button variant="outline" size="sm" onClick={() => setImporting(true)}>
           <Upload /> Upload sheet
         </Button>
-        <Button asChild variant="outline" size="sm">
-          <a href={storeExportUrl(project.id, filters)} download>
-            <Download /> CSV
-          </a>
+          </>
+        )}
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => void downloadFile(storeExportUrl(project.id, filters), `${project.name}_stores.csv`).catch((error) => toast.error(error instanceof Error ? error.message : "Could not download"))}
+        >
+          <Download /> CSV
         </Button>
       </div>
       <AddStoreDialog project={project} open={adding} onClose={() => setAdding(false)} onAdded={onAdded} />

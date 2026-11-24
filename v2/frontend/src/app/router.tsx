@@ -1,6 +1,7 @@
 import { lazy, Suspense, type ReactNode } from "react";
 import { createBrowserRouter, Navigate } from "react-router";
 import { AppShell } from "@/app/layout/AppShell";
+import { AuthCallback } from "@/lib/auth/AuthProvider";
 import { DashboardPage } from "@/features/dashboard/DashboardPage";
 import { ProjectPage } from "@/features/projects/ProjectPage";
 
@@ -19,6 +20,8 @@ const tab = (element: ReactNode) => (
 );
 
 export const router = createBrowserRouter([
+  // Back from the shared Dolphin Nexus login: on to the page they were on.
+  { path: "/auth/callback", element: <AuthCallback /> },
   {
     path: "/",
     element: <AppShell />,

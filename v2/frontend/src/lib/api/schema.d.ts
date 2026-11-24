@@ -21,6 +21,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Me
+         * @description Who is signed in, their role, and what it lets them do (the screens hide what it does not).
+         */
+        get: operations["me_api_me_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/health": {
         parameters: {
             query?: never;
@@ -1028,9 +1048,50 @@ export interface paths {
         put?: never;
         /**
          * Move Stop
-         * @description Put a store on a chosen installer's chosen day and keep it there; `to_plan_id` moves it to another plan.
+         * @description Put a store on a chosen installer's chosen day and keep it there; `to_plan_id` moves it to another plan
+         *     (which takes it out of this one: only for someone who manages plans).
          */
         post: operations["move_stop_api_route_plans__plan_id__stops__project_id___stop_uid__move_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/route-plans/{plan_id}/stops/{project_id}/{stop_uid}/set-aside": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Set Stop Aside
+         * @description Take a store off its day and keep it with the plan, shown as removed, for a manager to decide on.
+         */
+        post: operations["set_stop_aside_api_route_plans__plan_id__stops__project_id___stop_uid__set_aside_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/route-plans/{plan_id}/stops/{project_id}/{stop_uid}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore Stop
+         * @description Put a set-aside store back on a day.
+         */
+        post: operations["restore_stop_api_route_plans__plan_id__stops__project_id___stop_uid__restore_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1361,6 +1422,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/my/route": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * My Route
+         * @description The signed-in technician's own days in every active plan, and who they are on the Installers page.
+         */
+        get: operations["my_route_api_my_route_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/my/profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Update My Profile
+         * @description Their additional phone and shipping address; nothing else of the entry.
+         */
+        put: operations["update_my_profile_api_my_profile_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1659,6 +1760,28 @@ export interface components {
             value: string;
             /** Count */
             count: number;
+        };
+        /**
+         * FixedStores
+         * @description Stores this technician is the technician of that are Completed now, across every project, by the kind of
+         *     project: screens put in for the first time, or offline screens brought back.
+         */
+        FixedStores: {
+            /**
+             * New Installation
+             * @default 0
+             */
+            new_installation: number;
+            /**
+             * Offline
+             * @default 0
+             */
+            offline: number;
+            /**
+             * Mixed
+             * @default 0
+             */
+            mixed: number;
         };
         /** GeocodeResult */
         GeocodeResult: {
@@ -2422,6 +2545,34 @@ export interface components {
             /** Version */
             version?: number | null;
         };
+        /**
+         * MyProfileUpdate
+         * @description What a technician may change about themselves; their name, main phone and email are an Admin's to change.
+         */
+        MyProfileUpdate: {
+            /**
+             * Phone2
+             * @default
+             */
+            phone2?: string;
+            /**
+             * Shipping Address
+             * @default
+             */
+            shipping_address?: string;
+        };
+        /** MyRoute */
+        MyRoute: {
+            installer: components["schemas"]["NameEntry"] | null;
+            /** Plans */
+            plans: components["schemas"]["RoutePlanBundle"][];
+            /**
+             * Serviced Before
+             * @default 0
+             */
+            serviced_before: number;
+            fixed: components["schemas"]["FixedStores"];
+        };
         /** NameCreate */
         NameCreate: {
             /** Value */
@@ -2553,6 +2704,11 @@ export interface components {
             /** Next Cursor */
             next_cursor: string | null;
         };
+        /**
+         * Permission
+         * @enum {string}
+         */
+        Permission: "projects.view" | "projects.edit" | "installers.manage" | "routes.view" | "routes.manage" | "routes.arrange" | "visits.log" | "routes.own";
         /**
          * PickedPlace
          * @description A place the person picked from a Google search: the store is saved at its pin, without geocoding again.
@@ -2816,6 +2972,21 @@ export interface components {
              * @default false
              */
             pinned: boolean;
+            /**
+             * Removed
+             * @default false
+             */
+            removed: boolean;
+            /**
+             * Removed By
+             * @default
+             */
+            removed_by: string;
+            /**
+             * Removed At
+             * @default
+             */
+            removed_at: string;
             /** Added At */
             added_at: string;
         };
@@ -2848,6 +3019,11 @@ export interface components {
              * @default 0
              */
             not_visited: number;
+            /**
+             * Removed
+             * @default 0
+             */
+            removed: number;
         };
         /** PoolFacets */
         PoolFacets: {
@@ -2936,6 +3112,37 @@ export interface components {
              * @default
              */
             route_plan_id: string;
+        };
+        /**
+         * Principal
+         * @description The signed-in person, as the token says.
+         */
+        Principal: {
+            /** Id */
+            id: string;
+            /**
+             * Name
+             * @default
+             */
+            name: string;
+            /**
+             * Email
+             * @default
+             */
+            email: string;
+            role: components["schemas"]["Role"];
+            /**
+             * Installer Id
+             * @default
+             */
+            installer_id: string;
+            /**
+             * Acting By
+             * @default
+             */
+            acting_by: string;
+            /** Permissions */
+            permissions: components["schemas"]["Permission"][];
         };
         /**
          * ProgressUpdate
@@ -3386,6 +3593,11 @@ export interface components {
             /** Snoozed */
             snoozed: number;
         };
+        /**
+         * Role
+         * @enum {string}
+         */
+        Role: "super_admin" | "admin" | "operator" | "viewer" | "technician";
         /** RoutePlan */
         RoutePlan: {
             /** Id */
@@ -3452,6 +3664,8 @@ export interface components {
             store_status: {
                 [key: string]: string;
             };
+            /** Removed */
+            removed: components["schemas"]["PlanStop"][];
         };
         /** RoutePlanCreate */
         RoutePlanCreate: {
@@ -5081,6 +5295,26 @@ export interface operations {
                     "application/json": {
                         [key: string]: string;
                     };
+                };
+            };
+        };
+    };
+    me_api_me_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Principal"];
                 };
             };
         };
@@ -7416,6 +7650,76 @@ export interface operations {
             };
         };
     };
+    set_stop_aside_api_route_plans__plan_id__stops__project_id___stop_uid__set_aside_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plan_id: string;
+                project_id: string;
+                stop_uid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoutePlanBundle"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    restore_stop_api_route_plans__plan_id__stops__project_id___stop_uid__restore_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plan_id: string;
+                project_id: string;
+                stop_uid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StopMove"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoutePlanBundle"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     mark_stop_api_route_plans__plan_id__stops__project_id___stop_uid__mark_post: {
         parameters: {
             query?: never;
@@ -7980,6 +8284,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ScreenSheetResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    my_route_api_my_route_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyRoute"];
+                };
+            };
+        };
+    };
+    update_my_profile_api_my_profile_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MyProfileUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NameEntry"];
                 };
             };
             /** @description Validation Error */

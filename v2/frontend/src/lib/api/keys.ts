@@ -11,6 +11,8 @@ export interface StorePageParams {
 /** TanStack Query keys. Prefix-based so `invalidateQueries({ queryKey: keys.project(id) })` clears its children. */
 export const keys = {
   health: ["health"] as const,
+  me: ["me"] as const,
+  myRoute: ["my", "route"] as const,
   mapsConfig: ["config", "maps"] as const,
   storeFields: ["config", "store-fields"] as const,
   projects: ["projects"] as const,

@@ -21,6 +21,7 @@ KEY_RE = re.compile(r"[a-z][a-z0-9_]{0,63}")
 CORE_KEYS = frozenset(
     {
         "uid", "display_id", "lat", "lng", "geocoded", "installer", "day", "seq", "status", "screens", "comment",
+        "review_notes",
         "additional_task", "installer_name", "updated_by", "route_stale", "updated_at", "fields",
         *FIELDS_BY_NAME,
     }
@@ -144,7 +145,7 @@ def coerce_fields(schema: Iterable[FieldDef], fields: Mapping[str, Any]) -> dict
 
 
 def validate_stop_inputs(schema: Iterable[FieldDef], stops: Iterable[Any]) -> list[dict[str, Any]]:
-    """Per-row problems for submitted stops (create, append): the store field rules (IBC#, name and address
+    """Per-row problems for submitted stops (create, append): the store field rules (ExtID, name and address
     required; phone, email, url, select, counts), then the project's schema fields.
 
     Returns `[{"index": i, "errors": [...]}]` for the bad rows only.
@@ -154,7 +155,7 @@ def validate_stop_inputs(schema: Iterable[FieldDef], stops: Iterable[Any]) -> li
     for index, stop in enumerate(stops):
         values = {name: getattr(stop, name) for name in FIELDS_BY_NAME}
         values["external_id"] = normalize_external_id(stop.external_id)
-        problems = validate_store_values(values)  # IBC#, name, address required; field rules
+        problems = validate_store_values(values)  # ExtID, name, address required; field rules
         for reason in getattr(stop, "needs_attention", []):  # added anyway: that check is skipped
             name = {"store_name": "store_name", "address": "addr", "external_id": "external_id"}.get(str(reason))
             if name and not str(values.get(name) or "").strip():

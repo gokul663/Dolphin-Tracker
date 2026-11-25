@@ -6,12 +6,14 @@ import { isJobActive, useJob, useStartImport } from "@/features/imports/api";
 
 interface Props {
   projectId?: string;
+  /** A new single-PA project's PA name, so the import can reuse what is already known about that PA's stores. */
+  pa?: string;
   jobId: string | null;
   onJobId: (jobId: string) => void;
 }
 
 /** Step 2: upload the sheet (presigned PUT or the local route), start the job, show its real progress. */
-export function UploadStep({ projectId, jobId, onJobId }: Props) {
+export function UploadStep({ projectId, pa, jobId, onJobId }: Props) {
   const input = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
   const start = useStartImport();
@@ -21,7 +23,7 @@ export function UploadStep({ projectId, jobId, onJobId }: Props) {
 
   const begin = async () => {
     if (!file) return;
-    const id = await start.mutateAsync({ file, projectId }).catch(() => null);
+    const id = await start.mutateAsync({ file, projectId, pa }).catch(() => null);
     if (id) onJobId(id);
   };
 
@@ -41,7 +43,8 @@ export function UploadStep({ projectId, jobId, onJobId }: Props) {
       >
         <FileSpreadsheet className="size-8 text-brand" />
         <span className="font-medium">{file ? file.name : "Choose or drop a .csv or .xlsx file"}</span>
-        <span className="text-xs text-slate-500">Needs an address column; a store name column is strongly recommended.</span>
+        <span className="text-xs text-slate-500">Needs an address column; a store name column is strongly recommended. Stores we already know (in another
+          project or in the Dolphin data, same PA) keep their verified address and DD codes.</span>
       </button>
       <input
         ref={input}

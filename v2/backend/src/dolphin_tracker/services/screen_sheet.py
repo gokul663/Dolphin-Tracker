@@ -23,7 +23,7 @@ MAX_ROWS = 20_000
 # Normalised header → what it is; the first one a sheet has is used.
 COLUMNS = {
     "dd_code": ("venue_id", "dd_code", "dd", "venue", "dd_codes"),
-    "external_id": ("ibc", "ibc_id", "ibc_number", "external_id", "store_id"),
+    "external_id": ("extid", "ext_id", "ibc", "ibc_id", "ibc_number", "external_id", "store_id"),
     "size": ("screen_size", "size", "tv_size"),
     "stick_count": ("stick_count", "sticks", "stick"),
     "screen_count": ("screen_count", "screens", "dolphin_screens"),
@@ -43,7 +43,7 @@ class SheetScreenRow(ApiModel):
     store_uid: str = ""
     store_name: str = ""
     store_external_id: str = ""
-    ibc_differs: bool = False  # the sheet names another IBC# than the store this DD code is at
+    ibc_differs: bool = False  # the sheet names another ExtID than the store this DD code is at
     size_from: str = ""
     size_to: str = ""
     dolphin_from: bool | None = None  # owned by Dolphin, before and after

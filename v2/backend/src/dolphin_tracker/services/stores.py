@@ -22,7 +22,7 @@ from dolphin_tracker.domain.cursors import encode_cursor, offset_from_cursor
 from dolphin_tracker.domain.device import split_codes, venue_code_key
 from dolphin_tracker.domain.device_sync import packed_screens, shown_location, store_with_code
 from dolphin_tracker.domain.errors import ConflictError, NotFoundError, ValidationFailed
-from dolphin_tracker.domain.import_mapping import clean_mapping, dedupe_key_address, split_duplicates
+from dolphin_tracker.domain.import_mapping import clean_mapping, dedupe_key_address, single_pa, split_duplicates
 from dolphin_tracker.domain.kpi import missing_screens
 from dolphin_tracker.domain.lists import best_spellings, name_key
 from dolphin_tracker.domain.models import (
@@ -43,6 +43,7 @@ from dolphin_tracker.domain.models import (
 from dolphin_tracker.domain.parsing import clean_cell
 from dolphin_tracker.domain.route_optimizer import state_key
 from dolphin_tracker.domain.schema import coerce_fields, validate_fields, validate_stop_inputs, with_sheet_fields
+from dolphin_tracker.domain.search import matches, search_text
 from dolphin_tracker.domain.statuses import (
     BUCKET_OF,
     BUCKET_ORDER,
@@ -70,7 +71,7 @@ from dolphin_tracker.services.routing import sync_routing_slot
 
 FILTER_FIELDS = (
     "status", "bucket", "installer", "pa", "state", "city", "dma", "venue_type", "dd_code", "screen_size", "route",
-    "visit", "install_type", "mount", "fulfilled", "technician",
+    "visit", "install_type", "mount", "fulfilled", "technician", "review",
 )
 NEEDS_MOUNT, NO_MOUNT_NEEDED = "Needs mount", "No mount needed"
 FULFILLED, NOT_FULFILLED, NO_COMMITMENT = "Fulfilled", "Not fulfilled", "No commitment"
@@ -78,13 +79,15 @@ FULFILLED, NOT_FULFILLED, NO_COMMITMENT = "Fulfilled", "Not fulfilled", "No comm
 NEEDS_REVIEW = "Needs review"
 # The Projects-view overlays (ROUTE-PLANNER §6) as filter values.
 IN_ROUTE, NOT_IN_ROUTE = "In route", "Not in route"
+HAS_REVIEW_NOTES, NO_REVIEW_NOTES = "Has review notes", "No review notes"
 VISIT_LABELS = {VisitState.VISITED: "Visited", VisitState.PARTLY: "Partly visited", VisitState.NONE: "Not visited"}
 OVERLAY_ORDER = {
     value: index
     for index, value in enumerate([
         IN_ROUTE, NOT_IN_ROUTE, *VISIT_LABELS.values(), NEEDS_MOUNT, NO_MOUNT_NEEDED, FULFILLED, NEEDS_REVIEW,
         NOT_FULFILLED,
-        NO_COMMITMENT, *(bucket.value for bucket in BUCKET_ORDER), StatusBucket.IN_PROGRESS.value,
+        NO_COMMITMENT, HAS_REVIEW_NOTES, NO_REVIEW_NOTES,
+        *(bucket.value for bucket in BUCKET_ORDER), StatusBucket.IN_PROGRESS.value,
     ])
 }
 SORT_KEYS = frozenset(
@@ -94,7 +97,7 @@ SORT_KEYS = frozenset(
 ADDRESS_PARTS = ("addr", "city", "state", "zip")
 TEXT_KINDS = frozenset({Kind.TEXT, Kind.MULTILINE, Kind.PHONE, Kind.EMAIL, Kind.URL, Kind.SELECT})
 CSV_FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
-# The search box finds a store by its IBC#, name or address; DMA, venue type, DD code and the rest have filters.
+# The search box finds a store by its ExtID, name or address; DMA, venue type, DD code and the rest have filters.
 SEARCHED = ("display_id", "external_id", "store_name", "addr", "city", "state", "zip")
 
 
@@ -196,6 +199,7 @@ class StoreQuery:
     technician: list[str] = field(default_factory=list)  # the store's technician (installer_name); "" = none
     mount: list[str] = field(default_factory=list)  # "Needs mount" / "No mount needed"
     fulfilled: list[str] = field(default_factory=list)  # "Fulfilled" / "Not fulfilled" / "No commitment"
+    review: list[str] = field(default_factory=list)  # "Has review notes" / "No review notes"
     needs_attention: bool = False  # only stores added without a name or a verified address
     q: str = ""
     sort: str = "store_name"
@@ -237,6 +241,8 @@ def facet_values(stop: Stop, project: Project, name: str) -> list[str]:
             return [NEEDS_MOUNT if needs_mount(stop) else NO_MOUNT_NEEDED]
         case "fulfilled":
             return [fulfillment(stop)]
+        case "review":
+            return [HAS_REVIEW_NOTES if stop.review_notes.strip() else NO_REVIEW_NOTES]
         case "state":  # as shown: the Dolphin data's or the verified address's, never a typed spelling
             return [stop.place_state] if stop.place_state else []
         case "city":
@@ -325,11 +331,14 @@ def _sort_value(stop: Stop, sort: str) -> Any:
 
 
 def _matches(stop: Stop, needle: str) -> bool:
-    """IBC#, store name and address: the sheet's, or the device report's (its store and CMS names, its address)."""
-    haystack = [str(getattr(stop, name)) for name in SEARCHED]
+    """ExtID, store name and address: the sheet's, Google's verified one, and the device report's (with its store
+    and CMS names). Every word typed must be in there somewhere (`domain/search.py`), so a whole address matches
+    across the street, city, state and ZIP fields. DD codes are not searched: they have a filter of their own."""
+    parts: list[object] = [getattr(stop, name) for name in SEARCHED]
+    parts.append(stop.geocoded)
     if stop.device:
-        haystack.extend([stop.device.store_name, stop.device.venue_name, stop.device.address])
-    return any(needle in text.lower() for text in haystack)
+        parts.extend([stop.device.store_name, stop.device.venue_name, stop.device.address])
+    return matches(needle, search_text(parts))
 
 
 def _csv_cell(value: Any) -> Any:
@@ -518,7 +527,7 @@ class StoreService:
                 counts = merged
             if name == "status":
                 ordered = [status.value for status in STATUS_PRECEDENCE if counts[status.value]]
-            elif name in ("route", "visit", "bucket", "mount", "fulfilled"):
+            elif name in ("route", "visit", "bucket", "mount", "fulfilled", "review"):
                 ordered = sorted(counts, key=lambda value: OVERLAY_ORDER[value])
             else:
                 ordered = sorted(counts, key=lambda value: (value == "", _natural(value)))
@@ -601,7 +610,7 @@ class StoreService:
         header = [
             "ID", *[spec.label for spec in STORE_FIELDS], "Lat", "Lng", "Status", "Screens",
             "Dolphin screens (actual)", "Store TVs (actual)", "Screen rows", "Installer", "Day", "Seq",
-            "Completed by", "Notes", *[f.label for f in schema], "Updated by", "Updated at",
+            "Completed by", "Notes", "Review notes", *[f.label for f in schema], "Updated by", "Updated at",
         ]
         buffer = io.StringIO()
         writer = csv.writer(buffer)
@@ -616,7 +625,8 @@ class StoreService:
                 stop.status.value, len(stop.screens), dolphin, len(stop.screens) - dolphin,
                 "; ".join(screen_summary(screen) for screen in stop.screens),
                 stop.installer, stop.day, stop.seq, stop.installer_name,
-                stop.comment, *[stop.fields.get(f.key, "") for f in schema], stop.updated_by, stop.updated_at,
+                stop.comment, stop.review_notes, *[stop.fields.get(f.key, "") for f in schema],
+                stop.updated_by, stop.updated_at,
             ]
             writer.writerow([_csv_cell(value) for value in row])
         return buffer.getvalue()
@@ -625,7 +635,7 @@ class StoreService:
 
     def update_details(self, project_id: str, stop_uid: str, changes: dict[str, Any]) -> Stop:
         """Edit the planner-editable store attributes (STORE-MODEL §2) and the project's extra fields. A changed
-        address is geocoded first; partial or failed matches are refused with suggestions. The IBC#, PA, routing
+        address is geocoded first; partial or failed matches are refused with suggestions. The ExtID, PA, routing
         and progress attributes are never part of this write (the API model rejects them)."""
         project = self._project(project_id)
         current = self.get(project_id, stop_uid)
@@ -728,19 +738,20 @@ class StoreService:
         return self._stores.update_screens(project_id, stop_uid, rows, updated_by=updated_by.strip())
 
     def set_external_id(self, project_id: str, stop_uid: str, external_id: str) -> Stop:
-        """Enter the IBC# of a store that has none (added from the Dolphin data). Once set it is fixed, like any
-        IBC#; 409 if another store of the project has it."""
+        """Enter the ExtID of a store that has none (added from the Dolphin data). Once set it is fixed, like any
+        ExtID; 409 if another store of the project has it."""
         current = self.get(project_id, stop_uid)
         if current.external_id:
-            raise ConflictError("This store already has an IBC#; it cannot be changed")
+            raise ConflictError("This store already has an ExtID; it cannot be changed")
         value = normalize_external_id(external_id)
         if not value:
-            raise ValidationFailed("Enter the IBC#")
+            raise ValidationFailed("Enter the ExtID")
         reasons = [str(r) for r in current.needs_attention if r != NeedsAttention.EXTERNAL_ID]
         return self._stores.set_external_id(project_id, stop_uid, value, reasons)
 
     def update_progress(self, project_id: str, stop_uid: str, changes: dict[str, Any]) -> Stop:
-        """Comment / additional task / installer name / updated_by. Status is per screen (`update_screens`)."""
+        """Comment / review notes / additional task / installer name / updated_by. Status is per screen
+        (`update_screens`)."""
         self.get(project_id, stop_uid)
         update = {key: value for key, value in changes.items() if value is not None}
         extra = set(update) - (PROGRESS_FIELDS - {"screens", "status"})
@@ -767,18 +778,31 @@ class StoreService:
         with sync_routing_slot(self._projects, project):
             return self._append(project, stops, pa, clean_mapping(import_mapping or {}))
 
+    def delete(self, project_id: str, stop_uid: str) -> None:
+        """Delete one store for good, with its screens, its ExtID (free to use again) and its visits. Refused while
+        the store is in a route plan (take it out of the plan first) or while routing is being built."""
+        project = self._project(project_id)
+        stop = self.get(project_id, stop_uid)
+        if project.routing_status == RoutingStatus.BUILDING:
+            raise ConflictError("Routing is in progress; delete the store once it finishes")
+        if stop.route_plan_id:
+            raise ConflictError("This store is in a route plan. Take it out of the plan first, then delete it.")
+        if self._stores.delete(project_id, stop_uid):
+            assert self._projects is not None
+            self._projects.update(project_id, {"stop_count": max(project.stop_count - 1, 0)})
+
     def add_one(self, project_id: str, values: dict[str, Any]) -> Stop:
-        """Add one store typed in by hand, checked like a sheet row: IBC#, store name and address are required and
-        well-formed; the IBC# and the address are new to the project (a duplicate names the store that has them);
+        """Add one store typed in by hand, checked like a sheet row: ExtID, store name and address are required and
+        well-formed; the ExtID and the address are new to the project (a duplicate names the store that has them);
         Google verifies the address (a partial or failed match is refused with suggestions). A suggestion sent back
         as the address alone ("12 Main St, Macon, GA 31201, USA") fills the city, state and ZIP from it."""
-        self._project(project_id)
+        project = self._project(project_id)
         clean = {name: str(values.get(name) or "").strip() for name in ("store_name", *ADDRESS_PARTS)}
         clean["external_id"] = normalize_external_id(values.get("external_id") or "")
         if not any(clean[name] for name in ("city", "state", "zip")):
             clean.update(parse_us_formatted_address(clean["addr"]))  # a picked suggestion: split it
         problems = validate_store_values(clean, partial=True)
-        for name, label in (("external_id", "IBC#"), ("store_name", "Store name"), ("addr", "Address")):
+        for name, label in (("external_id", "ExtID"), ("store_name", "Store name"), ("addr", "Address")):
             if not clean[name]:
                 problems.setdefault(name, f"{label} is required")
         if problems:
@@ -786,7 +810,7 @@ class StoreService:
 
         stop = StopInput(**clean)
         existing = self._stores.list_all(project_id)
-        _, skipped = split_duplicates(existing, [stop])
+        _, skipped = split_duplicates(existing, [stop], single_pa(project.pa))
         if skipped:
             by_id = skipped[0]["reason"] == "external_id"
             same = next(
@@ -795,7 +819,7 @@ class StoreService:
                      dedupe_key_address(other.model_dump()) == dedupe_key_address(clean))), None)
             where = " · ".join(part for part in (same.store_name, same.external_id) if part) if same else "a store"
             name = "external_id" if by_id else "addr"
-            what = f"IBC# {clean['external_id']}" if by_id else "This address"
+            what = f"ExtID {clean['external_id']}" if by_id else "This address"
             message = f"{what} is already in the project: {where}"
             raise ValidationFailed(message, errors=[message], fields={name: message})
 
@@ -837,6 +861,7 @@ class StoreService:
             **stop_details(stop),
             screens=stop.build_screens(),
             installer_name=stop.installer_name.strip(),
+            review_notes=stop.review_notes.strip(),
             needs_attention=attention_of(stop),
         )
 
@@ -853,7 +878,8 @@ class StoreService:
             raise ValidationFailed(f"{len(bad)} stop(s) need fixing", errors=[], stops=bad)
 
         existing = self._stores.list_all(project_id)
-        keep, skipped = split_duplicates(existing, stops)  # by IBC#, then address; within and against the project
+        # by ExtID, then PA + address; within the sheet and against the project
+        keep, skipped = split_duplicates(existing, stops, single_pa(project.pa))
         candidates = [stops[index] for index in keep]
 
         max_number = max(

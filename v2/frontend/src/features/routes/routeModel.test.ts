@@ -121,7 +121,7 @@ describe("filters and summaries", () => {
 describe("CSV export", () => {
   it("writes v2 day and all-route rows", () => {
     const day = dayCsvRows("Ann", 1, BUNDLE.routes.Ann?.[0] as Stop[], SCHEMA);
-    expect(day[0]?.slice(0, 6)).toEqual(["Day", "Stop #", "Route Owner", "Completed By", "IBC#", "Store Name"]);
+    expect(day[0]?.slice(0, 6)).toEqual(["Day", "Stop #", "Route Owner", "Completed By", "ExtID", "Store Name"]);
     for (const column of ["PA", "DMA", "Status", "Screens", "Screen Rows", "On-site Contact", "Installation Comments", "Owner Phone"]) {
       expect(day[0]).toContain(column);
     }

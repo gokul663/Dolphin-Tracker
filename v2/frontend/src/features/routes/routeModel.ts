@@ -243,7 +243,7 @@ function stopColumns(stop: Stop, schema: FieldDef[]): Cell[] {
 }
 
 const STOP_HEADERS = (schema: FieldDef[]) => [
-  "IBC#", "Store Name", "Address", "City", "State", "ZIP", "PA", "DMA", "Venue Type", "Status", "Screens", "Screen Rows",
+  "ExtID", "Store Name", "Address", "City", "State", "ZIP", "PA", "DMA", "Venue Type", "Status", "Screens", "Screen Rows",
   "On-site Contact", "On-site Phone", "Best Contact Time", "Preferred Install Date/Time", "Blocked Dates / Notes",
   "Installation Comments", "Notes", ...schema.map((field) => field.label), "Geocoded Address", "Lat", "Lng",
 ];

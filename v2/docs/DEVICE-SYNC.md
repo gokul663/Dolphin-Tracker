@@ -139,7 +139,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-  R0["Add"] --> R1{"Store with the same IBC#,<br/>else the same address<br/>(sheet or Dolphin data)?"}
+  R0["Add"] --> R1{"Store with the same ExtID,<br/>else the same address<br/>(sheet or Dolphin data)?"}
   R1 -- yes --> J["Add the stick as a new screen of that store"]
   R1 -- no --> R2{"Place picked?"}
   R2 -- yes --> L["Located at the place"]
@@ -168,6 +168,22 @@ flowchart TD
   O5 -- yes --> O6["Copy lat/lng, geocoded = report address,<br/>route_stale = true, clear the address flag"]
 ```
 
+### 2.7 A project from the Dolphin data alone (no sheet)
+
+Added 2026-11-24. New project → "Stores from: Dolphin data only" sends `POST /projects` with `device_pa` and no
+stops (the project's `pa` defaults to it), then `POST /projects/{id}/device-sync/populate`. Settings → "Add stores
+from Dolphin data" calls the same endpoint again, to retry or to take in new venues.
+
+```mermaid
+flowchart TD
+  Q0["snapshot of the PA's newest day (one read)"] --> Q1["records no screen has, minus Archived"]
+  Q1 --> Q2{"store_for_record finds a store<br/>already in the project?"}
+  Q2 -- yes --> Q3["Skip: stays in review, Add joins it"]
+  Q2 -- no --> Q4["Group: same ExtID, else same address<br/>one store per group, a screen per record"]
+  Q4 --> Q5["Store at the report's lat/lng (no Google check)<br/>a value the store rules refuse is left blank<br/>flags: address (no location), external_id, store_name"]
+  Q5 --> Q6["StoreService.append"] --> Q7["the sync of 2.2 on the same snapshot"]
+```
+
 ## 3. Findings
 
 ### Bugs
@@ -192,7 +208,7 @@ flowchart TD
 3. **Fixed 2026-11-16** (Add returns the store that already has the code; typing a code another store has is
    refused). **Add from review can put one DD code in two stores. (confirmed)**
    The review list is only rebuilt by a sync. If someone types the code into a store by hand, the item stays listed
-   (and counted), and Add then attaches the same code to whatever store matches by IBC# or address
+   (and counted), and Add then attaches the same code to whatever store matches by ExtID or address
    (`services/device_sync.py:193`). Fix: in `add_from_review`, check the code against all screens first; if a store
    already has it, delete the item and return that store.
 

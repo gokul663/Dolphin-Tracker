@@ -97,7 +97,7 @@ class CreateProjectApiTests(ProjectApiTestCase):
         self.assertEqual(body["project"]["stop_count"], 1)
         missing = self.client.post("/api/projects", json=project_body(stops=[{**stop_input(0), "external_id": " "}]))
         self.assertEqual(missing.status_code, 422)
-        self.assertEqual(missing.json()["detail"]["stops"][0]["errors"], ["IBC# is required"])
+        self.assertEqual(missing.json()["detail"]["stops"][0]["errors"], ["ExtID is required"])
 
     def test_create_needs_only_a_name_a_type_and_a_pa(self):
         """The percentages are often unknown when a project starts; its stores wait unrouted for a route plan."""

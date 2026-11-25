@@ -57,7 +57,7 @@ class StoreField:
 
 STORE_FIELDS: tuple[StoreField, ...] = (
     # 1. Identity & address. external_id and pa are set on import only; addr/city/state/zip are geocoded on save.
-    StoreField("external_id", "IBC#", Group.IDENTITY, editable=False, required=True),
+    StoreField("external_id", "ExtID", Group.IDENTITY, editable=False, required=True),
     StoreField("store_name", "Store name", Group.IDENTITY, required=True),
     StoreField("addr", "Address", Group.IDENTITY, required=True),
     StoreField("city", "City", Group.IDENTITY),
@@ -142,7 +142,7 @@ def parse_count(value: Any) -> int | None:
 
 
 def normalize_external_id(value: Any) -> str:
-    """IBC# as compared for uniqueness: trimmed, upper case, inner whitespace collapsed to one space."""
+    """ExtID as compared for uniqueness: trimmed, upper case, inner whitespace collapsed to one space."""
     return " ".join(str(value or "").split()).upper()
 
 
@@ -200,7 +200,7 @@ DETAIL_ATTRIBUTES = tuple(
 
 
 def stop_details(source: Any) -> dict[str, Any]:
-    """The first-class detail attributes of a submitted stop, cleaned for storage: text trimmed, the IBC#
+    """The first-class detail attributes of a submitted stop, cleaned for storage: text trimmed, the ExtID
     normalised. Name and address are handled by the caller (they are not optional)."""
     details: dict[str, Any] = {}
     for name in DETAIL_ATTRIBUTES:

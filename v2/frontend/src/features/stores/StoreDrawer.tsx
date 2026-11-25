@@ -3,9 +3,10 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router";
 import { useRoutePlans } from "@/features/planner/api";
 import { VisitHistory, VisitPanel } from "@/features/visits/VisitPanel";
-import { AlertTriangle, CheckCircle2, CircleSlash, ChevronLeft, ChevronRight, ExternalLink, X, Pencil, ClipboardCheck, ChevronsDownUp, ChevronsUpDown, Eye, EyeOff, ImageOff, Loader2, MapPin, Undo2, Wifi } from "lucide-react";
+import { AlertTriangle, CheckCircle2, CircleSlash, ChevronLeft, ChevronRight, ExternalLink, X, Pencil, ClipboardCheck, ChevronsDownUp, ChevronsUpDown, Eye, EyeOff, ImageOff, Loader2, MapPin, Trash2, Undo2, Wifi } from "lucide-react";
 import { toast } from "sonner";
 import { TriStateCheckbox } from "@/components/TriStateCheckbox";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -22,7 +23,7 @@ import { StoreLogs } from "@/features/device/StoreLogs";
 import { reportDay, splitCodes } from "@/features/device/DeviceBits";
 import { StoreLocationMap } from "@/components/map/StoreLocationMap";
 import { COUNT_KEYS, NO_TECHNICIAN, StoreSummary, type SummaryDraft } from "@/features/stores/StoreSummary";
-import { useFilterOptions, useSetExternalId, useStore, useUpdateProgress, useUpdateScreens, useUpdateStoreDetails } from "@/features/stores/api";
+import { useDeleteStore, useFilterOptions, useSetExternalId, useStore, useUpdateProgress, useUpdateScreens, useUpdateStoreDetails } from "@/features/stores/api";
 import {
   addressChanged,
   detailsErrors,
@@ -80,6 +81,21 @@ export function StoreDrawer({ project, stopId, open, onClose }: Props) {
   };
   const allOpen = expanded.size === SECTIONS.length;
   const [logging, setLogging] = useState(false);
+  const canDelete = useCan("stores.delete"); // admins
+  const remove = useDeleteStore(project.id);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const deleteStore = () => {
+    if (!stop) return;
+    const name = stop.store_name || stop.external_id || stop.display_id;
+    remove.mutate(stop.uid, {
+      onSuccess: () => {
+        toast.success(`Deleted ${name}`);
+        onClose();
+      },
+      onError: (error) => toast.error(error instanceof Error ? error.message : "Could not delete the store"),
+      onSettled: () => setConfirmingDelete(false),
+    });
+  };
   const plans = useRoutePlans("active");
   // Everyone already assigned somewhere in the project, offered when assigning this store.
   const options = useFilterOptions(project.id, {});
@@ -112,6 +128,17 @@ export function StoreDrawer({ project, stopId, open, onClose }: Props) {
               {stop && canLog && (
                 <Button type="button" size="sm" variant="outline" className="h-7 text-xs" onClick={() => setLogging(true)}>
                   <ClipboardCheck /> Log visit
+                </Button>
+              )}
+              {stop && canDelete && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-7 border-rose-200 text-xs text-rose-700 hover:bg-rose-50 hover:text-rose-800"
+                  onClick={() => setConfirmingDelete(true)}
+                >
+                  <Trash2 /> Delete store
                 </Button>
               )}
               <Button
@@ -162,12 +189,34 @@ export function StoreDrawer({ project, stopId, open, onClose }: Props) {
         planId={stop?.route_plan_id ?? ""}
         onClose={() => setLogging(false)}
       />
+      <ConfirmDialog
+        open={confirmingDelete}
+        title="Are you sure?"
+        confirmLabel="Delete store"
+        busy={remove.isPending}
+        onConfirm={deleteStore}
+        onCancel={() => setConfirmingDelete(false)}
+      >
+        {stop && (
+          <>
+            <p>
+              Delete <strong>{stop.store_name || stop.display_id}</strong>
+              {stop.external_id ? ` (${stop.external_id})` : ""}? The store, its {stop.screens.length}{" "}
+              {stop.screens.length === 1 ? "screen" : "screens"} and its visit history are removed for good. This cannot
+              be undone.
+            </p>
+            {stop.route_plan_id && (
+              <p className="mt-2 text-amber-800">This store is in a route plan: take it out of the plan first.</p>
+            )}
+          </>
+        )}
+      </ConfirmDialog>
     </Dialog>
   );
 }
 
 /** The store's standing at a glance, beside its name: whether it matches the Dolphin data, and anything that needs
- *  fixing (an unverified address, a DD code entry holding several codes, no IBC# or name). */
+ *  fixing (an unverified address, a DD code entry holding several codes, no ExtID or name). */
 function StoreAlerts({ project, stop }: { project: Project; stop: Stop }) {
   const day = project.device_sync?.snapshot_date ?? stop.device?.date ?? "";
   const missing = stop.needs_attention.includes("not_reporting");
@@ -197,7 +246,7 @@ function StoreAlerts({ project, stop }: { project: Project; stop: Stop }) {
       {sync}
       {!verified && pill(warn, "Address not verified", <MapPin size={12} />)}
       {clubbed > 0 && pill(warn, clubbed === 1 ? "DD code holds several codes" : `${clubbed} DD codes hold several codes`, <AlertTriangle size={12} />, "Split them under Screens so each matches its device")}
-      {!stop.external_id && pill(warn, "No IBC#", <AlertTriangle size={12} />)}
+      {!stop.external_id && pill(warn, "No ExtID", <AlertTriangle size={12} />)}
       {stop.needs_attention.includes("store_name") && pill(warn, "No store name", <AlertTriangle size={12} />)}
     </span>
   );
@@ -367,7 +416,7 @@ const IDENTITY_SPAN: Record<string, string> = {
   external_id: "sm:col-span-6",
 };
 
-/** The identity values nobody edits here (IBC#, PA, sheet date), as one quiet line above the form. */
+/** The identity values nobody edits here (ExtID, PA, sheet date), as one quiet line above the form. */
 function IdentityMeta({ stop, project, specs }: { stop: Stop; project: Project; specs: StoreFieldSpec[] }) {
   const record = stop as unknown as Record<string, unknown>;
   const fixed = specs.filter((spec) => !spec.editable && !(spec.name === "external_id" && !stop.external_id));
@@ -540,6 +589,7 @@ function DetailsEditor({
   const [editingScreens, setEditingScreens] = useState(false);
   const [technician, setTechnician] = useState(stop.installer_name);
   const [comment, setComment] = useState(stop.comment);
+  const [reviewNotes, setReviewNotes] = useState(stop.review_notes);
   // The Dolphin data's pin, taken with Overwrite "Map location": saved with the rest (as a picked place, so it is not
   // looked up with Google again).
   const [deviceLocation, setDeviceLocation] = useState(false);
@@ -550,6 +600,7 @@ function DetailsEditor({
   const assigned = noTechnician ? "" : technician.trim();
   if (assigned !== stop.installer_name) progressPatch.installer_name = assigned;
   if (comment !== stop.comment) progressPatch.comment = comment;
+  if (reviewNotes !== stop.review_notes) progressPatch.review_notes = reviewNotes;
   const rowsDirty = screensChanged(stop, rows);
   const dirty = Object.keys(patch).length > 0 || Object.keys(progressPatch).length > 0 || rowsDirty || deviceLocation;
   /** Fields Overwrite has taken into the draft: the draft holds the Dolphin data's value but the store does not yet. */
@@ -574,6 +625,7 @@ function DetailsEditor({
     setRows(toRows(stop));
     setTechnician(stop.installer_name);
     setComment(stop.comment);
+    setReviewNotes(stop.review_notes);
     setDeviceLocation(false);
     setServerErrors({});
     setEditing(new Set());
@@ -882,6 +934,23 @@ function DetailsEditor({
               />
               <p className="text-xs text-slate-500">For whoever manages the project. Installation and site notes are under Other details.</p>
             </div>
+            {/* What the import's review left to check; cleared here once it is settled (the Review notes filter
+                lists the stores that still have some). */}
+            <div className="mt-3 space-y-1.5">
+              <Label htmlFor="store-review-notes" className={cn("flex items-center gap-1", reviewNotes.trim() && "text-amber-800")}>
+                {reviewNotes.trim() && <AlertTriangle size={12} />} Review notes
+              </Label>
+              <Textarea
+                id="store-review-notes"
+                value={reviewNotes}
+                onChange={(event) => setReviewNotes(event.target.value)}
+                rows={2}
+                maxLength={2000}
+                placeholder="What still needs checking, e.g. store name not confirmed"
+                className={cn(reviewNotes.trim() && "border-amber-300 bg-amber-50/50")}
+              />
+              <p className="text-xs text-slate-500">From the import's review step. Clear them once checked.</p>
+            </div>
           </Section>
           {/* Pictures, with the store on a small map under them: last, below the notes. */}
           {detailPanel("Pictures")}
@@ -1078,16 +1147,16 @@ function OtherData({ project, stop }: { project: Project; stop: Stop }) {
   );
 }
 
-/** A store added from the Dolphin data has no IBC#: enter it once here (it is fixed after that, like any IBC#). */
+/** A store added from the Dolphin data has no ExtID: enter it once here (it is fixed after that, like any ExtID). */
 function ExternalIdInput({ projectId, uid }: { projectId: string; uid: string }) {
   const [value, setValue] = useState("");
   const save = useSetExternalId(projectId);
   const canEdit = useCan("projects.edit");
-  if (!canEdit) return <p className="text-xs text-amber-800">IBC# missing</p>;
+  if (!canEdit) return <p className="text-xs text-amber-800">ExtID missing</p>;
   return (
     <div className="space-y-1.5">
       <Label htmlFor="store-external_id" className="flex items-center gap-1 text-amber-800">
-        <AlertTriangle size={12} /> IBC# (missing)
+        <AlertTriangle size={12} /> ExtID (missing)
       </Label>
       <form
         className="flex gap-1"
@@ -1096,8 +1165,8 @@ function ExternalIdInput({ projectId, uid }: { projectId: string; uid: string })
           save.mutate(
             { uid, externalId: value.trim() },
             {
-              onSuccess: (stop) => toast.success(`IBC# ${stop.external_id} saved`),
-              onError: (error) => toast.error(error instanceof Error ? error.message : "Could not save the IBC#"),
+              onSuccess: (stop) => toast.success(`ExtID ${stop.external_id} saved`),
+              onError: (error) => toast.error(error instanceof Error ? error.message : "Could not save the ExtID"),
             },
           );
         }}
@@ -1107,7 +1176,7 @@ function ExternalIdInput({ projectId, uid }: { projectId: string; uid: string })
           {save.isPending && <Loader2 className="animate-spin" />} Save
         </Button>
       </form>
-      <p className="text-xs text-slate-500">The Dolphin data has no IBC# for this store. It cannot be changed once saved.</p>
+      <p className="text-xs text-slate-500">The Dolphin data has no ExtID for this store. It cannot be changed once saved.</p>
     </div>
   );
 }

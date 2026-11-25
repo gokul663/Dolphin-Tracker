@@ -73,7 +73,7 @@ class TransformTests(unittest.TestCase):
         s1 = self.by_id["S1"]
         self.assertEqual((s1.pa, s1.dma, s1.owner_phone), ("North", "DAL", "555-0100"))
         self.assertEqual(s1.fields, {"brand": "Acme"})  # only the extra attribute stays in `fields`
-        # The venue code (the state's edited one wins) is the IBC# and the screen's venue id (§4.4).
+        # The venue code (the state's edited one wins) is the ExtID and the screen's venue id (§4.4).
         self.assertEqual((s1.external_id, [screen.venue_id for screen in s1.screens]), ("V1-NEW", ["V1-NEW"]))
         self.assertEqual((self.by_id["S2"].fields, self.by_id["S2"].external_id), ({}, "LEGACY-S2"))
 
@@ -179,7 +179,7 @@ class TransformTests(unittest.TestCase):
         report = migrated.report
         self.assertEqual((report.ids_from_venue_code, report.legacy_ids, report.duplicate_venue_codes),
                          (1, 2, ["V9"]))
-        self.assertIn("IBC#: 1 from venue codes, 2 LEGACY-* (repeated venue codes: V9)", format_report([report]))
+        self.assertIn("ExtID: 1 from venue codes, 2 LEGACY-* (repeated venue codes: V9)", format_report([report]))
 
     def test_report_compares_v1_status_counts_to_derived_statuses(self):
         report = self.migrated.report

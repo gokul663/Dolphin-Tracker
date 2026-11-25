@@ -98,17 +98,17 @@ class InMemoryProjectRepository:
 class InMemoryStoreRepository:
     def __init__(self) -> None:
         self._items: dict[str, dict[str, Stop]] = {}
-        self._markers: dict[str, dict[str, str]] = {}  # project → IBC# → stop uid, like the EXT# items
+        self._markers: dict[str, dict[str, str]] = {}  # project → ExtID → stop uid, like the EXT# items
 
     def put_many(self, project_id: str, stops: list[Stop]) -> None:
         markers = self._markers.setdefault(project_id, {})
         ids = [stop.external_id for stop in stops if stop.external_id]
         if len(set(ids)) != len(ids):
-            raise ConflictError("IBC# appears twice in this write")
+            raise ConflictError("ExtID appears twice in this write")
         bucket = self._items.setdefault(project_id, {})
         for stop in stops:  # per stop, stop + marker together (Dynamo commits 50 at a time)
             if stop.external_id and markers.get(stop.external_id, stop.uid) != stop.uid:
-                raise ConflictError(f"IBC# {stop.external_id} already exists in this project")
+                raise ConflictError(f"ExtID {stop.external_id} already exists in this project")
             bucket[stop.uid] = stop.model_copy(deep=True)
             if stop.external_id:
                 markers[stop.external_id] = stop.uid
@@ -172,9 +172,9 @@ class InMemoryStoreRepository:
             raise NotFoundError(f"Stop {stop_uid} not found")
         markers = self._markers.setdefault(project_id, {})
         if external_id in markers:
-            raise ConflictError(f"IBC# {external_id} already exists in this project")
+            raise ConflictError(f"ExtID {external_id} already exists in this project")
         if current.external_id:
-            raise ConflictError("This store already has an IBC#")
+            raise ConflictError("This store already has an ExtID")
         markers[external_id] = stop_uid
         updated = current.model_copy(update={"external_id": external_id, "needs_attention": needs_attention})
         self._items[project_id][stop_uid] = Stop.model_validate(updated.model_dump())
@@ -192,6 +192,15 @@ class InMemoryStoreRepository:
 
     def update_screens(self, project_id: str, stop_uid: str, screens: list[Screen], *, updated_by: str = "") -> Stop:
         return self.update_fields(project_id, stop_uid, screens_write(screens, updated_by))
+
+    def delete(self, project_id: str, stop_uid: str) -> bool:
+        stop = self._items.get(project_id, {}).pop(stop_uid, None)
+        if stop is None:
+            return False
+        markers = self._markers.get(project_id, {})
+        if markers.get(stop.external_id) == stop_uid:
+            del markers[stop.external_id]
+        return True
 
     def delete_all(self, project_id: str) -> int:
         self._markers.pop(project_id, None)

@@ -14,12 +14,13 @@ export function contentTypeFor(file: File): string {
 /** create job → upload (presigned PUT or local route) → start. Resolves with the job id to poll. */
 export function useStartImport() {
   return useMutation({
-    mutationFn: async ({ file, projectId }: { file: File; projectId?: string }) => {
+    mutationFn: async ({ file, projectId, pa }: { file: File; projectId?: string; pa?: string }) => {
       const contentType = contentTypeFor(file);
       const created = await jobsApi.createImport({
         filename: file.name,
         content_type: contentType,
         project_id: projectId ?? null,
+        pa: pa ?? "", // a new single-PA project: stores we already know are matched within their PA
       });
       await jobsApi.upload(created.upload_url, file, contentType);
       await jobsApi.start(created.job_id);

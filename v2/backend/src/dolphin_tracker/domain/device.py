@@ -99,7 +99,7 @@ class DeviceRecord(ApiModel):
     lat: float | None = None
     lng: float | None = None
     pa_name: str = ""
-    external_id: str = ""  # the CMS's "PK External ID" (e.g. an IBC#), when it has one
+    external_id: str = ""  # the CMS's "PK External ID" (e.g. an ExtID), when it has one
     dma: str = ""  # the CMS's "DMA" name, e.g. "Atlanta"
     venue_type: str = ""  # the CMS's "OOH Category" as a label: retail.convenience_store → "Convenience Store"
     # When the device first registered with the CMS and when it last did (ISO, UTC). Both "" = it never registered.

@@ -93,7 +93,7 @@ describe("Needs review", () => {
 });
 
 describe("Needs review: several at once", () => {
-  it("ticks rows and adds them together; one Google cannot verify stays ticked with its address step", async () => {
+  it("ticks rows and adds them together; one Google cannot verify opens its address step and is no longer counted", async () => {
     const second = { ...ITEM, venue_id: "DD_NEW002", key: "DD_NEW002", store_name: "Second Stop", dma: "Detroit", last_registered: "2026-10-02T10:00:00+00:00" };
     const { calls } = mockApi({
       "GET /api/projects/p1/device-sync/review": () => ({ items: [ITEM, second], next_cursor: null, total: 2, snoozed: 0 }),
@@ -111,8 +111,15 @@ describe("Needs review: several at once", () => {
     await userEvent.click(screen.getByRole("button", { name: "Add 2 selected" }));
     await waitFor(() => expect(calls.filter((call) => call.url.pathname.endsWith("/add"))).toHaveLength(2));
     expect(await screen.findByText("Google could not verify this address.")).toBeTruthy();
-    await waitFor(() => expect(screen.getByRole("button", { name: "Add 1 selected" })).toBeTruthy());
-    expect(screen.getByRole("checkbox", { name: "Select DD_NEW002" }).getAttribute("aria-checked")).toBe("true");
+    // Nothing was fixed, so nothing is left to add: no "Add 1 selected" that would only fail again.
+    await waitFor(() => expect(screen.queryByRole("button", { name: /Add \d+ selected/ })).toBeNull());
+    const failed = screen.getByRole("checkbox", { name: "Select DD_NEW002" });
+    expect(failed.getAttribute("aria-checked")).toBe("false");
+    expect(failed.hasAttribute("disabled")).toBe(true); // it is dealt with in its address step
+    // Select all skips it too.
+    await userEvent.click(screen.getByRole("checkbox", { name: "Select all on this page" }));
+    expect(screen.getByRole("button", { name: "Add 1 selected" })).toBeTruthy(); // DD_NEW001 only (still listed here)
+    expect(calls.filter((call) => call.url.pathname.endsWith("/DD_NEW002/add"))).toHaveLength(1);
   });
 });
 
@@ -215,8 +222,8 @@ describe("Several DD codes in one entry", () => {
   });
 });
 
-describe("A store added without an IBC#", () => {
-  it("asks for the IBC# in the store and saves it once", async () => {
+describe("A store added without an ExtID", () => {
+  it("asks for the ExtID in the store and saves it once", async () => {
     const { StoreDrawer } = await import("@/features/stores/StoreDrawer");
     const { STORE_FIELDS_FOR_TESTS } = await import("@/test/storeFields");
     const stop = makeStop({ external_id: "", needs_attention: ["external_id"] });
@@ -228,7 +235,7 @@ describe("A store added without an IBC#", () => {
       "PUT /api/projects/p1/stores/u1/external-id": () => ({ ...stop, external_id: "LA70454", needs_attention: [] }),
     });
     renderWithProviders(<StoreDrawer project={makeProject()} stopId="u1" open onClose={() => {}} />);
-    const input = await screen.findByLabelText(/IBC# \(missing\)/);
+    const input = await screen.findByLabelText(/ExtID \(missing\)/);
     await userEvent.type(input, "la70454");
     await userEvent.click(within(input.closest("form") as HTMLElement).getByRole("button", { name: "Save" }));
     await waitFor(() => expect(calls.find((call) => call.method === "PUT")?.body).toEqual({ external_id: "LA70454" }));

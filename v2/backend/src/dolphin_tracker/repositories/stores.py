@@ -20,7 +20,7 @@ from dolphin_tracker.domain.models import (
 )
 from dolphin_tracker.repositories.dynamo import Keys, build_set_expression, from_ddb, query_page, strip_internal, to_ddb
 
-IMMUTABLE_STOP_FIELDS = {"uid", "external_id"}  # the IBC# is set on create/append only (STORE-MODEL §7 #5)
+IMMUTABLE_STOP_FIELDS = {"uid", "external_id"}  # the ExtID is set on create/append only (STORE-MODEL §7 #5)
 ROUTING_WRITE_WORKERS = 16
 STOPS_PER_TRANSACTION = 50  # stop + marker = 2 items; DynamoDB allows 100 per TransactWriteItems
 
@@ -30,7 +30,7 @@ RoutingChange = tuple[str, dict[str, Any]]  # uid, {installer?, day?, seq?}
 class StoreRepository(Protocol):
     def put_many(self, project_id: str, stops: list[Stop]) -> None:
         """Write stops. A stop with an `external_id` is written together with its `EXT#` marker in one
-        transaction; ConflictError if another stop of the project already holds that IBC# (re-putting the same
+        transaction; ConflictError if another stop of the project already holds that ExtID (re-putting the same
         stop is fine)."""
         ...
     def get(self, project_id: str, stop_uid: str) -> Stop | None: ...
@@ -52,8 +52,8 @@ class StoreRepository(Protocol):
         routing writes. Keys outside PROGRESS_FIELDS are rejected. Returns how many were written."""
         ...
     def set_external_id(self, project_id: str, stop_uid: str, external_id: str, needs_attention: list[str]) -> Stop:
-        """Give a store without an IBC# its IBC# (with its EXT# marker, in one transaction). ConflictError when another
-        store holds it or this store already has one; NotFoundError when the store is gone."""
+        """Give a store without an ExtID its ExtID (with its EXT# marker, in one transaction). ConflictError when
+        another store holds it or this store already has one; NotFoundError when the store is gone."""
         ...
     def update_device_many(self, project_id: str, changes: list[RoutingChange]) -> int:
         """The device sync's writes (DEVICE_FIELDS only), in parallel. Returns how many were written."""
@@ -61,8 +61,11 @@ class StoreRepository(Protocol):
     def update_screens(self, project_id: str, stop_uid: str, screens: list[Screen], *, updated_by: str = "") -> Stop:
         """Replace the screen rows; writes `screens`, the derived `status` and `updated_*` only."""
         ...
+    def delete(self, project_id: str, stop_uid: str) -> bool:
+        """One stop, its ExtID marker and its visits. False when the stop is not there."""
+        ...
     def delete_all(self, project_id: str) -> int:
-        """Every stop of the project, its IBC# markers and its visits. Returns the number of stops."""
+        """Every stop of the project, its ExtID markers and its visits. Returns the number of stops."""
         ...
     def claim_for_plan(self, project_id: str, stop_uids: list[str], plan_id: str, at: str) -> list[str]:
         """Set `route_plan_id = plan_id` and `last_planned_at = at` on each stop that is in no plan (one active plan
@@ -122,7 +125,7 @@ class DynamoStoreRepository:
         ids = [stop.external_id for stop in keyed]
         if len(set(ids)) != len(ids):
             duplicate = next(external_id for external_id in ids if ids.count(external_id) > 1)
-            raise ConflictError(f"IBC# {duplicate} appears twice in this write")
+            raise ConflictError(f"ExtID {duplicate} appears twice in this write")
         # batch_writer sends 25 items per BatchWriteItem and resubmits UnprocessedItems itself.
         with self._table.batch_writer(overwrite_by_pkeys=["PK", "SK"]) as batch:
             for stop in stops:
@@ -155,7 +158,7 @@ class DynamoStoreRepository:
                 (index for index, reason in enumerate(reasons) if reason.get("Code") == "ConditionalCheckFailed"), None
             )
             external_id = stops[failed // 2].external_id if failed is not None else "?"
-            raise ConflictError(f"IBC# {external_id} already exists in this project") from exc
+            raise ConflictError(f"ExtID {external_id} already exists in this project") from exc
 
     def set_external_id(self, project_id: str, stop_uid: str, external_id: str, needs_attention: list[str]) -> Stop:
         marker = {**Keys.external_id(project_id, external_id), "entity": "EXT", "stop_uid": stop_uid}
@@ -179,10 +182,10 @@ class DynamoStoreRepository:
                 raise
             reasons = exc.response.get("CancellationReasons") or []
             if reasons and reasons[0].get("Code") == "ConditionalCheckFailed":
-                raise ConflictError(f"IBC# {external_id} already exists in this project") from exc
+                raise ConflictError(f"ExtID {external_id} already exists in this project") from exc
             if self.get(project_id, stop_uid) is None:
                 raise NotFoundError(f"Stop {stop_uid} not found") from exc
-            raise ConflictError("This store already has an IBC#") from exc
+            raise ConflictError("This store already has an ExtID") from exc
         stop = self.get(project_id, stop_uid)
         assert stop is not None
         return stop
@@ -337,6 +340,26 @@ class DynamoStoreRepository:
 
         with ThreadPoolExecutor(max_workers=ROUTING_WRITE_WORKERS) as pool:
             return sum(pool.map(release, stop_uids))
+
+    def delete(self, project_id: str, stop_uid: str) -> bool:
+        stop = self.get(project_id, stop_uid)
+        if stop is None:
+            return False
+        items: list[dict[str, Any]] = [{"Delete": {"TableName": self._table.name,
+                                                   "Key": Keys.stop(project_id, stop_uid)}}]
+        if stop.external_id:  # the marker goes with the stop, so the ExtID is free again; only if it is this stop's
+            items.append({"Delete": {
+                "TableName": self._table.name,
+                "Key": Keys.external_id(project_id, stop.external_id),
+                "ConditionExpression": "attribute_not_exists(PK) OR stop_uid = :uid",
+                "ExpressionAttributeValues": {":uid": stop_uid},
+            }})
+        self._table.meta.client.transact_write_items(TransactItems=items)
+        visits = self._iter_items(project_id, Keys.visit_prefix(stop_uid), ProjectionExpression="PK, SK")
+        with self._table.batch_writer() as batch:
+            for item in visits:
+                batch.delete_item(Key={"PK": item["PK"], "SK": item["SK"]})
+        return True
 
     def delete_all(self, project_id: str) -> int:
         def keys(prefix: str) -> list[dict[str, str]]:

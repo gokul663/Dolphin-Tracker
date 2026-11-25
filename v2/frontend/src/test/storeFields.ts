@@ -4,7 +4,7 @@ import type { StoreFieldSpec } from "@/lib/api/types";
 export const STORE_FIELDS_FOR_TESTS: StoreFieldSpec[] = [
   {
     "name": "external_id",
-    "label": "IBC#",
+    "label": "ExtID",
     "group": "Identity & address",
     "kind": "text",
     "editable": false,

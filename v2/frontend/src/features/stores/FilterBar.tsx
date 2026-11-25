@@ -20,13 +20,13 @@ interface Props {
 }
 
 /** Short, fixed lists need no search box; every other filter gets one above its values. */
-const UNSEARCHED: ReadonlySet<Facet> = new Set(["status", "visit", "screen_size", "route", "install_type", "mount", "fulfilled"]);
+const UNSEARCHED: ReadonlySet<Facet> = new Set(["status", "visit", "screen_size", "route", "install_type", "mount", "fulfilled", "review"]);
 /** Shown as chips of their own (`BucketChips`), not as a dropdown. */
 const AS_CHIPS: ReadonlySet<Facet> = new Set(["bucket"]);
 
 /** The filters offered, in order. The others (route, visits, technician, install type, mount, screen size, screens
  *  done) still work from a link but have no dropdown; the status groups are chips of their own. */
-export const SHOWN_FACETS: readonly Facet[] = ["status", "state", "pa", "city", "dma", "venue_type", "dd_code"];
+export const SHOWN_FACETS: readonly Facet[] = ["status", "state", "pa", "city", "dma", "venue_type", "dd_code", "review"];
 
 /** One dropdown per filter; values come with store counts under the other filters. PA is left out while the
  *  project has a single PA (nothing to choose). */

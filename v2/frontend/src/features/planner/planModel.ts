@@ -134,7 +134,7 @@ export function fullAddress(stop: Pick<PlanStop, "addr" | "city" | "state" | "zi
 
 export function planCsv(bundle: RoutePlanBundle, stops: PlanStop[] = bundle.stops): string {
   const dates = new Map(bundle.plan.days.map((day) => [day.number, day.date]));
-  const header = ["Installer", "Day", "Date", "Order", "Project", "IBC#", "Store", "Address", "City", "State", "Zip", "Status", "Visited"];
+  const header = ["Installer", "Day", "Date", "Order", "Project", "ExtID", "Store", "Address", "City", "State", "Zip", "Status", "Visited"];
   const rows = [...stops]
     .sort((a, b) => a.installer.localeCompare(b.installer) || a.day - b.day || a.seq - b.seq)
     .map((stop) => [

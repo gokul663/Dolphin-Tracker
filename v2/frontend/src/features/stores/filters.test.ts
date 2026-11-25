@@ -19,6 +19,7 @@ const OPTIONS: StoreFilterOptions = {
   install_type: [],
   mount: [{ value: "No mount needed", count: 3 }],
   fulfilled: [{ value: "No commitment", count: 3 }],
+  review: [{ value: "Has review notes", count: 1 }, { value: "No review notes", count: 2 }],
   technician: [{ value: "Ann", count: 2 }, { value: "", count: 1 }],
 };
 

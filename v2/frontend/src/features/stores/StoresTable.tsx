@@ -142,7 +142,7 @@ export const ATTENTION_LABELS: Record<string, string> = {
   address: "address not verified",
   not_reporting: "Completed but not in Dolphin data",
   dd_code_review: "a DD code entry holds several codes",
-  external_id: "no IBC#",
+  external_id: "no ExtID",
 };
 
 /** A value from the Dolphin data, in its colour; the sheet's value on hover. Clicking opens the store. */
@@ -217,7 +217,7 @@ export function StoresTable(props: Props) {
   const columns = useMemo<ColumnDef<Stop, string>[]>(
     () => [
       helper.accessor("external_id", {
-        header: "IBC#",
+        header: "ExtID",
         size: 92,
         cell: (info) => {
           const reasons = info.row.original.needs_attention ?? [];

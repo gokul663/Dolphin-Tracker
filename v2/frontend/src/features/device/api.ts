@@ -43,10 +43,25 @@ export function useSyncNow(projectId: string) {
   return useMutation({ mutationFn: () => deviceSyncApi.sync(projectId), onSuccess: () => refresh() });
 }
 
-export function useDeviceReview(projectId: string, page: { limit: number; cursor: string | null }, includeSnoozed: boolean, enabled = true) {
+/** Build stores from the Dolphin data (records of the PA that no store has), then sync. */
+export function usePopulateFromDevice() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (projectId: string) => deviceSyncApi.populate(projectId),
+    onSettled: (_result, _error, projectId) =>
+      Promise.all([
+        client.invalidateQueries({ queryKey: keys.project(projectId) }),
+        client.invalidateQueries({ queryKey: keys.projects }),
+      ]),
+  });
+}
+
+export function useDeviceReview(
+  projectId: string, page: { limit: number; cursor: string | null }, includeSnoozed: boolean, enabled = true, q = "",
+) {
   return useQuery({
-    queryKey: [...keys.deviceReview(projectId), page, includeSnoozed],
-    queryFn: () => deviceSyncApi.review(projectId, { ...page, includeSnoozed }),
+    queryKey: [...keys.deviceReview(projectId), page, includeSnoozed, q.trim()],
+    queryFn: () => deviceSyncApi.review(projectId, { ...page, includeSnoozed, q }),
     placeholderData: keepPreviousData,
     enabled,
   });

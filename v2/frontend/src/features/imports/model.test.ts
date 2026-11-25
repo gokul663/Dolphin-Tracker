@@ -26,14 +26,14 @@ const RESULT: ImportResult = {
   columns: ["ibc", "store_name", "store_address", "dma", "stick_number", "brand"],
   mapping: { ibc: "external_id", store_name: "store_name", store_address: "addr", dma: "dma", stick_number: "stick_numbers", brand: "" },
   address_column: "store_address", store_column: "store_name", extra_columns: ["brand"],
-  summary: { total: 4, valid: 3, needs_review: 1, invalid: 0, duplicates: 1 }, pa_names: ["North"],
+  summary: { total: 4, valid: 3, needs_review: 1, invalid: 0, duplicates: 1, known: 0 }, pa_names: ["North"],
   rows: [
     importRow(0, {
       details: { dma: "ATL", owner_email: "nope" }, problems: { owner_email: "Store owner email: enter a valid email" },
       screens: [{ stick_number: "S1", venue_id: "V1", status: "Completed" }, { stick_number: "S2", venue_id: "", status: "Completed" }],
       venue_status: "Completed", fields: { brand: "Acme" }, installer_name: "self install",
     }),
-    importRow(1, { external_id: "", problems: { external_id: "IBC# is required" }, details: { dma: "ATL" } }),
+    importRow(1, { external_id: "", problems: { external_id: "ExtID is required" }, details: { dma: "ATL" } }),
     importRow(2, { status: "needs_review", confidence: 0, coordinates_source: "sheet", lat: 34.1, lng: -84.2, formatted: "" }),
     importRow(3, { duplicate_of: 0, duplicate_reason: "external_id", external_id: "IBC-0" }),
   ],
@@ -48,7 +48,7 @@ describe("columns (STORE-MODEL §6)", () => {
   it("offers store fields, screen/sheet targets and Other / Ignore", () => {
     const groups = targetGroups(SPECS);
     expect(groups.map((group) => group.label)).toEqual(["Store fields", "Screens and sheet values", "Other"]);
-    expect(groups[0]?.options[0]).toEqual({ value: "external_id", label: "IBC#" });
+    expect(groups[0]?.options[0]).toEqual({ value: "external_id", label: "ExtID" });
     expect(groups[1]?.options.map((option) => option.value)).toContain("venue_ids");
     expect(groups[2]?.options).toEqual([{ value: "", label: "Other imported data" }, { value: "-", label: "Ignore this column" }]);
   });
@@ -73,15 +73,15 @@ describe("review rows", () => {
 
   it("excludes duplicates up front and says why", () => {
     expect(rows.map((row) => row.excluded)).toEqual([false, false, false, true]);
-    expect(duplicateText(rows[3] as ReviewRow)).toBe("Same IBC# as row 1");
+    expect(duplicateText(rows[3] as ReviewRow)).toBe("Same ExtID as row 1");
     expect(duplicateText({ duplicate_of: 1, duplicate_reason: "address" })).toBe("Same address as row 2");
     expect(filterRows(rows, "duplicates").map((row) => row.index)).toEqual([3]);
   });
 
-  it("needs an IBC#, a name and a located address; sheet coordinates count as located", () => {
-    expect(rows.map(rowProblems)).toEqual([[], ["IBC# is required"], [], []]);
+  it("needs an ExtID, a name and a located address; sheet coordinates count as located", () => {
+    expect(rows.map(rowProblems)).toEqual([[], ["ExtID is required"], [], []]);
     expect(valueProblems(rows[0] as ReviewRow)).toEqual(["Store owner email: enter a valid email"]);
-    expect(valueProblems(rows[1] as ReviewRow)).toEqual([]); // the missing IBC# is a row problem, not a value one
+    expect(valueProblems(rows[1] as ReviewRow)).toEqual([]); // the missing ExtID is a row problem, not a value one
     const summary = reviewSummary(rows);
     expect(summary).toMatchObject({ total: 4, duplicates: 1, excluded: 1, blocked: 1, ready: 2, withValueProblems: 1 });
   });
@@ -126,7 +126,12 @@ describe("review rows", () => {
     expect(reviewSummary([anyway]).needsAttention).toBe(1);
     const [stop] = buildStops([anyway]);
     expect(stop).toMatchObject({ needs_attention: ["store_name", "address"], lat: null, lng: null, geocoded: "" });
-    expect(rowProblems({ ...anyway, external_id: " " })).toEqual(["IBC# is required"]); // never skipped
+    // A missing ExtID is accepted the same way: the store is flagged, and the ExtID is entered in the store later.
+    const noId = { ...unverified, external_id: " " };
+    expect(rowProblems(noId)).toContain("ExtID is required");
+    expect(rowProblems({ ...noId, addAnyway: true })).toEqual([]);
+    expect(buildStops([{ ...noId, addAnyway: true }])[0]).toMatchObject({ external_id: "" });
+    expect(buildStops([{ ...noId, addAnyway: true }])[0]?.needs_attention).toContain("external_id");
     const [verified] = buildStops([{ ...applyGeocode(rows[2] as ReviewRow, geo()), store_name: "", addAnyway: true }]);
     expect(verified).toMatchObject({ needs_attention: ["store_name"], lat: 33.71 }); // the pin stays when verified
   });
@@ -174,5 +179,62 @@ describe("DD code entries with several codes", () => {
       ["DD-002-02969", "DD-HJGK7Z", "Completed"],
       ["DD-002-01380", "DD-HB8P6I", "Completed"],
     ]);
+  });
+});
+
+describe("Screens in the review: split, swapped columns, DD code format", () => {
+  const withScreens = (screens: { stick_number: string; venue_id: string }[]) =>
+    ({
+      ...toReviewRows({ ...RESULT, rows: [RESULT.rows[0]!] })[0]!,
+      screens: screens.map((screen) => ({ ...screen, status: "Offline" as const })),
+    }) as ReviewRow;
+
+  it("the split pairs the row's sticks and codes by position, however each cell was separated", async () => {
+    const { splitRowScreens } = await import("@/features/imports/model");
+    // The sheet had the sticks comma-separated (two screens) and both DD codes on separate lines of one cell.
+    const row = withScreens([
+      { stick_number: "DD-002-01255", venue_id: "DD-HF94R6\nDD-HH91P7" },
+      { stick_number: "DD-002-01897", venue_id: "" },
+    ]);
+    expect(splitRowScreens(row).map((screen) => [screen.stick_number, screen.venue_id])).toEqual([
+      ["DD-002-01255", "DD-HF94R6"],
+      ["DD-002-01897", "DD-HH91P7"],
+    ]);
+    // One stick for two codes: the second code has no stick.
+    const one = withScreens([{ stick_number: "DD-002-0248", venue_id: "DD-HYMSO8 DD-H6F9KM" }]);
+    expect(splitRowScreens(one).map((screen) => [screen.stick_number, screen.venue_id])).toEqual([
+      ["DD-002-0248", "DD-HYMSO8"],
+      ["", "DD-H6F9KM"],
+    ]);
+  });
+
+  it("finds a stick number and DD code in each other's column, and swaps them", async () => {
+    const { looksSwapped, swapScreen, swappedScreens, oddCodeScreens } = await import("@/features/imports/model");
+    const row = withScreens([
+      { stick_number: "DD-H6WKL4", venue_id: "DD-002-01356" },
+      { stick_number: "DD-HDB08Y", venue_id: "" },
+      { stick_number: "DD-002-04184", venue_id: "DD_HMP5QU" },
+    ]);
+    expect(row.screens.map(looksSwapped)).toEqual([true, true, false]);
+    expect(swappedScreens(row)).toHaveLength(2);
+    expect(oddCodeScreens(row)).toEqual([]); // a swapped pair is reported as swapped, not as a bad format
+    expect(swapScreen(row.screens[0]!)).toMatchObject({ stick_number: "DD-002-01356", venue_id: "DD-H6WKL4" });
+  });
+
+  it("points out a DD code that is not DD-ABCDEF or DD_ABCDEF, without blocking the row", async () => {
+    const { isDdCode, oddCodeScreens, hasScreenWarnings, filterRows, reviewSummary: summary } = await import("@/features/imports/model");
+    expect(["DD-HF94R6", "dd_hf94r6", " DD-H6F9KM "].map(isDdCode)).toEqual([true, true, true]);
+    expect(["DD-HF94R", "DD-HF94R67", "D-005-02987", "DD-002-01356", "HF94R6", "DD HF94R6"].map(isDdCode)).toEqual(Array(6).fill(false));
+    const row = withScreens([
+      { stick_number: "DD-002-01255", venue_id: "DD-HF94R" },
+      { stick_number: "", venue_id: "DD-HH91P7" },
+      { stick_number: "", venue_id: "" },
+    ]);
+    expect(oddCodeScreens(row).map((screen) => screen.venue_id)).toEqual(["DD-HF94R"]);
+    expect(hasScreenWarnings(row)).toBe(true);
+    expect(rowProblems(row)).toEqual([]); // shown, never blocking
+    expect(filterRows([row], "screens")).toHaveLength(1);
+    expect(summary([row]).screenWarnings).toBe(1);
+    expect(hasScreenWarnings({ ...row, excluded: true })).toBe(false);
   });
 });

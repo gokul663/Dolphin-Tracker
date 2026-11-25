@@ -584,7 +584,7 @@ compares v1 status counts to derived statuses. Transform tests on a fixture. *De
 **S7 · Store drawer + table v2 (L)** — drawer sections in §3 order, tri-state checkboxes, masked SSID password,
 image URL links, screens editor (editable committed counts beside the derived actual counts, rows with Add (+),
 per-row status select, three checkboxes, delete row with confirm), `external_id` and `pa` read-only, geocode-on-save with split address fields and suggestions. Table columns:
-IBC#, store name, city/state, derived status, screens (n, with a mini status summary), installer/day, PA, DMA,
+ExtID, store name, city/state, derived status, screens (n, with a mini status summary), installer/day, PA, DMA,
 committed Dolphin / store TVs. Tests: drawer validation, screens editor add/remove, derived status display.
 *Depends on:* S4.
 

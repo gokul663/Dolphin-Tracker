@@ -21,6 +21,7 @@ class Role(StrEnum):
 class Permission(StrEnum):
     PROJECTS_VIEW = "projects.view"        # projects, their stores, history, lists
     PROJECTS_EDIT = "projects.edit"        # projects, stores, sheets, settings, device sync
+    STORES_DELETE = "stores.delete"        # delete a store for good (admins)
     INSTALLERS_MANAGE = "installers.manage"  # the Installers page and the other name lists
     ROUTES_VIEW = "routes.view"            # every route plan
     ROUTES_MANAGE = "routes.manage"        # create, edit, add stores, next day, close, take a store out for good

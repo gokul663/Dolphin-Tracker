@@ -1498,8 +1498,8 @@ is a 422). The four gates pass at every commit; a browser session is only expect
   - url: at least one `http(s)://` token;
   - select: New / Existing;
   - int: ≥ 0, bool rejected;
-  - required: non-empty IBC#, store name and address.
-- `stop_details(input)` copies a submitted stop's detail attributes for storage (trimmed, IBC# normalised).
+  - required: non-empty ExtID, store name and address.
+- `stop_details(input)` copies a submitted stop's detail attributes for storage (trimmed, ExtID normalised).
   Create and append now store them and the built screens.
 - `StopStatus` is gone. The swaps:
   - API schemas, filters and import rows use `ScreenStatus`.
@@ -1521,7 +1521,7 @@ current default schema invalid.
 - one default screen, and legacy items reading as one screen;
 - all sheet aliases, case- and space-insensitive, plus unknown values;
 - screen id minting and keeping, and `build_screens`;
-- tri-state, counts and IBC# normalisation;
+- tri-state, counts and ExtID normalisation;
 - registry order and read-only fields, per-kind rules, required fields, `stop_details`.
 
 API: a progress `status` sets both screens of a two-screen store and keeps their ids. Existing tests moved to the
@@ -1543,7 +1543,7 @@ v2 vocabulary through a `status_write` helper (bare `status` writes are now over
   - `check_mapping` for a client-sent mapping (used by S9) and `clean_mapping` before saving.
   - `map_row` turns a sheet row into a `MappedRow`:
     - typed `details` (blank cells keep defaults);
-    - IBC# normalised; state as a 2-letter code (`addresses.state_code`, new);
+    - ExtID normalised; state as a 2-letter code (`addresses.state_code`, new);
     - street/city/state/zip parsed from one address column when the City/State/Zip cells are empty;
     - sheet lat/lng; `installer_name` from Technician;
     - status from `STATUS`, else `Shipment / Device status`; unknown values → Upcoming, flagged;
@@ -1551,8 +1551,8 @@ v2 vocabulary through a `status_write` helper (bare `status` writes are now over
       ("Only 1 Stick" → 1);
     - ISO `source_date` (M/D/YYYY, M/D/YY, ISO, XLSX datetimes).
   - Unusable values are listed in `problems` (attribute → message) and dropped from the typed value:
-    a bad phone/email/url, a non-numeric count, an unknown outlet status, a missing IBC# or store name.
-  - `mark_duplicates`: within the sheet, by normalised IBC# first, then by normalised address (rows without a
+    a bad phone/email/url, a non-numeric count, an unknown outlet status, a missing ExtID or store name.
+  - `mark_duplicates`: within the sheet, by normalised ExtID first, then by normalised address (rows without a
     street are never address duplicates); sets `duplicate_of` / `duplicate_reason`.
 - `services/imports.py` rewritten around it:
   - `parse(filename, raw, saved_mapping)` → `ParsedTable(columns, mapping, rows)`.
@@ -1592,45 +1592,45 @@ v2 vocabulary through a `status_write` helper (bare `status` writes are now over
 ## S3 · Repository: external_id uniqueness markers, screens write, address dedupe
 
 **Changed**
-- `Keys.external_id(project, id)` → `SK=EXT#<normalised IBC#>`.
+- `Keys.external_id(project, id)` → `SK=EXT#<normalised ExtID>`.
 - `DynamoStoreRepository.put_many`:
-  - Stops with an IBC# go in `TransactWriteItems` with their marker: 50 stops (100 items) per transaction, and
+  - Stops with an ExtID go in `TransactWriteItems` with their marker: 50 stops (100 items) per transaction, and
     the marker condition is `attribute_not_exists(PK) OR stop_uid = :uid`, so re-putting the same stop
     (e.g. a migration re-run) is fine.
-  - A cancelled transaction becomes `ConflictError("IBC# X already exists in this project")`, naming the stop
-    from `CancellationReasons`. A repeated IBC# inside one write is a `ConflictError` before anything is
+  - A cancelled transaction becomes `ConflictError("ExtID X already exists in this project")`, naming the stop
+    from `CancellationReasons`. A repeated ExtID inside one write is a `ConflictError` before anything is
     written.
-  - Stops without an IBC# still use the batch writer.
+  - Stops without an ExtID still use the batch writer.
 - `external_id` joins `IMMUTABLE_STOP_FIELDS`: `update_fields` never changes it (§7 #5).
 - `update_screens(project, uid, screens, updated_by=)` writes `screens`, the derived `status` and `updated_*`
   only, through `screens_write()`.
 - `delete_all` also removes the project's `EXT#` items (it still returns the number of stops).
 - The in-memory fake mirrors all of it with a per-project marker map.
 - Services:
-  - Create and append dedupe with `import_mapping.split_duplicates`: by normalised IBC#, then normalised
+  - Create and append dedupe with `import_mapping.split_duplicates`: by normalised ExtID, then normalised
     address, against stores already in the project and earlier stops of the same request. The venue-code rule
     is retired (§9).
   - `SkippedStop` is now `{index, external_id, store_name, addr, reason: "external_id" | "address"}`;
     `ProjectCreated` gains `skipped`, and create counts only the kept stops.
-- `validate_stop_inputs` applies the store field rules: IBC#, name and address required, plus phone, email,
-  url, select and counts. A stop without an IBC# is now a 422 on create/append.
+- `validate_stop_inputs` applies the store field rules: ExtID, name and address required, plus phone, email,
+  url, select and counts. A stop without an ExtID is now a 422 on create/append.
 - **Race:** two appends can't interleave (Y6's slot), so a marker conflict means a real duplicate the service
   check missed; it is a 409 for that transaction. Earlier transactions of the same append have committed by
   then. That is acceptable for a case the pre-check makes rare, but not atomic across >50 stops.
 
 **Tests:**
 - Repository contract (fake and moto):
-  - an IBC# is unique per project, a re-put is fine, the same IBC# may exist in another project, a repeat
+  - an ExtID is unique per project, a re-put is fine, the same ExtID may exist in another project, a repeat
     inside one write is rejected;
-  - the IBC# can't be edited;
+  - the ExtID can't be edited;
   - `update_screens` changes only its attributes and 404s on a missing stop;
-  - `delete_all` frees the IBC#s.
+  - `delete_all` frees the ExtIDs.
 - moto only: 120 stops across 3 transactions with marker items; a conflicting transaction is cancelled whole;
   nothing is left after `delete_all`; the raw item diff after `update_screens` is exactly
   `{screens, status, updated_at}`.
 - API:
-  - create skips an IBC# and an address duplicate and reports them, and a blank IBC# → 422 "IBC# is required";
-  - the append dedupe test is rewritten for IBC#-then-address, within and against the project, and a venue
+  - create skips an ExtID and an address duplicate and reports them, and a blank ExtID → 422 "ExtID is required";
+  - the append dedupe test is rewritten for ExtID-then-address, within and against the project, and a venue
     code match no longer dedupes.
 
 **Verified:** gates green (285 backend, 102 frontend). Not run against DynamoDB Local (moto implements
@@ -1677,13 +1677,13 @@ the bundle's `pending` totals match. The installer-ops caps helper counts the pe
     statuses.
   - `statuses_match` checks each v2 count equals the v1 counts that map onto it; a mismatch prints
     "<< status counts differ".
-  - Each project also gets a "v2 statuses: …" line and an "IBC#: N from venue codes, M LEGACY-*" line, listing
+  - Each project also gets a "v2 statuses: …" line and an "ExtID: N from venue codes, M LEGACY-*" line, listing
     any repeated venue codes.
 - `kpi.py` reads `dma` / `venue_type` from the attribute first and `fields` second, so migrated (v2) and v1 rows
   give the same breakdown. The KPI shape itself changes in S4.
 
 **Tests:** §4.4 for all four statuses, including the Technical Issue comment with and without an existing
-comment; one screen per stop; IBC# from the edited venue code; a repeated code and a repeated LEGACY id; the
+comment; one screen per stop; ExtID from the edited venue code; a repeated code and a repeated LEGACY id; the
 attribute/fields split; status parity (match and a forced mismatch) and the new report lines.
 
 **Verified:** gates green (289 backend, 102 frontend). The Mongo round trip from round 1 (throwaway container)
@@ -1716,7 +1716,7 @@ was not re-run; the transform is covered by the fixture tests and the writer is 
 - List, pins, export, filters and by-state share the filters (repeatable query params):
   `pa` (falls back to the project's PA), `state`, `city`, `dma`, `venue_type`, `dd_code` (any screen's
   venue id), `screen_size` (any screen's size).
-  - Search also covers IBC#, PA, DMA, venue type, owner/on-site names, installer name and screen
+  - Search also covers ExtID, PA, DMA, venue type, owner/on-site names, installer name and screen
     sticks/venue ids.
   - Sort accepts any non-boolean store attribute, `status` (least progressed first) and `screens` (row count).
 - `GET …/stores/export.csv` columns:
@@ -1757,7 +1757,7 @@ was not re-run; the transform is covered by the fixture tests and the writer is 
   - labels read "Offline" instead of "Tech".
 - Dashboard: `offline` replaces `technical`; the status pie uses `by_status` (eight slices).
 - Map stacks show their least-progressed status instead of v1's "Other".
-- Append results list skipped rows by IBC#/address.
+- Append results list skipped rows by ExtID/address.
 - `CORE_KEYS` mirror updated, with the same grandfathering in the schema editor.
 
 **Tests**
@@ -1790,7 +1790,7 @@ was not re-run; the transform is covered by the fixture tests and the writer is 
   - `detailsErrors` uses `lib/validation/storeFields.ts`, a client mirror of the backend rules (same messages).
   - `actualCounts(screens)`.
 - Drawer (`StoreDrawer.tsx`) sections in §3 order:
-  - Identity & address: IBC#, PA (falling back to the project's, marked "(project)") and the sheet date are
+  - Identity & address: ExtID, PA (falling back to the project's, marked "(project)") and the sheet date are
     read-only. Address edits keep the geocode-on-save with Google's suggestions.
   - Contacts, Installation, Site notes:
     - the SSID password is a masked input with Show/Hide;
@@ -1812,7 +1812,7 @@ was not re-run; the transform is covered by the fixture tests and the writer is 
   - One "Save details" for sections 1–5 plus the counts; the server's per-field 422 messages land on their
     fields.
 - Table (`StoresTable.tsx`) columns:
-  - IBC#; store name (inline edit kept); city/state (opens the drawer, stale-route marker);
+  - ExtID; store name (inline edit kept); city/state (opens the drawer, stale-route marker);
   - derived status as a read-only chip; screens (count plus one coloured dot per screen, summary in the title);
   - installer/day; PA (project fallback); DMA; committed Dolphin / store TVs.
   - Sortable where the API sorts.
@@ -1823,7 +1823,7 @@ was not re-run; the transform is covered by the fixture tests and the writer is 
 - Stores tab:
   - v2 columns, derived chip, screen summary, PA fallback, committed counts;
   - inline name edit;
-  - the drawer's §3 section order, read-only IBC#/PA, client validation blocking the save, the tri-state
+  - the drawer's §3 section order, read-only ExtID/PA, client validation blocking the save, the tri-state
     cycle, masked/revealed password, links, and the PATCH body;
   - screens editor add / edit / delete-with-confirm / disabled last delete / live derived status, and the PUT
     body (ids kept, new rows without one);
@@ -1907,14 +1907,14 @@ chunk.
     imported data, Ignore.
   - Targets held by another column are disabled with "(from column)". Address and coordinate columns show
     locked with a hint. A change calls the re-map and replaces the cached result.
-  - **Review** (`ReviewStep`) gains an IBC# input, a screens preview ("2 screens · S1/V1, S2"), the sheet status
+  - **Review** (`ReviewStep`) gains an ExtID input, a screens preview ("2 screens · S1/V1, S2"), the sheet status
     chip (with "?" for unknown values), and the row's value problems.
-    - Duplicates are excluded from the start, show "Duplicate: Same IBC# as row 1" (or address), cannot be
+    - Duplicates are excluded from the start, show "Duplicate: Same ExtID as row 1" (or address), cannot be
       included, and have their own filter chip.
     - Rows placed by the sheet's coordinates ("Sheet pin") count as located.
   - Rows with unusable optional values block the save until "Import them without those values" is ticked.
     The old per-column "drop invalid" moved here.
-- `model.ts` rewritten: targets, `takenBy`, `isLocked`, `sampleValues`, `toReviewRows`, `rowProblems` (IBC#,
+- `model.ts` rewritten: targets, `takenBy`, `isLocked`, `sampleValues`, `toReviewRows`, `rowProblems` (ExtID,
   name, located), `valueProblems`, `buildStops` (store attributes, screens with the sheet status,
   `installer_name`, unknown columns as `fields`), `screensPreview`.
   - Create and append send `import_mapping`, so the next sheet maps the same way (S2).
@@ -1950,12 +1950,12 @@ chunk.
 - Day cards: the one-click status select is replaced by the **derived status chip** with one dot per screen
   and the screen count ("Status of Store a: Upcoming, 1 screen (edit screens)"). Clicking it opens the store
   drawer, where status is edited per screen in the screens editor (§4). The installer reassign select stays.
-  The card's id line shows the IBC#.
+  The card's id line shows the ExtID.
 - Route model reads PA, DMA and venue type from the store attributes, falling back to `fields` for stops
   written before v2 (`storeText`), for filters, options, CSV and the PA chips.
 - Route CSVs (day and all) use v2 columns:
   - Route Owner, Completed By, Day, Stop #;
-  - IBC#, store name, address parts, PA, DMA, Venue Type, the derived Status, Screens, Screen Rows
+  - ExtID, store name, address parts, PA, DMA, Venue Type, the derived Status, Screens, Screen Rows
     (`stick / DD code / status` joined with "; ");
   - the on-site contact and phone, best contact time, preferred install date/time, blocked dates, installation
     comments;
@@ -2014,13 +2014,13 @@ code. Every other gate run showed all tests passing. The backend suite was run 5
    (an extension of the §6 assumption). Keep, or require a verified address?
 5. **Other imported data:** unknown columns land in `fields` and show read-only, labelled by their header,
    because the wizard no longer adds them to the project schema. Should the import add schema labels for them?
-6. **Migration IBC#:** `LEGACY-<display id>` when there is no venue code. Also when a venue code repeats inside
+6. **Migration ExtID:** `LEGACY-<display id>` when there is no venue code. Also when a venue code repeats inside
    a project (suffix `-2`, …), with a report line. Confirm both assumptions.
 7. **Prod CORS:** `cdk synth -c env=prod` now fails until a `domain_name` or `cloudfront_domain` is set. The first
    prod deploy needs `-c cloudfront_domain=…` after the Web stack exists (or a custom domain first).
 8. **Map ID:** markers are still classic `google.maps.Marker`. Moving to `AdvancedMarkerElement` is ready to
    do once a Map ID exists and someone can check it in a browser.
-9. **Atomicity:** appends above 50 stores commit their IBC# markers in several transactions, so a conflict
+9. **Atomicity:** appends above 50 stores commit their ExtID markers in several transactions, so a conflict
    mid-way leaves the earlier batches written. Y6's slot plus the pre-check make it rare. Acceptable?
 10. **Status palette:** colours for the four new statuses (sky, indigo, teal, stone). Fine, or is there a brand
     palette to follow?

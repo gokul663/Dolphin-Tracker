@@ -1,10 +1,10 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { ChevronLeft, ChevronRight, Clock, Loader2, MapPin, MapPinOff, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { DEVICE_TONE, DeviceBadge, reportDay } from "@/features/device/DeviceBits";
+import { DEVICE_TONE, DeviceBadge, REPORT_STATUS_TONE, reportDay } from "@/features/device/DeviceBits";
 import { useAddReviewed, useAddReviewedMany, useDeviceReview, useSnoozeReviewed, useSnoozeReviewedMany } from "@/features/device/api";
 import { Input } from "@/components/ui/input";
 import { GoogleSearchPicker } from "@/features/places/GoogleSearchPicker";
@@ -20,18 +20,27 @@ export function ReviewDialog({
   open,
   onClose,
   onMissingScreens,
+  search = "",
 }: {
   project: Project & { kpi?: ProjectSummary["kpi"] };
   open: boolean;
   onClose: () => void;
   /** Show the done stores that have fewer screens than the sheet committed. */
   onMissingScreens?: () => void;
+  /** What the list starts narrowed to (the Stores search, when it found records waiting here). */
+  search?: string;
 }) {
   const missing = project.kpi?.review_screens ?? 0;
   const [cursors, setCursors] = useState<(string | null)[]>([null]);
   const [includeSnoozed, setIncludeSnoozed] = useState(false);
+  const [query, setQuery] = useState(search);
+  useEffect(() => {
+    if (!open) return;
+    setQuery(search); // each opening starts from what it was opened for
+    setCursors([null]);
+  }, [open, search]);
   const cursor = cursors[cursors.length - 1] ?? null;
-  const review = useDeviceReview(project.id, { limit: PAGE, cursor }, includeSnoozed, open);
+  const review = useDeviceReview(project.id, { limit: PAGE, cursor }, includeSnoozed, open, query);
   const add = useAddReviewed(project.id);
   const snooze = useSnoozeReviewed(project.id);
   const page = review.data;
@@ -46,6 +55,7 @@ export function ReviewDialog({
       {
         onSuccess: (stop) => {
           setFixing(({ [item.key]: _done, ...rest }) => rest);
+          setSelected(({ [item.key]: _added, ...rest }) => rest); // added: nothing left to add for it
           toast.success(
             stop.needs_attention.includes("address")
               ? `${stop.store_name || item.venue_id} added without a verified address; it needs attention`
@@ -62,15 +72,20 @@ export function ReviewDialog({
       },
     );
   const onSnooze = (item: ReviewItem) =>
-    snooze.mutate(item.key, { onError: (error) => toast.error(error instanceof Error ? error.message : "Could not hide") });
+    snooze.mutate(item.key, {
+      onSuccess: () => setSelected(({ [item.key]: _hidden, ...rest }) => rest),
+      onError: (error) => toast.error(error instanceof Error ? error.message : "Could not hide"),
+    });
 
   // Several at once: tick rows (they stay ticked across pages), then add or set them all aside.
+  // A row whose address step is open is dealt with there (check, pick, or add anyway): it is not ticked, so
+  // "Add N selected" never counts, or retries, a row that can only fail the same way again.
   const [selected, setSelected] = useState<Record<string, ReviewItem>>({});
-  const chosen = Object.values(selected);
+  const chosen = Object.values(selected).filter((item) => !fixing[item.key]);
   const addMany = useAddReviewedMany(project.id);
   const snoozeMany = useSnoozeReviewedMany(project.id);
   const busy = add.isPending || snooze.isPending || addMany.isPending || snoozeMany.isPending;
-  const pageItems = (page?.items ?? []).filter((item) => !item.snoozed_date);
+  const pageItems = (page?.items ?? []).filter((item) => !item.snoozed_date && !fixing[item.key]);
   const allTicked = pageItems.length > 0 && pageItems.every((item) => selected[item.key]);
   const tick = (items: ReviewItem[], on: boolean) =>
     setSelected((all) => {
@@ -85,7 +100,7 @@ export function ReviewDialog({
     addMany.mutate(chosen.map((item) => item.key), {
       onSuccess: (results) => {
         const failed = results.filter((result) => result.error);
-        // The ones Google could not verify open their address step and stay ticked; the rest are in.
+        // The ones Google could not verify open their address step and leave the selection; the rest are in.
         setFixing((all) => {
           const next = { ...all };
           for (const { key, error } of failed) {
@@ -94,7 +109,15 @@ export function ReviewDialog({
           }
           return next;
         });
-        setSelected((all) => Object.fromEntries(failed.flatMap(({ key }) => (all[key] ? [[key, all[key]]] : []))));
+        // Kept ticked: only a row that failed for another reason (a network error), so it can be tried again.
+        setSelected((all) =>
+          Object.fromEntries(
+            failed.flatMap(({ key, error }) => {
+              const needsAddress = error instanceof ApiError && error.validation?.suggestions !== undefined;
+              return all[key] && !needsAddress ? [[key, all[key]]] : [];
+            }),
+          ),
+        );
         const added = results.length - failed.length;
         if (added) toast.success(`${added} ${added === 1 ? "screen" : "screens"} added`);
         if (failed.length) toast.error(`${failed.length} could not be added: check ${failed.length === 1 ? "its address" : "their addresses"} below`);
@@ -131,7 +154,18 @@ export function ReviewDialog({
             )}
           </div>
         )}
-        <div className="flex items-center gap-2 text-sm">
+        <div className="flex flex-wrap items-center gap-3 text-sm">
+          <Input
+            type="search"
+            aria-label="Search the records to review"
+            placeholder="Search ExtID, name, DD code, address"
+            value={query}
+            onChange={(event) => {
+              setQuery(event.target.value);
+              setCursors([null]);
+            }}
+            className="h-8 w-72"
+          />
           <label className="flex items-center gap-1.5">
             <Checkbox
               checked={includeSnoozed}
@@ -168,14 +202,15 @@ export function ReviewDialog({
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto rounded-lg border">
           {review.isError && <p className="p-4 text-sm text-rose-700">{review.error.message}</p>}
-          {page && page.items.length === 0 && <p className="p-6 text-center text-sm text-slate-500">Nothing to review.</p>}
+          {page && page.items.length === 0 && <p className="p-6 text-center text-sm text-slate-500">{query.trim() ? "No record to review matches the search." : "Nothing to review."}</p>}
           <ul className="divide-y">
             {page?.items.map((item) => (
-              <li key={item.key} className={cn("flex flex-wrap items-center gap-3 px-3 py-2.5", item.snoozed_date && "opacity-60", selected[item.key] && "bg-sky-50/60")}>
+              <li key={item.key} className={cn("flex flex-wrap items-center gap-3 px-3 py-2.5", item.snoozed_date && "opacity-60", selected[item.key] && !fixing[item.key] && "bg-sky-50/60")}>
                 <Checkbox
                   aria-label={`Select ${item.venue_id}`}
-                  checked={Boolean(selected[item.key])}
-                  disabled={Boolean(item.snoozed_date)}
+                  checked={Boolean(selected[item.key]) && !fixing[item.key]}
+                  disabled={Boolean(item.snoozed_date) || Boolean(fixing[item.key])}
+                  title={fixing[item.key] ? "Fix its address below, or add it anyway" : undefined}
                   onCheckedChange={(checked) => tick([item], checked === true)}
                 />
                 <div className="min-w-0 flex-1 space-y-1">
@@ -209,7 +244,7 @@ export function ReviewDialog({
                     />
                     <Fact label="Last seen" value={day(item.last_seen)} />
                     <Fact label="Stick #" value={item.serial_number} mono />
-                    <Fact label="IBC#" value={item.external_id} mono />
+                    <Fact label="ExtID" value={item.external_id} mono />
                     <Fact label="CMS name" value={item.venue_name} mono />
                   </dl>
                 </div>
@@ -251,11 +286,7 @@ export function ReviewDialog({
 }
 
 const day = (iso: string) => (iso ?? "").slice(0, 10);
-const STATUS_TONE: Record<string, string> = {
-  online: "border-emerald-200 bg-emerald-50 text-emerald-800",
-  offline: "border-rose-200 bg-rose-50 text-rose-800",
-  "not registered": "border-violet-200 bg-violet-50 text-violet-800",
-};
+const STATUS_TONE = REPORT_STATUS_TONE;
 
 /** One labelled value of a report record; a dash when the report has none. */
 function Fact({ label, value, title, empty = "—", mono = false }: { label: string; value: string; title?: string; empty?: ReactNode; mono?: boolean }) {

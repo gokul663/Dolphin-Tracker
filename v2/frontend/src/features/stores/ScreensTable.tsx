@@ -34,7 +34,7 @@ interface Column {
 /** One row per screen: its DD code, the store it is at, then the screen's own status, cost, size, owner and brand. */
 const COLUMNS: Column[] = [
   { id: "venue_id", header: "DD code", sort: "venue_id", size: 120, cell: (row) => <span className="font-mono text-xs">{row.screen.venue_id || dash}</span> },
-  { id: "external_id", header: "IBC#", sort: "external_id", size: 92, cell: (row) => <span className="font-mono text-xs text-slate-600">{row.external_id || row.display_id}</span> },
+  { id: "external_id", header: "ExtID", sort: "external_id", size: 92, cell: (row) => <span className="font-mono text-xs text-slate-600">{row.external_id || row.display_id}</span> },
   {
     id: "store_name",
     header: "Store name",

@@ -63,7 +63,7 @@ export function makeStop(overrides: Partial<Stop> = {}): Stop {
     blocked_dates_notes: "", preferred_install_datetime: "", spot_visible: null, power_within_6ft: null,
     ethernet_possible: null, low_volume_audio_ok: null, ceiling_suitable: null,
     installer: "Ann", day: 1, seq: 0, fields: {}, screens: [makeScreen({ id: `${overrides.uid ?? "u1"}-s1`, status })],
-    status, comment: "", additional_task: false, installer_name: "", route_stale: false, route_plan_id: "",
+    status, comment: "", review_notes: "", additional_task: false, installer_name: "", route_stale: false, route_plan_id: "",
     last_planned_at: "", screen_visits: {}, last_visit_at: "",
     updated_at: "2026-10-01T00:00:00+00:00", updated_by: "", needs_attention: [], device: null,
     device_alert_ignored: "", ...overrides,
@@ -78,6 +78,7 @@ export function makeImportRow(index: number, overrides: Partial<ImportRow> = {})
     addr: `${index} Main St`, city: "Atlanta", state: "GA", zip: "30303", lat: 33.7, lng: -84.4, coordinates_source: "geocode",
     place_name: "", suggestions: [], error: "", venue_status: "Upcoming", venue_status_valid: true, venue_status_raw: "",
     installer_name: "", details: {}, screens: [{ stick_number: "", venue_id: "", status: "Upcoming" }], problems: {},
-    duplicate_of: null, duplicate_reason: "", fields: {}, ...overrides,
+    duplicate_of: null, duplicate_reason: "", fields: {}, reused: "", known_address: "", known_screens: [],
+    known_screens_from: "", ...overrides,
   };
 }

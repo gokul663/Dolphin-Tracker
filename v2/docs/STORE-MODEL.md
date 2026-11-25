@@ -6,7 +6,7 @@ reviewer defaults the user has not been asked about are still marked **assumptio
 fallback in §4.4, sheet coordinates kept on geocode failure in §6).
 
 Sample header (tab-separated in the original):
-`Date, IBC#, STATUS, Shipment / Device status, Technician, Notes, CMS details added, SITE ACCOUNT Created,
+`Date, ExtID, STATUS, Shipment / Device status, Technician, Notes, CMS details added, SITE ACCOUNT Created,
 SCREENS added, DAgent Added, Google Drive Made, Renamed in ESPR, PICTURES ADDED, CMS credentials given, sent to BO,
 payment initiated (only for self install), No of Sticks, Stick Number, Venue ID, CMS NAME, Store Name, Store Address,
 Latitude, Longitude, City, State, Zip, Regional Manager, Regional Manager email, Regional Manager phone number,
@@ -23,7 +23,7 @@ Products / Content to Avoid, Installation comments, Installation area`
 
 ## 1. Principles
 
-1. **Three required fields:** `external_id` (IBC#), `store_name`, `addr`. Everything else is optional; if the
+1. **Three required fields:** `external_id` (ExtID), `store_name`, `addr`. Everything else is optional; if the
    sheet has it we store it, if not it stays empty.
 2. **Fixed, first-class fields** for everything the user listed (§3). The generic `field_schema` / `fields` map
    stays only for columns we do not recognise ("Other imported data"), so nothing from a sheet is lost. Create
@@ -43,7 +43,7 @@ Products / Content to Avoid, Installation comments, Installation area`
 
 | Attribute | Type | Source column | Editable in planner | Notes |
 |-----------|------|---------------|---------------------|-------|
-| `external_id` * | str | IBC# | **no** | set on import only; marker item `SK=EXT#<normalised>` enforces uniqueness per project |
+| `external_id` * | str | ExtID | **no** | set on import only; marker item `SK=EXT#<normalised>` enforces uniqueness per project |
 | `store_name` * | str | Store Name | yes | |
 | `addr` * | str | Store Address (street part) | yes | geocoded on save |
 | `city`, `state`, `zip` | str | City, State, Zip (fallback: parsed from Store Address) | yes | state stored as 2-letter code |
@@ -208,7 +208,7 @@ clears the State filter. Served by `GET /projects/{id}/stores/by-state?pending=t
 
 ## 6. Import mapping for the sample sheet
 
-Header → field, after `normalize_column` (`IBC#` → `ibc`, `Store Address` → `store_address`, etc.). Columns not
+Header → field, after `normalize_column` (`ExtID` → `ibc`, `Store Address` → `store_address`, etc.). Columns not
 listed land in `fields` under their normalised header.
 
 | Normalised header | Field |

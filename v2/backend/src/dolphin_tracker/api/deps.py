@@ -121,9 +121,11 @@ def get_geocoder(settings: SettingsDep) -> GoogleGeocoder:
 def get_import_service(
     jobs: Annotated[JobRepository, Depends(get_job_repository)],
     files: Annotated[FileStore, Depends(get_file_store)],
+    projects: Annotated[ProjectRepository, Depends(get_project_repository)],
+    stores: Annotated[StoreRepository, Depends(get_store_repository)],
 ) -> ImportService:
     """For synchronous import operations (re-mapping); the geocoding run itself happens on the worker."""
-    return ImportService(jobs, files)
+    return ImportService(jobs, files, projects=projects, stores=stores)
 
 
 def get_routing_service(

@@ -117,7 +117,7 @@ export function StorePicker({ selected, onChange, planId }: Props) {
         <div className="flex flex-wrap items-center gap-1.5">
           <div className="relative w-72 shrink-0">
             <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <Input aria-label="Search stores" placeholder="Search IBC#, store name or address…" value={filters.q ?? ""} onChange={(event) => set({ q: event.target.value })} className="h-8 pl-9 text-sm" />
+            <Input aria-label="Search stores" placeholder="Search ExtID, store name or address…" value={filters.q ?? ""} onChange={(event) => set({ q: event.target.value })} className="h-8 pl-9 text-sm" />
           </div>
           <FacetDropdown label="State" options={stateOptions} selected={filters.state ?? []} onToggle={(value) => set({ state: toggle(filters.state, value), city: [] })} />
           <FacetDropdown label="City" options={plain(facets.data?.cities)} selected={filters.city ?? []} onToggle={(value) => set({ city: toggle(filters.city, value) })} />

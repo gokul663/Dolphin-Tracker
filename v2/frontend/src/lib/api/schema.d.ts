@@ -538,7 +538,11 @@ export interface paths {
         get: operations["get_store_api_projects__project_id__stores__stop_uid__get"];
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Delete Store
+         * @description Admins only. Deletes the store with its screens and visits; 409 while it is in a route plan.
+         */
+        delete: operations["delete_store_api_projects__project_id__stores__stop_uid__delete"];
         options?: never;
         head?: never;
         /** Update Store */
@@ -572,7 +576,7 @@ export interface paths {
         get?: never;
         /**
          * Set External Id
-         * @description The IBC# of a store that has none (added from the Dolphin data); fixed once set.
+         * @description The ExtID of a store that has none (added from the Dolphin data); fixed once set.
          */
         put: operations["set_external_id_api_projects__project_id__stores__stop_uid__external_id_put"];
         post?: never;
@@ -1263,6 +1267,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{project_id}/device-sync/populate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Populate From Device Data
+         * @description Add a store for every record of the project's PA that no store has (a project started without a sheet),
+         *     located at the report's address, then sync.
+         */
+        post: operations["populate_from_device_data_api_projects__project_id__device_sync_populate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects/{project_id}/device-sync/review": {
         parameters: {
             query?: never;
@@ -1916,6 +1941,11 @@ export interface components {
             content_type?: string;
             /** Project Id */
             project_id?: string | null;
+            /**
+             * Pa
+             * @default
+             */
+            pa?: string;
         };
         /** ImportJobCreated */
         ImportJobCreated: {
@@ -2002,7 +2032,7 @@ export interface components {
              * @default
              * @enum {string}
              */
-            coordinates_source: "" | "geocode" | "sheet";
+            coordinates_source: "" | "geocode" | "sheet" | "known";
             /** Place Name */
             place_name: string;
             /** Suggestions */
@@ -2041,6 +2071,23 @@ export interface components {
             fields: {
                 [key: string]: string;
             };
+            /**
+             * Reused
+             * @default
+             */
+            reused: string;
+            /**
+             * Known Address
+             * @default
+             */
+            known_address: string;
+            /** Known Screens */
+            known_screens: components["schemas"]["ImportScreen"][];
+            /**
+             * Known Screens From
+             * @default
+             */
+            known_screens_from: string;
         };
         /** ImportScreen */
         ImportScreen: {
@@ -2065,6 +2112,11 @@ export interface components {
              * @default 0
              */
             duplicates: number;
+            /**
+             * Known
+             * @default 0
+             */
+            known: number;
         };
         /**
          * InsertOption
@@ -2708,7 +2760,7 @@ export interface components {
          * Permission
          * @enum {string}
          */
-        Permission: "projects.view" | "projects.edit" | "installers.manage" | "routes.view" | "routes.manage" | "routes.arrange" | "visits.log" | "routes.own";
+        Permission: "projects.view" | "projects.edit" | "stores.delete" | "installers.manage" | "routes.view" | "routes.manage" | "routes.arrange" | "visits.log" | "routes.own";
         /**
          * PickedPlace
          * @description A place the person picked from a Google search: the store is saved at its pin, without geocoding again.
@@ -3113,6 +3165,12 @@ export interface components {
              */
             route_plan_id: string;
         };
+        /** PopulateResult */
+        PopulateResult: {
+            /** Stores Added */
+            stores_added: number;
+            sync: components["schemas"]["SyncResult"];
+        };
         /**
          * Principal
          * @description The signed-in person, as the token says.
@@ -3151,6 +3209,8 @@ export interface components {
         ProgressUpdate: {
             /** Comment */
             comment?: string | null;
+            /** Review Notes */
+            review_notes?: string | null;
             /** Additional Task */
             additional_task?: boolean | null;
             /** Installer Name */
@@ -3244,6 +3304,11 @@ export interface components {
              * @default
              */
             pa?: string;
+            /**
+             * Device Pa
+             * @default
+             */
+            device_pa?: string;
             project_type: components["schemas"]["ProjectType"];
             /**
              * Field Agent
@@ -4439,6 +4504,11 @@ export interface components {
              */
             comment: string;
             /**
+             * Review Notes
+             * @default
+             */
+            review_notes: string;
+            /**
              * Additional Task
              * @default false
              */
@@ -4700,6 +4770,11 @@ export interface components {
              * @default
              */
             installer_name?: string;
+            /**
+             * Review Notes
+             * @default
+             */
+            review_notes?: string;
             /** Needs Attention */
             needs_attention?: components["schemas"]["NeedsAttention"][];
         };
@@ -4739,8 +4814,8 @@ export interface components {
         };
         /**
          * StoreAdd
-         * @description One store typed in by hand (the Stores page's "Add store"). Checked like a sheet row: IBC#, store name and
-         *     address are required, the IBC# and the address must be new to the project, and Google must verify the address.
+         * @description One store typed in by hand (the Stores page's "Add store"). Checked like a sheet row: ExtID, store name and
+         *     address are required, the ExtID and the address must be new to the project, and Google must verify the address.
          */
         StoreAdd: {
             /** External Id */
@@ -4768,7 +4843,7 @@ export interface components {
         /**
          * StoreDetailsUpdate
          * @description Detail edit (STORE-MODEL §2, "editable in planner"). Omitted keys are unchanged; `fields` merges per key
-         *     into the stop's extra fields. Anything else (IBC#, PA, routing, progress, screens) is a 422.
+         *     into the stop's extra fields. Anything else (ExtID, PA, routing, progress, screens) is a 422.
          */
         StoreDetailsUpdate: {
             place?: components["schemas"]["PickedPlace"] | null;
@@ -4985,6 +5060,8 @@ export interface components {
             mount: components["schemas"]["FilterOption"][];
             /** Fulfilled */
             fulfilled: components["schemas"]["FilterOption"][];
+            /** Review */
+            review: components["schemas"]["FilterOption"][];
         };
         /**
          * StorePage
@@ -5959,6 +6036,8 @@ export interface operations {
                 mount?: string[] | null;
                 /** @description Repeatable; "Fulfilled", "Not fulfilled" or "No commitment" */
                 fulfilled?: string[] | null;
+                /** @description Repeatable; "Has review notes" or "No review notes" */
+                review?: string[] | null;
                 q?: string;
                 /** @description Only stores added without a name or a verified address */
                 needs_attention?: boolean;
@@ -6069,6 +6148,8 @@ export interface operations {
                 mount?: string[] | null;
                 /** @description Repeatable; "Fulfilled", "Not fulfilled" or "No commitment" */
                 fulfilled?: string[] | null;
+                /** @description Repeatable; "Has review notes" or "No review notes" */
+                review?: string[] | null;
                 q?: string;
                 /** @description Only stores added without a name or a verified address */
                 needs_attention?: boolean;
@@ -6138,6 +6219,8 @@ export interface operations {
                 mount?: string[] | null;
                 /** @description Repeatable; "Fulfilled", "Not fulfilled" or "No commitment" */
                 fulfilled?: string[] | null;
+                /** @description Repeatable; "Has review notes" or "No review notes" */
+                review?: string[] | null;
                 q?: string;
                 /** @description Only stores added without a name or a verified address */
                 needs_attention?: boolean;
@@ -6207,6 +6290,8 @@ export interface operations {
                 mount?: string[] | null;
                 /** @description Repeatable; "Fulfilled", "Not fulfilled" or "No commitment" */
                 fulfilled?: string[] | null;
+                /** @description Repeatable; "Has review notes" or "No review notes" */
+                review?: string[] | null;
                 q?: string;
                 /** @description Only stores added without a name or a verified address */
                 needs_attention?: boolean;
@@ -6276,6 +6361,8 @@ export interface operations {
                 mount?: string[] | null;
                 /** @description Repeatable; "Fulfilled", "Not fulfilled" or "No commitment" */
                 fulfilled?: string[] | null;
+                /** @description Repeatable; "Has review notes" or "No review notes" */
+                review?: string[] | null;
                 q?: string;
                 /** @description Only stores added without a name or a verified address */
                 needs_attention?: boolean;
@@ -6348,6 +6435,8 @@ export interface operations {
                 mount?: string[] | null;
                 /** @description Repeatable; "Fulfilled", "Not fulfilled" or "No commitment" */
                 fulfilled?: string[] | null;
+                /** @description Repeatable; "Has review notes" or "No review notes" */
+                review?: string[] | null;
                 q?: string;
                 /** @description Only stores added without a name or a verified address */
                 needs_attention?: boolean;
@@ -6450,6 +6539,8 @@ export interface operations {
                 mount?: string[] | null;
                 /** @description Repeatable; "Fulfilled", "Not fulfilled" or "No commitment" */
                 fulfilled?: string[] | null;
+                /** @description Repeatable; "Has review notes" or "No review notes" */
+                review?: string[] | null;
                 q?: string;
                 /** @description Only stores added without a name or a verified address */
                 needs_attention?: boolean;
@@ -6540,6 +6631,36 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Stop"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_store_api_projects__project_id__stores__stop_uid__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                stop_uid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -8019,12 +8140,45 @@ export interface operations {
             };
         };
     };
+    populate_from_device_data_api_projects__project_id__device_sync_populate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PopulateResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_review_api_projects__project_id__device_sync_review_get: {
         parameters: {
             query?: {
                 include_snoozed?: boolean;
                 limit?: number;
                 cursor?: string | null;
+                /** @description ExtID, name, DD code, stick number or address */
+                q?: string;
             };
             header?: never;
             path: {

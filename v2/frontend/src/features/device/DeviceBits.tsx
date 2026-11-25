@@ -42,3 +42,10 @@ export function ScreenDeviceLine({ device }: { device: ScreenDevice }) {
 }
 
 export { splitCodes } from "@/lib/codes";
+
+/** The Dolphin data's own status word for a device, as a chip (Needs review, and the search's matches there). */
+export const REPORT_STATUS_TONE: Record<string, string> = {
+  online: "border-emerald-200 bg-emerald-50 text-emerald-800",
+  offline: "border-rose-200 bg-rose-50 text-rose-800",
+  "not registered": "border-violet-200 bg-violet-50 text-violet-800",
+};

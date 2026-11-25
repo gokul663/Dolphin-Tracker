@@ -211,7 +211,7 @@ class ProjectUpload(ApiModel):
     size: int = 0  # bytes
     submitted: int = 0  # stores sent from the sheet's review
     added: int = 0
-    skipped: int = 0  # duplicates of stores already there (same IBC# or address)
+    skipped: int = 0  # duplicates of stores already there (same ExtID or address)
 
 
 class Project(ApiModel):
@@ -249,7 +249,7 @@ class StoreDetails(ApiModel):
     Text defaults to "", counts and tri-state checks to None (unknown). Rules per field: `domain/validation.py`.
     """
 
-    external_id: str = Field(default="", max_length=100)  # IBC#; set on import only, unique per project
+    external_id: str = Field(default="", max_length=100)  # ExtID; set on import only, unique per project
     pa: str = Field(default="", max_length=500)  # only when the sheet has a PA column; display falls back to project
     dma: str = Field(default="", max_length=200)
     venue_type: str = Field(default="", max_length=200)
@@ -297,7 +297,7 @@ class StoreDetails(ApiModel):
 class NeedsAttention(StrEnum):
     STORE_NAME = "store_name"
     ADDRESS = "address"
-    # Added from the Dolphin data without an IBC#: entered once in the store (then fixed like any IBC#).
+    # Added from the Dolphin data without an ExtID: entered once in the store (then fixed like any ExtID).
     EXTERNAL_ID = "external_id"
     # A Completed screen whose DD code is missing from the device report (set and cleared by the device sync).
     NOT_REPORTING = "not_reporting"
@@ -328,6 +328,9 @@ class Stop(StoreDetails):
     screens: list[Screen] = Field(default_factory=list)
     status: ScreenStatus = ScreenStatus.UPCOMING
     comment: str = ""
+    # What still has to be checked about the store ("store name not confirmed"), written while reviewing an import
+    # and kept under the store's notes until someone clears it.
+    review_notes: str = ""
     additional_task: bool = False
     installer_name: str = ""
     route_stale: bool = False  # address/geo changed after the last routing build
@@ -427,7 +430,9 @@ def merge_same_code(screens: list[Screen]) -> list[Screen]:
 # Disjoint write groups on a stop item (AGENT-HANDOFF §2 rule 5). A single write never mixes ROUTING and PROGRESS.
 # Screens carry the per-screen status, so they are progress; `status` is their derived summary.
 ROUTING_FIELDS = frozenset({"installer", "day", "seq"})
-PROGRESS_FIELDS = frozenset({"screens", "status", "comment", "additional_task", "installer_name", "updated_by"})
+PROGRESS_FIELDS = frozenset(
+    {"screens", "status", "comment", "review_notes", "additional_task", "installer_name", "updated_by"}
+)
 # Written only by the route-plan and visit paths, never by detail, progress or routing writes.
 PLAN_FIELDS = frozenset({"route_plan_id", "last_planned_at"})
 VISIT_FIELDS = frozenset({"screen_visits", "last_visit_at"})
@@ -475,6 +480,7 @@ class StopInput(StoreDetails):
     screens: list[ScreenInput] = Field(default_factory=list, max_length=200)
     initial_status: ScreenStatus | None = None
     installer_name: str = Field(default="", max_length=200)  # the sheet's Technician ("Completed by")
+    review_notes: str = Field(default="", max_length=2000)  # typed in the import's review step
     # Add the store anyway, without a name and/or a verified address: those checks are skipped and the store is
     # flagged until fixed.
     needs_attention: list[NeedsAttention] = Field(default_factory=list)
@@ -492,6 +498,9 @@ class ProjectCreate(ApiModel):
 
     name: str = Field(max_length=200)
     pa: str = Field(default="", max_length=500)  # required unless the stops carry their own PA (several PAs)
+    # The device report's PA name to sync with. A project with no sheet takes its stores from it
+    # (POST /projects/{id}/device-sync/populate), and its PA defaults to this name.
+    device_pa: str = Field(default="", max_length=500)
     project_type: ProjectType
     field_agent: str = Field(default="", max_length=200)
     partner_account: str = Field(default="", max_length=200)

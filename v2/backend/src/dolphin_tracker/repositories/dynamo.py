@@ -32,7 +32,7 @@ class Keys:
 
     @staticmethod
     def external_id(project_id: str, normalised: str) -> dict[str, str]:
-        """Uniqueness marker for a store's IBC# within its project (STORE-MODEL §2)."""
+        """Uniqueness marker for a store's ExtID within its project (STORE-MODEL §2)."""
         return {"PK": f"PROJECT#{project_id}", "SK": f"{Keys.EXTERNAL_ID_PREFIX}{normalised}"}
 
     @staticmethod

@@ -38,7 +38,7 @@ export function useScreenList(projectId: string, filters: StoreFilters, page: St
   });
 }
 
-/** The five stores closest to what is typed in the search (IBC#, name, address), for its drop-down. */
+/** The five stores closest to what is typed in the search (ExtID, name, address), for its drop-down. */
 export function useStoreSuggestions(projectId: string, q: string) {
   return useQuery({
     queryKey: keys.storeList(projectId, { q, sort: "store_name", dir: "asc" }, { offset: 0, limit: 5, bounds: null }),
@@ -178,7 +178,23 @@ function settle(client: Client, projectId: string) {
 }
 
 /** Progress edits are optimistic: lists, detail, pins and the routes bundle update at once and roll back on error. */
-/** Enter the IBC# of a store that has none (added from the Dolphin data); fixed once saved. */
+/** Enter the ExtID of a store that has none (added from the Dolphin data); fixed once saved. */
+/** Delete a store for good (admins). Refreshes the dashboard's counts and everything under the project, except the
+ *  deleted store's own entry: its window is still closing, and refetching it would only show a 404. */
+export function useDeleteStore(projectId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (uid: string) => storesApi.remove(projectId, uid),
+    onSuccess: (_result, uid) => {
+      const gone = JSON.stringify(keys.store(projectId, uid));
+      return client.invalidateQueries({
+        queryKey: keys.projects,
+        predicate: (query) => JSON.stringify(query.queryKey) !== gone,
+      });
+    },
+  });
+}
+
 export function useSetExternalId(projectId: string) {
   const client = useQueryClient();
   return useMutation({
@@ -221,7 +237,7 @@ export function useUpdateScreens(projectId: string) {
   });
 }
 
-/** Add one store by hand; the server checks it like a sheet row (IBC#, name, address; duplicates; Google). */
+/** Add one store by hand; the server checks it like a sheet row (ExtID, name, address; duplicates; Google). */
 export function useAddStore(projectId: string) {
   const client = useQueryClient();
   return useMutation({

@@ -9,9 +9,9 @@ import { useAddStore } from "@/features/stores/api";
 import { ApiError, type Project, type StoreAdd } from "@/lib/api/types";
 
 const EMPTY: StoreAdd = { external_id: "", store_name: "", addr: "", city: "", state: "", zip: "" };
-const REQUIRED: [keyof StoreAdd, string][] = [["external_id", "IBC# is required"], ["store_name", "Store name is required"], ["addr", "Address is required"]];
+const REQUIRED: [keyof StoreAdd, string][] = [["external_id", "ExtID is required"], ["store_name", "Store name is required"], ["addr", "Address is required"]];
 
-/** Add one store by hand. It gets the checks a sheet row gets: IBC#, store name and address are required, the IBC#
+/** Add one store by hand. It gets the checks a sheet row gets: ExtID, store name and address are required, the ExtID
  *  and the address must be new to the project, and Google must verify the address (or one of its suggestions is
  *  picked). Everything else about the store is filled in its window, which opens once it is added. */
 export function AddStoreDialog({ project, open, onClose, onAdded }: { project: Project; open: boolean; onClose: () => void; onAdded?: (uid: string) => void }) {
@@ -71,7 +71,7 @@ export function AddStoreDialog({ project, open, onClose, onAdded }: { project: P
         <DialogHeader>
           <DialogTitle>Add a store</DialogTitle>
           <DialogDescription>
-            Checked like a row of a sheet: the IBC# and the address must be new to {project.name}, and Google verifies the address.
+            Checked like a row of a sheet: the ExtID and the address must be new to {project.name}, and Google verifies the address.
           </DialogDescription>
         </DialogHeader>
         <form
@@ -83,7 +83,7 @@ export function AddStoreDialog({ project, open, onClose, onAdded }: { project: P
           }}
         >
           <div className="grid gap-3 sm:grid-cols-[10rem_minmax(0,1fr)]">
-            {field("external_id", "IBC# *", { placeholder: "e.g. TX15895", autoFocus: true })}
+            {field("external_id", "ExtID *", { placeholder: "e.g. TX15895", autoFocus: true })}
             {field("store_name", "Store name *")}
           </div>
           {field("addr", "Address *", { placeholder: "Street address" })}

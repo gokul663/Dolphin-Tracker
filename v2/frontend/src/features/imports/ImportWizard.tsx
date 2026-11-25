@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type BaseSyntheticEvent } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useNavigate } from "react-router";
@@ -19,7 +19,8 @@ import {
   useJob,
   useRemapImport,
 } from "@/features/imports/api";
-import { DetailsStep } from "@/features/imports/DetailsStep";
+import { usePopulateFromDevice } from "@/features/device/api";
+import { DetailsStep, type StoreSource } from "@/features/imports/DetailsStep";
 import { MappingStep } from "@/features/imports/MappingStep";
 import {
   buildStops,
@@ -54,7 +55,7 @@ type Step = "details" | "upload" | "columns" | "review" | "done";
 export function ImportWizard({ open, onClose, appendTo }: ImportWizardProps) {
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
-      <DialogContent className="max-h-[92vh] grid-cols-[minmax(0,1fr)] overflow-y-auto sm:max-w-[min(1400px,95vw)]">
+      <DialogContent className="max-h-[92vh] w-[90vw] max-w-[90vw] grid-cols-[minmax(0,1fr)] overflow-y-auto sm:max-w-[90vw]">
         {/* Remounting per open resets every step. */}
         {open && (
           <WizardBody
@@ -99,9 +100,13 @@ function WizardBody({
   onClose: () => void;
 }) {
   const navigate = useNavigate();
+  const [source, setSource] = useState<StoreSource>("sheet");
+  const [devicePa, setDevicePa] = useState("");
   const steps: Step[] = appendTo
     ? ["upload", "columns", "review"]
-    : ["details", "upload", "columns", "review"];
+    : source === "dolphin"
+      ? ["details"]
+      : ["details", "upload", "columns", "review"];
   const [step, setStep] = useState<Step>(steps[0] as Step);
   const details = useForm<WizardDetails>({
     resolver: zodResolver(wizardDetailsSchema),
@@ -141,7 +146,49 @@ function WizardBody({
     (summary.withValueProblems === 0 || dropInvalid) &&
     !missingPa;
 
-  const nextFromDetails = details.handleSubmit(() => setStep("upload"));
+  const populate = usePopulateFromDevice();
+  const creating = create.isPending || populate.isPending;
+
+  /** No sheet: create the project with its Dolphin data PA, then build its stores from the report. */
+  const createFromDolphin = async (values: WizardDetails) => {
+    const pa = devicePa.trim();
+    let created;
+    try {
+      created = await create.mutateAsync({ ...metaPayload(values), device_pa: pa });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not create the project");
+      return;
+    }
+    const name = created.project.name;
+    try {
+      const result = await populate.mutateAsync(created.project.id);
+      toast.success(`Created ${name} with ${result.stores_added} stores from the Dolphin data`);
+    } catch (error) {
+      toast.error(
+        `Created ${name}, but its stores could not be loaded from the Dolphin data (${
+          error instanceof Error ? error.message : "unknown error"
+        }). Try again from Settings → Dolphin device data.`,
+      );
+    }
+    onClose();
+    navigate(`/projects/${created.project.id}/stores`);
+  };
+
+  const nextFromDetails = (event?: BaseSyntheticEvent) => {
+    if (source === "dolphin") {
+      if (!devicePa.trim()) {
+        toast.error("Pick the PA in the Dolphin data");
+        event?.preventDefault();
+        return;
+      }
+      // A single-PA project's name defaults to the Dolphin data's PA.
+      if (details.getValues("single_pa") && !details.getValues("pa").trim()) {
+        details.setValue("pa", devicePa.trim());
+      }
+      return details.handleSubmit(createFromDolphin)(event);
+    }
+    return details.handleSubmit(() => setStep("upload"))(event);
+  };
 
   const repoint = (column: string, target: string) => {
     if (!result.data) return;
@@ -250,11 +297,24 @@ function WizardBody({
 
       {step === "details" && (
         <form onSubmit={nextFromDetails} noValidate className="space-y-4">
-          <DetailsStep form={details} />
+          <DetailsStep
+            form={details}
+            source={source}
+            onSourceChange={setSource}
+            devicePa={devicePa}
+            onDevicePaChange={setDevicePa}
+          />
           <div className="flex justify-end">
-            <Button type="submit">
-              Next <ArrowRight />
-            </Button>
+            {source === "dolphin" ? (
+              <Button type="submit" disabled={creating}>
+                {creating && <Loader2 className="animate-spin" />}
+                {populate.isPending ? "Adding stores from the Dolphin data…" : "Create project from the Dolphin data"}
+              </Button>
+            ) : (
+              <Button type="submit">
+                Next <ArrowRight />
+              </Button>
+            )}
           </div>
         </form>
       )}
@@ -263,6 +323,7 @@ function WizardBody({
         <div className="space-y-4">
           <UploadStep
             projectId={appendTo?.id}
+            pa={!appendTo && details.getValues("single_pa") ? details.getValues("pa").trim() : undefined}
             jobId={jobId}
             onJobId={setJobId}
           />
@@ -386,7 +447,7 @@ function WizardBody({
           {appended.skipped.length > 0 && (
             <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
               <p className="font-medium">
-                {appended.skipped.length} skipped as duplicates (same IBC# or
+                {appended.skipped.length} skipped as duplicates (same ExtID or
                 address):
               </p>
               <ul className="mt-1 max-h-40 list-disc overflow-y-auto pl-5">
@@ -394,7 +455,7 @@ function WizardBody({
                   <li key={skip.index}>
                     {skip.store_name || skip.addr} ·{" "}
                     {skip.reason === "external_id"
-                      ? `IBC# ${skip.external_id}`
+                      ? `ExtID ${skip.external_id}`
                       : skip.addr}
                   </li>
                 ))}

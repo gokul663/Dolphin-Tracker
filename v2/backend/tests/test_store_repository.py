@@ -143,7 +143,7 @@ class StoreRepositoryContract:
         with self.assertRaisesRegex(ConflictError, "IBC-2 already exists"):
             self.repo.put_many("p1", [clash])
         self.assertIsNone(self.repo.get("p1", "x000"))  # the stop and its marker go together or not at all
-        self.repo.put_many("p2", [clash])  # another project may use the same IBC#
+        self.repo.put_many("p2", [clash])  # another project may use the same ExtID
         twice = [clash.model_copy(update={"uid": uid}) for uid in ("y1", "y2")]
         with self.assertRaisesRegex(ConflictError, "twice"):
             self.repo.put_many("p3", twice)
@@ -163,6 +163,16 @@ class StoreRepositoryContract:
                          before.model_dump(exclude={"screens", "status", "updated_at", "updated_by"}))
         with self.assertRaises(NotFoundError):
             self.repo.update_screens("p1", "ghost", screens)
+
+    def test_delete_one_removes_the_stop_and_frees_its_external_id(self):
+        self.repo.put_many("p1", with_ids(make_stops(3)))
+        self.assertTrue(self.repo.delete("p1", "u001"))
+        self.assertIsNone(self.repo.get("p1", "u001"))
+        self.assertEqual([stop.uid for stop in self.repo.list_all("p1")], ["u000", "u002"])
+        self.assertFalse(self.repo.delete("p1", "u001"))  # already gone
+        self.repo.put_many("p1", [make_stops(1, prefix="n")[0].model_copy(update={"external_id": "IBC-1"})])
+        with self.assertRaises(ConflictError):  # the others keep theirs
+            self.repo.put_many("p1", [make_stops(1, prefix="m")[0].model_copy(update={"external_id": "IBC-0"})])
 
     def test_delete_all_frees_the_external_ids(self):
         self.repo.put_many("p1", with_ids(make_stops(2)))

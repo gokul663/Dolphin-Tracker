@@ -50,7 +50,9 @@ class JobService:
             result_url = self._files.presign_download(job.result_key)
         return JobView(**job.model_dump(), result_url=result_url)
 
-    def create_import(self, filename: str, content_type: str, project_id: str | None = None) -> tuple[Job, str]:
+    def create_import(
+        self, filename: str, content_type: str, project_id: str | None = None, pa: str = ""
+    ) -> tuple[Job, str]:
         """Mint an import job and the URL the browser uploads the sheet to. Returns (job, upload_url)."""
         if not filename.lower().endswith(IMPORT_EXTENSIONS):
             raise ValueError("Upload a .csv or .xlsx file")
@@ -63,7 +65,7 @@ class JobService:
             type=JobType.IMPORT_PARSE,
             project_id=project_id,
             message="Waiting for upload",
-            payload={"upload_key": key, "filename": filename, "content_type": content_type},
+            payload={"upload_key": key, "filename": filename, "content_type": content_type, "pa": pa.strip()},
         )
         self._jobs.put(job)
         return job, self._files.presign_upload(key, content_type)

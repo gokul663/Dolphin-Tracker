@@ -10,6 +10,7 @@ export const FACET_LABELS: Record<Facet, string> = {
   install_type: "Install type",
   mount: "Mount",
   fulfilled: "Screens done",
+  review: "Review notes",
   route: "Route",
   visit: "Visits",
   technician: "Technician",

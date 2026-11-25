@@ -60,7 +60,7 @@ export function StoresListActions({ project, filters, onAdded }: { project: Proj
   );
 }
 
-/** The search (IBC#, name, address, with the closest stores as you type) and the filter dropdowns (`children`);
+/** The search (ExtID, name, address, with the closest stores as you type) and the filter dropdowns (`children`);
  *  under them, while anything narrows the list, one chip per active filter (each with its own ×) and Clear all. */
 export function StoresToolbar({
   project,
@@ -148,7 +148,7 @@ export function StoresToolbar({
   );
 }
 
-/** The search box: IBC#, store name or address. As you type, the five closest stores drop down; Enter (or just
+/** The search box: ExtID, store name or address. As you type, the five closest stores drop down; Enter (or just
  *  pausing) filters the list by the text instead. */
 function StoreSearch({
   projectId,
@@ -180,7 +180,7 @@ function StoreSearch({
         aria-expanded={open && items.length > 0}
         aria-controls="store-suggestions"
         aria-autocomplete="list"
-        placeholder="Search IBC#, store name or address…"
+        placeholder="Search ExtID, store name or address…"
         value={value}
         onChange={(event) => {
           onChange(event.target.value);

@@ -58,6 +58,9 @@ def store_query(
     fulfilled: Annotated[
         list[str] | None, Query(description='Repeatable; "Fulfilled", "Not fulfilled" or "No commitment"')
     ] = None,
+    review: Annotated[
+        list[str] | None, Query(description='Repeatable; "Has review notes" or "No review notes"')
+    ] = None,
     q: Annotated[str, Query(max_length=200)] = "",
     needs_attention: Annotated[bool, Query(description="Only stores added without a name or a verified address")] = (
         False
@@ -71,7 +74,8 @@ def store_query(
         status=status or [], installer=installer or [], pa=pa or [], state=state or [], city=city or [],
         dma=dma or [], venue_type=venue_type or [], dd_code=dd_code or [], screen_size=screen_size or [],
         route=route or [], visit=visit or [], bucket=bucket or [], install_type=install_type or [],
-        technician=technician or [], mount=mount or [], fulfilled=fulfilled or [], q=q, sort=sort, dir=dir,
+        technician=technician or [], mount=mount or [], fulfilled=fulfilled or [], review=review or [],
+        q=q, sort=sort, dir=dir,
         needs_attention=needs_attention,
     )
 
@@ -211,6 +215,13 @@ def get_store(project_id: str, stop_uid: str, service: ServiceDep) -> Stop:
     return service.get(project_id, stop_uid)
 
 
+@router.delete("/{stop_uid}", status_code=204, response_class=Response)
+def delete_store(project_id: str, stop_uid: str, service: ServiceDep) -> Response:
+    """Admins only. Deletes the store with its screens and visits; 409 while it is in a route plan."""
+    service.delete(project_id, stop_uid)
+    return Response(status_code=204)
+
+
 def _may_edit(
     who: Principal, service: StoreService, project_id: str, stop_uid: str, fields: set[str],
     allowed: frozenset[str] | None,
@@ -242,7 +253,7 @@ def update_screens(project_id: str, stop_uid: str, body: ScreensUpdate, service:
 
 @router.put("/{stop_uid}/external-id", response_model=Stop)
 def set_external_id(project_id: str, stop_uid: str, body: ExternalIdSet, service: ServiceDep) -> Stop:
-    """The IBC# of a store that has none (added from the Dolphin data); fixed once set."""
+    """The ExtID of a store that has none (added from the Dolphin data); fixed once set."""
     return service.set_external_id(project_id, stop_uid, body.external_id)
 
 

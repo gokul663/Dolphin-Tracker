@@ -97,7 +97,7 @@ export function ProjectKpis({
           icon={<AlertTriangle className="size-5" />}
           tone="amber"
           ariaLabel={`${kpi.needs_attention} stores need attention`}
-          title="Stores needing attention (no name, IBC# or verified address; Completed but not in the Dolphin data; several DD codes in one entry): show them"
+          title="Stores needing attention (no name, ExtID or verified address; Completed but not in the Dolphin data; several DD codes in one entry): show them"
           onClick={onNeedsAttention}
         />
       </div>

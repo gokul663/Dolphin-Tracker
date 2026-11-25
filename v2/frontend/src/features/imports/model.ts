@@ -22,11 +22,15 @@ export interface ReviewRow extends Omit<ImportRow, "status"> {
   previous?: ReviewRow;
   /** "Add anyway": imported without a store name and/or a verified address, flagged as needing attention. */
   addAnyway?: boolean;
+  /** Typed while reviewing: what still has to be checked about the store. Saved under the store's notes. */
+  review_notes?: string;
 }
 
-/** What "Add anyway" would accept for this row: a missing store name, an address Google did not verify. */
-export function overridable(row: ReviewRow): ("store_name" | "address")[] {
-  const reasons: ("store_name" | "address")[] = [];
+/** What "Add anyway" would accept for this row: a missing ExtID or store name, an address Google did not verify.
+ *  Each becomes a flag on the store (the ExtID is then entered once, in the store). */
+export function overridable(row: ReviewRow): ("external_id" | "store_name" | "address")[] {
+  const reasons: ("external_id" | "store_name" | "address")[] = [];
+  if (!row.external_id.trim()) reasons.push("external_id");
   if (!row.store_name.trim()) reasons.push("store_name");
   if (!located(row)) reasons.push("address");
   return reasons;
@@ -73,7 +77,8 @@ export type RowFilter =
   | "invalid"
   | "blocked"
   | "values"
-  | "duplicates";
+  | "duplicates"
+  | "screens";
 
 // ---- columns -------------------------------------------------------------------------------------------------
 
@@ -203,7 +208,7 @@ export function duplicateText(
       ? "an earlier row"
       : `row ${row.duplicate_of + 1}`;
   return row.duplicate_reason === "external_id"
-    ? `Same IBC# as ${of}`
+    ? `Same ExtID as ${of}`
     : `Same address as ${of}`;
 }
 
@@ -260,29 +265,64 @@ export const located = (row: ReviewRow) =>
 export const packedScreens = (row: Pick<ReviewRow, "screens">) =>
   row.screens.filter((screen) => splitCodes(screen.venue_id).length > 1);
 
-/** The suggested fix: one screen per code, its stick at the same position when the counts match. */
+/** The suggested fix: one screen per code. The row's stick numbers and DD codes are each read as one list, in the
+ *  sheet's order, and paired by position: the first stick with the first code, and so on. That holds however the two
+ *  cells were separated (sticks by commas and codes on separate lines, say); whichever list is longer leaves the
+ *  rest without a partner. */
 export function splitRowScreens(row: Pick<ReviewRow, "screens">): ReviewRow["screens"] {
-  return row.screens.flatMap((screen) => {
-    const codes = splitCodes(screen.venue_id);
-    if (codes.length < 2) return [screen];
-    const sticks = splitCodes(screen.stick_number);
-    const paired = sticks.length === codes.length;
-    return codes.map((code, index) => ({
-      ...screen,
-      venue_id: code,
-      stick_number: paired ? sticks[index]! : index === 0 ? screen.stick_number : "",
-    }));
-  });
+  if (packedScreens(row).length === 0) return row.screens;
+  const sticks = row.screens.flatMap((screen) => splitCodes(screen.stick_number));
+  const codes = row.screens.flatMap((screen) => splitCodes(screen.venue_id));
+  const status = row.screens[0]!.status;
+  return Array.from({ length: Math.max(sticks.length, codes.length) }, (_, index) => ({
+    status: row.screens[index]?.status ?? status,
+    stick_number: sticks[index] ?? "",
+    venue_id: codes[index] ?? "",
+  }));
 }
+
+/** A DD code as the CMS writes it: DD-ABC123 or DD_ABC123 (six letters or digits). */
+const DD_CODE = /^DD[-_][A-Z0-9]{6}$/i;
+export const isDdCode = (value: string) => DD_CODE.test(value.trim());
+
+type RowScreen = ReviewRow["screens"][number];
+
+/** The stick number and the DD code sit in each other's column: the "stick number" is a DD code and the "DD code"
+ *  is not one (it is blank, or a stick number such as DD-002-01356). */
+export const looksSwapped = (screen: RowScreen) =>
+  isDdCode(screen.stick_number) && !isDdCode(screen.venue_id) && splitCodes(screen.venue_id).length < 2;
+
+export const swapScreen = (screen: RowScreen): RowScreen => ({
+  ...screen,
+  stick_number: screen.venue_id,
+  venue_id: screen.stick_number,
+});
+
+export const swappedScreens = (row: Pick<ReviewRow, "screens">) => row.screens.filter(looksSwapped);
+
+/** Screens whose DD code is one entry that is not in the DD-ABCDEF format (and is not simply swapped with its stick
+ *  number: that has its own fix). Shown, never blocking: the code may be right and unusual. */
+export const oddCodeScreens = (row: Pick<ReviewRow, "screens">) =>
+  row.screens.filter(
+    (screen) =>
+      screen.venue_id.trim() !== "" &&
+      splitCodes(screen.venue_id).length < 2 &&
+      !isDdCode(screen.venue_id) &&
+      !looksSwapped(screen),
+  );
+
+/** Rows whose screens need a look: swapped columns, or a DD code in another format. */
+export const hasScreenWarnings = (row: ReviewRow) =>
+  !row.excluded && (swappedScreens(row).length > 0 || oddCodeScreens(row).length > 0);
 
 /** Why a row cannot be imported (empty when it can). Excluded rows have none: they are skipped. An unverified
  *  address and an unparsed DD code block a row; other unusable values (a picture link, a phone) do not. */
 export function rowProblems(row: ReviewRow): string[] {
   if (row.excluded) return [];
   const problems: string[] = [];
-  if (!row.external_id.trim()) problems.push("IBC# is required");
   if (packedScreens(row).length) problems.push("DD code holds several codes: use the suggested split or fix the sheet");
   if (row.addAnyway) return problems; // the rest is accepted: the store is flagged as needing attention
+  if (!row.external_id.trim()) problems.push("ExtID is required");
   if (!row.store_name.trim()) problems.push("Store name is required");
   if (!located(row)) problems.push("Address is not verified");
   return problems;
@@ -319,6 +359,7 @@ export function filterRows(rows: ReviewRow[], filter: RowFilter): ReviewRow[] {
       (row) => rowProblems(row).length === 0 && valueProblems(row).length > 0,
     );
   if (filter === "duplicates") return rows.filter(isDuplicate);
+  if (filter === "screens") return rows.filter(hasScreenWarnings);
   return rows.filter((row) => row.status === filter);
 }
 
@@ -330,6 +371,8 @@ export function reviewSummary(rows: ReviewRow[]) {
     needs_review: rows.filter((row) => row.status === "needs_review").length,
     invalid: rows.filter((row) => row.status === "invalid").length,
     duplicates: rows.filter(isDuplicate).length,
+    screenWarnings: rows.filter(hasScreenWarnings).length,
+    swapped: active.filter((row) => swappedScreens(row).length > 0).length,
     excluded: rows.length - active.length,
     blocked: active.filter((row) => rowProblems(row).length > 0).length,
     withValueProblems: active.filter(
@@ -380,6 +423,7 @@ export function buildStops(
         needs_attention: row.addAnyway ? overridable(row) : [],
         pa: row.pa,
         installer_name: row.installer_name,
+        review_notes: (row.review_notes ?? "").trim(),
         screens,
         fields: row.fields,
       } as StopInput;

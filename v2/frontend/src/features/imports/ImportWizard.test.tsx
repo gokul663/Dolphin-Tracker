@@ -11,11 +11,11 @@ const RESULT: ImportResult = {
   columns: ["ibc", "store_name", "store_address", "dma", "notes"],
   mapping: { ibc: "external_id", store_name: "store_name", store_address: "addr", dma: "dma", notes: "" },
   address_column: "store_address", store_column: "store_name", extra_columns: ["notes"],
-  summary: { total: 4, valid: 3, needs_review: 1, invalid: 0, duplicates: 1 }, pa_names: ["North"],
+  summary: { total: 4, valid: 3, needs_review: 1, invalid: 0, duplicates: 1, known: 0 }, pa_names: ["North"],
   rows: [
     row(0, { venue_status: "Completed", details: { dma: "ATL" }, fields: { notes: "side door" },
              screens: [{ stick_number: "S1", venue_id: "V1", status: "Completed" }] }),
-    row(1, { external_id: "", problems: { external_id: "IBC# is required" } }),
+    row(1, { external_id: "", problems: { external_id: "ExtID is required" } }),
     row(2, { status: "needs_review", confidence: 0, lat: null, lng: null, formatted: "", coordinates_source: "",
              suggestions: ["2 Main St NW, Atlanta, GA, USA"] }),
     row(3, { duplicate_of: 0, duplicate_reason: "external_id", external_id: "IBC-0", store_name: "Store 0 again" }),
@@ -51,14 +51,14 @@ function importRoutes(extra: Record<string, (url: URL, init: RequestInit) => unk
 }
 
 async function uploadSheet() {
-  const file = new File(["IBC#,Store Name,Store Address\n"], "ibc.csv", { type: "text/csv" });
+  const file = new File(["ExtID,Store Name,Store Address\n"], "ibc.csv", { type: "text/csv" });
   await userEvent.upload(screen.getByLabelText("Spreadsheet file"), file);
   await userEvent.click(screen.getByRole("button", { name: /Upload and verify/ }));
   await screen.findByRole("combobox", { name: "Field for column dma" }, { timeout: 4000 }); // the Columns step
 }
 
 async function fixReviewRows() {
-  await userEvent.type(screen.getByLabelText("IBC#, row 2"), "ibc-new");
+  await userEvent.type(screen.getByLabelText("ExtID, row 2"), "ibc-new");
   await userEvent.click(screen.getByRole("combobox", { name: "Suggestions, row 3" }));
   await userEvent.click(await screen.findByRole("option", { name: "2 Main St NW, Atlanta, GA, USA" }));
   await waitFor(() => expect(screen.getByText("3 ready · 1 excluded")).toBeTruthy());
@@ -108,11 +108,12 @@ describe("ImportWizard: new project", () => {
     // Review: the duplicate is excluded with its reason; fix the rest.
     await userEvent.click(screen.getByRole("button", { name: /Next: review 4 rows/ }));
     await userEvent.click(screen.getByRole("button", { name: /1 duplicates/ }));
-    expect(screen.getByRole("note").textContent).toBe("Duplicate: Same IBC# as row 1");
+    expect(screen.getByRole("note").textContent).toBe("Duplicate: Same ExtID as row 1");
     expect(screen.getByRole("checkbox", { name: "Exclude row 4" }).hasAttribute("disabled")).toBe(true);
     await userEvent.click(screen.getByRole("button", { name: /4 all rows/ }));
     expect(screen.getByLabelText("Screens, row 1").textContent).toBe("1 screen · S1/V1");
     await fixReviewRows();
+    await userEvent.type(screen.getByLabelText("Review notes, row 3"), "store name not confirmed");
     await userEvent.click(screen.getByRole("button", { name: "Create project with 3 stores" }));
 
     await waitFor(() => expect(calls.some((call) => call.method === "POST" && call.url.pathname === "/api/projects")).toBe(true));
@@ -129,7 +130,8 @@ describe("ImportWizard: new project", () => {
     expect(body.stops[0]).toMatchObject({
       dma: "ATL", installation_notes: "side door", fields: {}, screens: [{ stick_number: "S1", venue_id: "V1", status: "Completed" }],
     });
-    expect(body.stops[2]).toMatchObject({ addr: "2 Main St NW", lat: 33.72 });
+    expect(body.stops[2]).toMatchObject({ addr: "2 Main St NW", lat: 33.72, review_notes: "store name not confirmed" });
+    expect(body.stops[0]?.review_notes).toBe(""); // nothing typed for it
   });
 
   it("several PAs: no PA name, each store brings its own from the sheet", async () => {
@@ -185,7 +187,7 @@ describe("ImportWizard: append", () => {
 
     expect(await screen.findByText(/Appended 2 stores; the project now has 5/)).toBeTruthy();
     expect(screen.getByText(/1 skipped as duplicates/)).toBeTruthy();
-    expect(screen.getByText("Store 0 · IBC# IBC-0")).toBeTruthy();
+    expect(screen.getByText("Store 0 · ExtID IBC-0")).toBeTruthy();
     const appended = calls.find((call) => call.url.pathname.endsWith("/stores/append"))?.body as {
       stops: StopInput[]; pa: string; import_mapping: Record<string, string>;
     };
@@ -236,7 +238,7 @@ describe("ImportWizard: fetch errors", () => {
   async function startAppend(extra: Parameters<typeof importRoutes>[0]) {
     const api = importRoutes(extra);
     renderWithProviders(<ImportWizard open appendTo={makeProject({ id: "p1" })} onClose={() => {}} />);
-    const file = new File(["IBC#\n"], "ibc.csv", { type: "text/csv" });
+    const file = new File(["ExtID\n"], "ibc.csv", { type: "text/csv" });
     await userEvent.upload(screen.getByLabelText("Spreadsheet file"), file);
     await userEvent.click(screen.getByRole("button", { name: /Upload and verify/ }));
     return api;
@@ -271,5 +273,107 @@ describe("ImportWizard: back to upload", () => {
     await userEvent.click(screen.getByRole("button", { name: /Upload another file/ }));
     await userEvent.click(await screen.findByRole("button", { name: /Continue to the columns/ }));
     expect(screen.getByRole("combobox", { name: "Field for column dma" })).toBeTruthy();
+  });
+});
+
+describe("ImportWizard: screens in the review step", () => {
+  it("swaps a stick number and DD code that came in each other's column, and lets each screen be edited", async () => {
+    const swappedResult: ImportResult = {
+      ...RESULT,
+      rows: RESULT.rows.map((r) =>
+        r.index === 0 ? { ...r, screens: [{ stick_number: "DD-H6WKL4", venue_id: "DD-002-01356", status: "Completed" }] } : r,
+      ),
+    };
+    const { calls } = importRoutes({
+      "GET /api/jobs/j1/result": () => swappedResult,
+      "POST /api/projects": () => ({ project: makeProject({ id: "new3", name: "Wave 3" }), skipped: [] }),
+    });
+    renderWithProviders(<ImportWizard open onClose={() => {}} />);
+    await fillDetails();
+    await userEvent.click(screen.getByRole("button", { name: /Next/ }));
+    await uploadSheet();
+    await userEvent.click(screen.getByRole("button", { name: /Next: review 4 rows/ }));
+    await userEvent.click(screen.getByRole("button", { name: /1 with DD codes to check/ }));
+    expect(screen.getByRole("note").textContent).toContain("Stick number and DD code look swapped");
+    await userEvent.click(screen.getByRole("button", { name: "Swap stick number and DD code on 1 row" }));
+    expect(screen.getByLabelText("Screens, row 1").textContent).toBe("1 screen · DD-002-01356/DD-H6WKL4");
+    expect(screen.queryByRole("note")).toBeNull();
+
+    // Edit the screens by hand: a code in another format is pointed out, and a screen can be added.
+    await userEvent.click(screen.getByRole("button", { name: "Edit screens, row 1" }));
+    const code = screen.getByLabelText("DD code 1, row 1");
+    await userEvent.clear(code);
+    await userEvent.type(code, "DD-H6WKL");
+    expect(screen.getByLabelText("DD code format, row 1").textContent).toContain("DD-H6WKL");
+    await userEvent.type(code, "4");
+    expect(screen.queryByLabelText("DD code format, row 1")).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "Add a screen, row 1" }));
+    await userEvent.type(screen.getByLabelText("DD code 2, row 1"), "DD_NEW123");
+
+    await userEvent.click(screen.getByRole("button", { name: /4 all rows/ }));
+    await fixReviewRows();
+    await userEvent.click(screen.getByRole("button", { name: "Create project with 3 stores" }));
+    await waitFor(() => expect(calls.some((call) => call.method === "POST" && call.url.pathname === "/api/projects")).toBe(true));
+    const body = calls.find((call) => call.method === "POST" && call.url.pathname === "/api/projects")?.body as { stops: StopInput[] };
+    expect(body.stops[0]?.screens).toEqual([
+      { stick_number: "DD-002-01356", venue_id: "DD-H6WKL4", status: "Completed" },
+      { stick_number: "", venue_id: "DD_NEW123", status: "Completed" }, // a new screen takes the row's sheet status
+    ]);
+  });
+});
+
+describe("ImportWizard: stores we already know", () => {
+  it("sends the PA with the upload and says what was reused on the row", async () => {
+    const known: ImportResult = {
+      ...RESULT,
+      rows: RESULT.rows.map((r) =>
+        r.index === 0
+          ? { ...r, coordinates_source: "known", verified_by: ["tracker"], reused: "Address from project Wave 1 · 2 DD codes from the Dolphin data",
+              screens: [{ stick_number: "SN-1", venue_id: "DD_AAA111", status: "Completed" }, { stick_number: "SN-2", venue_id: "DD_AAA222", status: "Offline" }] }
+          : r,
+      ),
+    };
+    const { calls } = importRoutes({ "GET /api/jobs/j1/result": () => known });
+    renderWithProviders(<ImportWizard open onClose={() => {}} />);
+    await fillDetails();
+    await userEvent.click(screen.getByRole("button", { name: /Next/ }));
+    await uploadSheet();
+    expect(calls.find((call) => call.url.pathname === "/api/jobs/imports")?.body).toMatchObject({ pa: "North" });
+    await userEvent.click(screen.getByRole("button", { name: /Next: review 4 rows/ }));
+    await userEvent.click(screen.getByRole("button", { name: /4 all rows/ }));
+    expect(screen.getByLabelText("Already known, row 1").textContent).toBe("Address from project Wave 1 · 2 DD codes from the Dolphin data");
+    expect(screen.getByLabelText("Screens, row 1").textContent).toBe("2 screens · SN-1/DD_AAA111, SN-2/DD_AAA222");
+    expect(screen.queryByLabelText("Already known, row 2")).toBeNull();
+  });
+});
+
+describe("ImportWizard: from the Dolphin data", () => {
+  it("creates the project with no sheet, then builds its stores from the PA's records", async () => {
+    const { calls } = mockApi({
+      "GET /api/device-data/pas": () => ({ date: "2026-11-09", pas: ["IBC", "North"] }),
+      "POST /api/projects": () => ({ project: makeProject({ id: "new2", name: "Wave 4" }), skipped: [] }),
+      "POST /api/projects/new2/device-sync/populate": () => ({
+        stores_added: 12, sync: { synced: true, state: null, stores_updated: 12 },
+      }),
+    });
+    renderWithProviders(<ImportWizard open onClose={() => {}} />);
+
+    await userEvent.type(screen.getByLabelText("Project name *"), "Wave 4");
+    await userEvent.click(screen.getByRole("radio", { name: /Dolphin data only/ }));
+    expect(screen.queryByText(/Upload the store list/)).toBeNull(); // no upload, columns or review steps
+    await userEvent.click(screen.getByRole("button", { name: /Create project from the Dolphin data/ }));
+    expect(calls.some((call) => call.method === "POST" && call.url.pathname === "/api/projects")).toBe(false);
+
+    await userEvent.type(screen.getByLabelText("PA in the Dolphin data *"), "IBC");
+    await userEvent.click(screen.getByRole("button", { name: /Create project from the Dolphin data/ }));
+    await waitFor(() =>
+      expect(calls.some((call) => call.url.pathname === "/api/projects/new2/device-sync/populate")).toBe(true),
+    );
+    const body = calls.find((call) => call.method === "POST" && call.url.pathname === "/api/projects")?.body as {
+      device_pa: string; pa: string; stops?: unknown;
+    };
+    expect(body.device_pa).toBe("IBC");
+    expect(body.pa).toBe("IBC"); // the PA name defaults to the Dolphin data's PA
+    expect(body.stops).toBeUndefined();
   });
 });

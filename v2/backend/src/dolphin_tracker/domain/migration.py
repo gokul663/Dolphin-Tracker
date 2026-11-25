@@ -31,7 +31,7 @@ from dolphin_tracker.domain.validation import normalize_external_id
 LEGACY_PROJECT_IDS = frozenset({"atlanta-default"})
 LEGACY_FIELD_KEYS = ("pa", "venue_type", "dma", "venue_code", "owner_name", "owner_phone", "owner_email", "payee_name")
 # v1 stop keys that are first-class store attributes in v2 (STORE-MODEL §2); venue_code becomes the screen's
-# venue_id and, when present, the IBC#. payee_name stays an extra field.
+# venue_id and, when present, the ExtID. payee_name stays an extra field.
 FIRST_CLASS_LEGACY_KEYS = ("pa", "venue_type", "dma", "owner_name", "owner_phone", "owner_email")
 LEGACY_ID_PREFIX = "LEGACY-"
 V1_CORE_KEYS = frozenset(
@@ -316,7 +316,7 @@ def format_report(reports: Iterable[ProjectReport]) -> str:
         mapped = ", ".join(f"{status} {count}" for status, count in sorted(report.v2_statuses.items()))
         lines.append(f"    v2 statuses: {mapped}")
         lines.append(
-            f"    IBC#: {report.ids_from_venue_code} from venue codes, {report.legacy_ids} {LEGACY_ID_PREFIX}*"
+            f"    ExtID: {report.ids_from_venue_code} from venue codes, {report.legacy_ids} {LEGACY_ID_PREFIX}*"
             + (f" (repeated venue codes: {', '.join(report.duplicate_venue_codes)})" if report.duplicate_venue_codes
                else "")
         )

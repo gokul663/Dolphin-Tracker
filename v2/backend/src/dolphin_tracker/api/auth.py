@@ -60,6 +60,7 @@ POLICY: dict[tuple[str, str], Permission | str] = {
     ("GET", _PROJECT + "/stores/export.csv"): P.PROJECTS_VIEW,
     ("POST", _PROJECT + "/stores/append"): P.PROJECTS_EDIT,
     ("GET", _STORE): P.PROJECTS_VIEW,
+    ("DELETE", _STORE): P.STORES_DELETE,
     ("PUT", _STORE + "/external-id"): P.PROJECTS_EDIT,
     # Open to whoever logs visits; the handler then holds them to a store on a route and to a few fields
     # (domain.auth.store_edit_problem).
@@ -113,6 +114,7 @@ POLICY: dict[tuple[str, str], Permission | str] = {
     # Dolphin data
     ("GET", "/api/device-data/pas"): P.PROJECTS_VIEW,
     ("POST", _PROJECT + "/device-sync"): P.PROJECTS_EDIT,
+    ("POST", _PROJECT + "/device-sync/populate"): P.PROJECTS_EDIT,
     ("GET", _PROJECT + "/device-sync/review"): P.PROJECTS_VIEW,
     ("POST", _PROJECT + "/device-sync/review/{key}/add"): P.PROJECTS_EDIT,
     ("POST", _PROJECT + "/device-sync/review/{key}/snooze"): P.PROJECTS_EDIT,

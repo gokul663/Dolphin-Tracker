@@ -3,7 +3,9 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { MapView } from "@/components/map/MapView";
 import { OpenFullPage } from "@/features/stores/StoresViewControls";
-import { useProjectContext } from "@/features/projects/ProjectPage";
+import { useDeviceReview } from "@/features/device/api";
+import { DEVICE_TONE, REPORT_STATUS_TONE } from "@/features/device/DeviceBits";
+import { useOpenDeviceReview, useProjectContext } from "@/features/projects/ProjectPage";
 import { DEFAULT_STORE_PAGE_SIZE, useFilterOptions, usePins, useScreenList, useStoreHardware, useStoreList, useStoresByState } from "@/features/stores/api";
 import { HardwareCostChart } from "@/features/stores/HardwareCostChart";
 import { BucketChips } from "@/features/stores/BucketChips";
@@ -16,12 +18,16 @@ import { StoresListActions, StoresToolbar } from "@/features/stores/StoresToolba
 import type { StoreFilters } from "@/lib/api/resources";
 import { useShallow } from "zustand/react/shallow";
 import { useStoresUi } from "@/stores/ui";
+import { cn } from "@/lib/utils";
 
 // Recharts is heavy; the chart loads after the table and map (as on the dashboard, §9 #9).
 const TopStatesChart = lazy(() => import("@/features/stores/TopStatesChart"));
 
 /** Filters on top, then the map (three quarters) beside the top-states chart, then the table full width; all
  *  driven by the same filters. */
+/** How many matching Needs review records the search shows in line; the rest are in the dialog. */
+const WAITING_SHOWN = 5;
+
 export function StoresTab() {
   const project = useProjectContext();
   const ui = useStoresUi(
@@ -68,6 +74,15 @@ export function StoresTab() {
   const byState = useStoresByState(project.id, selection, unit === "screens" ? "screens" : "stores");
   const hardware = useStoreHardware(project.id, selection);
 
+  // The search also looks in "Needs review": a screen the Dolphin data reports that is in no store yet is not in
+  // the list below, so a search for its ExtID or address would otherwise find nothing and say nothing.
+  const searched = ui.search.trim();
+  const waiting = useDeviceReview(
+    project.id, { limit: WAITING_SHOWN, cursor: null }, true, Boolean(searched) && Boolean(project.device_sync), searched,
+  );
+  const waitingCount = searched ? (waiting.data?.total ?? 0) : 0;
+  const openReview = useOpenDeviceReview();
+
   const total = list.data?.total ?? 0;
   const paging = { total, offset: page.offset, pageSize, fetching: list.isFetching, onPage: setPageIndex, onPageSize: setPageSize };
   const rowState = { sort: ui.sort, dir: ui.dir, onSort: ui.setSort, selectedId: ui.selectedId, hoveredId: ui.hoveredId, onHover: ui.hover };
@@ -87,6 +102,37 @@ export function StoresTab() {
         <StoresToolbar project={project} filters={filters} onPick={open}>
           <FilterBar options={options.data} facets={ui.facets} onToggle={ui.toggleFacet} />
         </StoresToolbar>
+        {waitingCount > 0 && (
+          <section aria-label="Matches in Needs review" className={cn("space-y-1.5 rounded-lg border px-3 py-2 text-sm text-cyan-900", DEVICE_TONE.panel)}>
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="min-w-0 flex-1">
+                <span className="font-semibold">
+                  {waitingCount} {waitingCount === 1 ? "screen" : "screens"} in Needs review
+                </span>{" "}
+                {waitingCount === 1 ? "matches" : "match"} "{searched}": in the Dolphin data, not in a store of this project yet.
+              </p>
+              <Button size="sm" variant="outline" onClick={() => openReview(searched)}>
+                Show in Needs review
+              </Button>
+            </div>
+            {/* The records themselves, each with what the Dolphin data says about it. */}
+            <ul className="divide-y divide-cyan-100">
+              {(waiting.data?.items ?? []).map((item) => (
+                <li key={item.key} className="flex flex-wrap items-center gap-x-3 gap-y-0.5 py-1">
+                  <span className="rounded border border-cyan-300 bg-white px-1.5 py-0.5 text-[11px] font-medium text-cyan-800">Needs review</span>
+                  <span className={cn("rounded border px-1 text-[11px]", REPORT_STATUS_TONE[item.status.toLowerCase()] ?? "border-slate-200 bg-white text-slate-600")}>
+                    {item.status || "Unknown"}
+                  </span>
+                  <span className="font-mono text-xs">{item.external_id || "no ExtID"}</span>
+                  <span className="font-medium">{item.store_name || item.venue_name || "No name in the report"}</span>
+                  <span className="font-mono text-xs text-slate-500">{item.venue_id}</span>
+                  <span className="min-w-0 truncate text-slate-600">{item.address || [item.city, item.state, item.zip].filter(Boolean).join(", ")}</span>
+                </li>
+              ))}
+            </ul>
+            {waitingCount > WAITING_SHOWN && <p className="text-xs text-cyan-800">and {waitingCount - WAITING_SHOWN} more</p>}
+          </section>
+        )}
       </Card>
       {/* Map three quarters, the top-states chart beside it at the same height (about a third of the screen,
           legend included); stacked on narrow screens. */}

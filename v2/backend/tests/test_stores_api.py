@@ -114,11 +114,11 @@ class ListTests(StoresApiTestCase):
         self.assertEqual(self.get(status="Nope").status_code, 422)
 
     def test_search(self):
-        # IBC#, store name and address only; DMA, DD code and the rest have filters of their own.
+        # ExtID, store name and address only; DMA, DD code and the rest have filters of their own.
         self.assertEqual(self.uids(q="atlanta"), ["a"])  # city
         self.assertEqual(self.uids(q="31201"), ["c"])  # zip
         self.assertEqual(self.uids(q="s10"), ["c"])  # display id
-        self.assertEqual(self.uids(q="ibc-2"), ["b"])  # IBC#
+        self.assertEqual(self.uids(q="ibc-2"), ["b"])  # ExtID
         self.assertEqual(self.uids(q="MCN"), [])  # dma: the DMA filter
         self.assertEqual(self.uids(q="owner"), [])  # comment
         self.assertEqual(self.uids(q="v3"), [])  # a screen's DD code: the DD code filter
@@ -260,14 +260,14 @@ class ExportTests(StoresApiTestCase):
         self.assertIn("attachment", response.headers["content-disposition"])
         rows = list(csv.reader(io.StringIO(response.text)))
         header = rows[0]
-        self.assertEqual(header[:6], ["ID", "IBC#", "Store name", "Address", "City", "State"])
+        self.assertEqual(header[:6], ["ID", "ExtID", "Store name", "Address", "City", "State"])
         for column in ("Store owner email", "Spot visible from most of store", "Dolphin screens (committed)",
                        "Screen rows", "Status", "Tier", "Screens wanted"):
             self.assertIn(column, header)
         self.assertLess(header.index("Store owner email"), header.index("Store SSID"))  # §3 order
         self.assertEqual([row[0] for row in rows[1:]], ["S1", "S10"])
         a = dict(zip(header, rows[1], strict=True))
-        self.assertEqual((a["IBC#"], a["PA"], a["Status"], a["Screens"]), ("IBC-1", "North", "Completed", "1"))
+        self.assertEqual((a["ExtID"], a["PA"], a["Status"], a["Screens"]), ("IBC-1", "North", "Completed", "1"))
         self.assertEqual(a["Notes"], "'=HYPERLINK(\"x\")")  # formula neutralised
         self.assertEqual((a["Spot visible from most of store"], a["Power outlet within 6 ft"]), ("yes", ""))
         self.assertEqual(a["Screen rows"], '— / V1 / 24" / Dolphin screen / wall mount (none yet) / Completed')
@@ -421,3 +421,92 @@ class ProgressTests(StoresApiTestCase):
         self.patch("b", {"addr": "99 New St", "city": "Atlanta", "zip": "30303"})
         self.assertEqual(writes[0], {"comment"})
         self.assertFalse(writes[1] & {"status", "screens", "comment", "installer", "day", "seq"})
+
+
+class DeleteTests(StoresApiTestCase):
+    def test_an_admin_deletes_a_store_and_its_ext_id_is_free_again(self):
+        self.projects.update("p1", {"stop_count": 4})
+        response = self.client.delete("/api/projects/p1/stores/b", headers={"X-Dev-Role": "admin"})
+        self.assertEqual(response.status_code, 204, response.text)
+        self.assertEqual(self.client.get("/api/projects/p1/stores/b").status_code, 404)
+        self.assertEqual(self.projects.get("p1").stop_count, 3)
+        self.assertEqual(self.client.delete("/api/projects/p1/stores/b").status_code, 404)
+        again = Stop(uid="z", display_id="S9", external_id="IBC-2", store_name="New", addr="1 A St")
+        self.stores.put_many("p1", [again])  # the deleted store's ExtID can be used again
+
+    def test_only_admins_may_delete(self):
+        for role in ("operator", "viewer", "technician"):
+            response = self.client.delete("/api/projects/p1/stores/b", headers={"X-Dev-Role": role})
+            self.assertEqual(response.status_code, 403, role)
+        self.assertIsNotNone(self.stores.get("p1", "b"))
+
+    def test_a_store_in_a_route_plan_is_not_deleted(self):
+        self.stores.claim_for_plan("p1", ["b"], "plan1", "2026-11-01T00:00:00+00:00")
+        response = self.client.delete("/api/projects/p1/stores/b")
+        self.assertEqual(response.status_code, 409)
+        self.assertIn("route plan", response.json()["detail"])
+        self.assertIsNotNone(self.stores.get("p1", "b"))
+
+
+class ReviewNotesTests(StoresApiTestCase):
+    def test_review_notes_are_saved_filtered_and_exported(self):
+        saved = self.patch("b", {"review_notes": "store name not confirmed"}, "/progress").json()
+        self.assertEqual(saved["review_notes"], "store name not confirmed")
+        page = self.client.get("/api/projects/p1/stores", params={"review": "Has review notes"}).json()
+        self.assertEqual([item["uid"] for item in page["items"]], ["b"])
+        options = self.client.get("/api/projects/p1/stores/filters").json()["review"]
+        self.assertEqual(options, [{"value": "Has review notes", "count": 1}, {"value": "No review notes", "count": 3}])
+        export = self.client.get("/api/projects/p1/stores/export.csv", params={"review": "Has review notes"}).text
+        self.assertIn("Review notes", export.splitlines()[0])
+        self.assertIn("store name not confirmed", export)
+        self.assertEqual(self.patch("b", {"review_notes": ""}, "/progress").json()["review_notes"], "")
+
+    def test_a_new_project_and_an_append_keep_the_rows_review_notes(self):
+        row = {"external_id": "N-1", "store_name": "New", "addr": "1 New St", "lat": 33.0, "lng": -84.0,
+               "review_notes": "  check the suite number  "}
+        created = self.client.post("/api/projects", json={
+            "name": "Fresh", "pa": "North", "project_type": "offline", "stops": [row]}).json()["project"]
+        stores = self.client.get(f"/api/projects/{created['id']}/stores").json()["items"]
+        self.assertEqual(stores[0]["review_notes"], "check the suite number")
+        self.client.post("/api/projects/p1/stores/append", json={"stops": [row]})
+        added = self.client.get("/api/projects/p1/stores", params={"review": "Has review notes"}).json()["items"]
+        self.assertEqual([item["external_id"] for item in added], ["N-1"])
+
+    def test_a_sheet_row_without_an_ext_id_is_added_anyway_and_flagged(self):
+        rows = [{"store_name": f"No id {n}", "addr": f"{n} New St", "lat": 33.0, "lng": -84.0,
+                 "needs_attention": ["external_id"]} for n in (1, 2)]
+        plain = self.client.post("/api/projects", json={
+            "name": "Fresh", "pa": "North", "project_type": "offline", "stops": [{**rows[0], "needs_attention": []}]})
+        self.assertEqual(plain.status_code, 422)  # not asked for: the ExtID is still required
+        created = self.client.post("/api/projects", json={
+            "name": "Fresh", "pa": "North", "project_type": "offline", "stops": rows})
+        self.assertEqual(created.status_code, 201, created.text)
+        stores = self.client.get(f"/api/projects/{created.json()['project']['id']}/stores").json()["items"]
+        self.assertEqual([(s["external_id"], s["needs_attention"]) for s in stores], [("", ["external_id"])] * 2)
+
+
+class SearchTests(StoresApiTestCase):
+    def found(self, q: str) -> list[str]:
+        page = self.client.get("/api/projects/p1/stores", params={"q": q}).json()
+        return [item["uid"] for item in page["items"]]
+
+    def test_a_whole_address_matches_across_its_fields(self):
+        self.assertEqual(self.found("10 Oak St, Atlanta, GA 30303"), ["a"])
+        self.assertEqual(self.found("10 Oak Street Atlanta"), ["a"])  # "St" and "Street" are the same word
+        self.assertEqual(self.found("oak atlanta"), ["a"])
+        self.assertEqual(self.found("10 Oak St, Decatur"), [])  # every word must be there
+
+    def test_spellings_of_street_words_and_the_verified_address(self):
+        self.stores.update_fields("p1", "d", {"addr": "12000 South Shore Boulevard", "city": "Wellington",
+                                              "state": "FL", "zip": "33414",
+                                              "geocoded": "12000 S Shore Blvd, Wellington, FL 33414, USA"})
+        for q in ("12000 South Shore Boulevard, Wellington, FL 33414", "12000 S Shore Blvd", "12000 s shore blvd.",
+                  "south shore boulevard", "12000 S Shore Blvd, Wellington, FL 33414, USA"):
+            self.assertEqual(self.found(q), ["d"], q)
+        self.assertEqual(self.found("12000 North Shore Boulevard"), [])
+
+    def test_ext_id_and_name_still_match(self):
+        self.assertEqual(self.found("ibc-10"), ["c"])
+        self.assertEqual(self.found("alpha"), ["b"])
+        self.assertEqual(self.found("V3"), [])  # a screen's DD code: the DD code filter
+        self.assertEqual(self.found("charlie gas macon"), ["c"])

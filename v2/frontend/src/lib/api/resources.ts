@@ -47,7 +47,7 @@ import type {
   RoutePlanCreate,
   RoutePlanUpdate,
   Visit,
-  VisitInput, OverwriteField, ReviewAdd, OverwriteResult, PaList, ReviewItem, ReviewPage, LogPage, UploadList, SyncResult, DayInsert, DayLockSet, StopMove, StopMark, InsertOptions, InsertQuery, StorePage, ScreenPage, PlaceHit, InstallerSave, InstallerSaved, InstallerWorkReport, ScreenSheetResult } from "@/lib/api/types";
+  VisitInput, OverwriteField, ReviewAdd, OverwriteResult, PaList, ReviewItem, ReviewPage, LogPage, UploadList, SyncResult, PopulateResult, DayInsert, DayLockSet, StopMove, StopMark, InsertOptions, InsertQuery, StorePage, ScreenPage, PlaceHit, InstallerSave, InstallerSaved, InstallerWorkReport, ScreenSheetResult } from "@/lib/api/types";
 import type { StorePageParams } from "@/lib/api/keys";
 import type { StatusBucket } from "@/lib/status";
 
@@ -78,6 +78,8 @@ export interface StoreFilters {
   mount?: string[];
   /** "Fulfilled" / "Not fulfilled" / "No commitment": Completed screens against the committed counts. */
   fulfilled?: string[];
+  /** "Has review notes" / "No review notes": what the import's review step (or someone since) left to check. */
+  review?: string[];
   /** Only stores added without a name or a verified address (not fixed yet). */
   needs_attention?: boolean;
   q?: string;
@@ -105,6 +107,7 @@ function storeQuery(filters: StoreFilters) {
     technician: filters.technician,
     mount: filters.mount,
     fulfilled: filters.fulfilled,
+    review: filters.review,
     needs_attention: filters.needs_attention || undefined,
     q: filters.q || undefined,
     sort: filters.sort,
@@ -156,6 +159,9 @@ export const projectsApi = {
 };
 
 export const storesApi = {
+  /** Admins only: the store, its screens and its visits, for good. 409 while it is in a route plan. */
+  remove: (projectId: string, uid: string) =>
+    api<void>(`/projects/${enc(projectId)}/stores/${enc(uid)}`, { method: "DELETE" }),
   list: (projectId: string, filters: StoreFilters, page: StorePageParams) =>
     api<StorePage>(`/projects/${enc(projectId)}/stores`, {
       query: { ...storeQuery(filters), limit: page.limit, offset: page.offset, ...(page.bounds ?? {}) },
@@ -320,9 +326,15 @@ export const deviceSyncApi = {
       method: "POST",
       query: onlyIfStale ? { only_if_stale: true } : {},
     }),
-  review: (projectId: string, params: { limit: number; cursor?: string | null; includeSnoozed?: boolean }) =>
+  /** Add a store for every record of the project's PA that no store has, then sync (a project with no sheet). */
+  populate: (projectId: string) =>
+    api<PopulateResult>(`/projects/${enc(projectId)}/device-sync/populate`, { method: "POST" }),
+  review: (projectId: string, params: { limit: number; cursor?: string | null; includeSnoozed?: boolean; q?: string }) =>
     api<ReviewPage>(`/projects/${enc(projectId)}/device-sync/review`, {
-      query: { limit: params.limit, cursor: params.cursor ?? undefined, include_snoozed: params.includeSnoozed || undefined },
+      query: {
+        limit: params.limit, cursor: params.cursor ?? undefined, include_snoozed: params.includeSnoozed || undefined,
+        q: params.q?.trim() || undefined,
+      },
     }),
   add: (projectId: string, key: string, body: Partial<ReviewAdd> = {}) =>
     api<Stop>(`/projects/${enc(projectId)}/device-sync/review/${enc(key)}/add`, { method: "POST", body }),

@@ -440,7 +440,7 @@ class InstallerWorkTests(StoresApiTestCase):
 
 class ScreenCostSheetTests(StoresApiTestCase):
     SHEET = (
-        "IBC#,Store Address,Venue ID,Stick Count,Screen Size,Screen Count,Cost per Screen,Cost Note\n"
+        "ExtID,Store Address,Venue ID,Stick Count,Screen Size,Screen Count,Cost per Screen,Cost Note\n"
         'X1,"1 Main St, Atlanta, Georgia 30303",dd_one,1,43",0,$175.00,\n'
         'X1,"1 Main St, Atlanta, Georgia 30303",DD-TWO,1,24",1,$500.00,checked\n'
         'X9,"9 Far Rd, Macon, Georgia 31201",DD-NOWHERE,1,50",1,$750.00,\n'
@@ -483,7 +483,7 @@ class ScreenCostSheetTests(StoresApiTestCase):
         self.stores.update_fields("p1", "a", {"screens": [screen.model_dump(mode="json") for screen in screens]})
         prices = {"stick": 175, "screens": [{"size": "24", "cost": 325}, {"size": "43", "cost": 375}]}
         self.client.patch("/api/projects/p1", json={"hardware_costs": prices})
-        sheet = ("IBC#,Store Address,Venue ID,Stick Count,Screen Size,Screen Count\n"
+        sheet = ("ExtID,Store Address,Venue ID,Stick Count,Screen Size,Screen Count\n"
                  'X1,1 Main St,DD-ONE,1,43",0\n'   # the store's own TV: the stick only
                  'X1,1 Main St,DD-TWO,1,24",1\n'   # stick + a 24 inch screen
                  "X1,1 Main St,DD-SIX,1,,\n"       # no size or count: left as it is (a 43 inch Dolphin screen)
@@ -497,7 +497,7 @@ class ScreenCostSheetTests(StoresApiTestCase):
 
     def test_refuses_a_sheet_without_dd_codes(self):
         import base64
-        body = {"filename": "x.csv", "content_base64": base64.b64encode(b"IBC#,Size\nX1,24\n").decode()}
+        body = {"filename": "x.csv", "content_base64": base64.b64encode(b"ExtID,Size\nX1,24\n").decode()}
         self.assertEqual(self.client.post("/api/projects/p1/screen-sheet", json=body).status_code, 422)
 
 
@@ -578,7 +578,7 @@ class AddStoreTests(StoresApiTestCase):
         again = self.add(store_name="Other", addr="5 Elsewhere Rd")
         self.assertEqual(again.status_code, 422, again.text)
         problem = again.json()["detail"]["fields"]["external_id"]
-        self.assertIn("IBC# GA90001 is already in the project: New Mart", problem)
+        self.assertIn("ExtID GA90001 is already in the project: New Mart", problem)
         same_place = self.add(external_id="GA90002")
         self.assertEqual(same_place.status_code, 422, same_place.text)
         self.assertIn("This address is already in the project", same_place.json()["detail"]["fields"]["addr"])

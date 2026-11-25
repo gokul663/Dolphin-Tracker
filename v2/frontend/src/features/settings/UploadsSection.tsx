@@ -23,7 +23,7 @@ export function UploadsSection({ project }: { project: Project }) {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <SectionTitle
           title="Uploaded sheets"
-          hint="Every sheet imported into this project is kept here. Uploading another adds its new stores; a store already in the project (same IBC# or address) is skipped, not updated."
+          hint="Every sheet imported into this project is kept here. Uploading another adds its new stores; a store already in the project (same ExtID or address) is skipped, not updated."
         />
         <Button onClick={() => setImporting(true)}>
           <Upload /> Upload a sheet

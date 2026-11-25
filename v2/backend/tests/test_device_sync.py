@@ -293,6 +293,40 @@ class ServiceTests(ServiceTestCase):
         self.assertTrue(self.service.sync("p1", only_if_stale=True).synced)
         self.assertEqual(len(self.source.snapshots), 2)
 
+    def test_add_fills_rows_waiting_for_a_dd_code_before_adding_rows(self):
+        # The sheet said three screens, none with a DD code yet; the report has two sticks at that address.
+        self.stores.put_many("p1", [Stop(
+            uid="w", display_id="W", external_id="IBC-W", store_name="Waiting", addr="1 Lake Rd", city="Kalamazoo",
+            state="MI", zip="49009", screens=[Screen(), Screen(), Screen()],
+        )])
+        lake = {"Address": "1 Lake Rd, Kalamazoo, MI 49009"}
+        self.source.rows += [report_row("DD_LAKE01", **lake), report_row("DD_LAKE02", "Offline", **lake)]
+        self.service.sync("p1")
+        ids = [screen.id for screen in self.stores.get("p1", "w").screens]
+        self.assertEqual(self.service.add_from_review("p1", "DD_LAKE01").uid, "w")
+        store = self.service.add_from_review("p1", "DD_LAKE02")
+        self.assertEqual([screen.id for screen in store.screens], ids)  # the same three rows, none added
+        self.assertEqual([(screen.venue_id, screen.status) for screen in store.screens], [
+            ("DD_LAKE01", ScreenStatus.COMPLETED), ("DD_LAKE02", ScreenStatus.OFFLINE), ("", ScreenStatus.UPCOMING),
+        ])
+        self.assertEqual(store.screens[0].stick_number, "SN-DD_LAKE01")
+
+    def test_add_adds_a_row_once_no_row_is_waiting(self):
+        self.stores.put_many("p1", [Stop(
+            uid="w", display_id="W", external_id="IBC-W", store_name="Waiting", addr="1 Lake Rd", city="Kalamazoo",
+            state="MI", zip="49009",
+            screens=[Screen(), Screen(stick_number="OTHER-STICK"), Screen(status="Cancelled")],
+        )])
+        lake = {"Address": "1 Lake Rd, Kalamazoo, MI 49009"}
+        self.source.rows += [report_row("DD_LAKE01", **lake), report_row("DD_LAKE02", **lake)]
+        self.service.sync("p1")
+        self.service.add_from_review("p1", "DD_LAKE01")
+        store = self.service.add_from_review("p1", "DD_LAKE02")
+        # One empty row was filled; the row with another stick and the Cancelled row are left alone.
+        self.assertEqual([(screen.venue_id, screen.stick_number) for screen in store.screens], [
+            ("DD_LAKE01", "SN-DD_LAKE01"), ("", "OTHER-STICK"), ("", ""), ("DD_LAKE02", "SN-DD_LAKE02"),
+        ])
+
     def test_not_now_hides_until_the_next_report_day(self):
         self.service.sync("p1")
         self.service.snooze("p1", "dd-new001")
@@ -316,7 +350,7 @@ class ServiceTests(ServiceTestCase):
         self.assertEqual(added.screens[0].venue_id, "DD_NEW001")
         self.assertEqual(added.status, ScreenStatus.COMPLETED)
         self.assertEqual(added.screens[0].device.status, "Online")
-        self.assertEqual((added.external_id, added.needs_attention), ("", ["external_id"]))  # no IBC#: asked for
+        self.assertEqual((added.external_id, added.needs_attention), ("", ["external_id"]))  # no ExtID: asked for
         self.assertEqual(self.projects.get("p1").pa, "IBC")  # the report's PA name does not join the project's
         self.assertEqual(self.service.review("p1").total, 1)
 
@@ -462,6 +496,63 @@ class ServiceTests(ServiceTestCase):
         self.assertIn("venues", result)  # then the planner's all-venues list, from every PA
 
 
+class PopulateTests(ServiceTestCase):
+    """A project started from the Dolphin data alone, with no sheet."""
+
+    def setUp(self):
+        super().setUp()
+        self.projects.put(Project(id="p2", name="No sheet", pa="IBC", device_pa="IBC",
+                                  project_type=ProjectType.NEW_INSTALLATION))
+        self.source.rows = [
+            report_row("DD_ONE001", **{"PK External ID": "ibc-1"}),
+            report_row("DD_ONE002", "Offline", **{"PK External ID": "IBC-1", "Address": "9 Other St, Macon, GA",
+                                                  "City": "Macon"}),  # same ExtID: a second stick of that store
+            report_row("DD_TWO001", **{"Address": "1 Lake Rd, Kalamazoo, MI 49009", "Store Name": "Lake"}),
+            report_row("DD_TWO002", "Not Registered", **{"Address": "1 Lake Rd, Kalamazoo, MI 49009"}),  # same address
+            report_row("DD_NOPL01", **{"Address": None, "City": None, "Latitude": None, "Longitude": None,
+                                       "Store Name": None, "State Code": None, "Zip Code": None}),
+            report_row("DD_ARC001", "Archived", **{"Address": "3 Gone Rd, Kalamazoo, MI 49009"}),
+            report_row("DD_ELSE01", **{"PA Name": "Other PA"}),
+        ]
+
+    def test_builds_one_store_per_ibc_or_address_then_syncs(self):
+        result = self.service.populate("p2")
+        self.assertEqual(result.stores_added, 3)
+        stores = {stop.external_id or stop.screens[0].venue_id: stop for stop in self.stores.list_all("p2")}
+        ibc = stores["IBC-1"]
+        self.assertEqual([screen.venue_id for screen in ibc.screens], ["DD_ONE001", "DD_ONE002"])
+        self.assertEqual([screen.status for screen in ibc.screens], [ScreenStatus.COMPLETED, ScreenStatus.OFFLINE])
+        self.assertEqual((ibc.addr, ibc.city, ibc.lat, ibc.lng), ("5680 Stadium Dr", "Kalamazoo", 42.2675, -85.661))
+        self.assertEqual(ibc.screens[0].stick_number, "SN-DD_ONE001")
+        self.assertIsNotNone(ibc.device)
+        lake = next(stop for stop in stores.values() if stop.store_name == "Lake")
+        self.assertEqual([screen.venue_id for screen in lake.screens], ["DD_TWO001", "DD_TWO002"])
+        self.assertEqual(lake.needs_attention, ["external_id"])  # the CMS has no ExtID for it
+        blank = next(stop for stop in stores.values() if stop.screens[0].venue_id == "DD_NOPL01")
+        self.assertIsNone(blank.lat)
+        self.assertEqual(blank.store_name, "CMS_DD_NOPL01")  # the CMS name when there is no store name
+        self.assertEqual(set(blank.needs_attention), {"address", "external_id"})
+        state = self.projects.get("p2").device_sync
+        self.assertEqual((state.matched_screens, state.review_count), (5, 0))
+        self.assertEqual(self.projects.get("p2").stop_count, 3)
+        self.assertEqual(self.source.snapshots, ["IBC"])  # one read of the report
+
+    def test_repeating_keeps_the_stores_and_adds_only_new_records(self):
+        self.service.populate("p2")
+        self.assertEqual(self.service.populate("p2").stores_added, 0)
+        self.source.rows.append(report_row("DD_NEW777", **{"Address": "77 New Rd, Kalamazoo, MI 49009"}))
+        self.source.rows.append(report_row("DD_TWO003", **{"Address": "1 Lake Rd, Kalamazoo, MI 49009"}))
+        result = self.service.populate("p2")
+        self.assertEqual(result.stores_added, 1)  # DD_TWO003 belongs to the Lake store: left for review's Add
+        self.assertEqual([item.key for item in self.service.review("p2").items], ["DD_TWO003"])
+        self.assertEqual(len(self.stores.list_all("p2")), 4)
+
+    def test_needs_a_pa(self):
+        self.projects.update("p2", {"device_pa": ""})
+        with self.assertRaises(ValidationFailed):
+            self.service.populate("p2")
+
+
 class ApiTests(ServiceTestCase):
     def setUp(self):
         super().setUp()
@@ -487,6 +578,31 @@ class ApiTests(ServiceTestCase):
         pins = {pin["uid"]: pin for pin in self.client.get("/api/projects/p1/stores/pins").json()}
         self.assertEqual(pins["a"]["lat"], 42.2675)  # the report's location
         self.assertEqual(pins["c"]["lat"], 33.7)
+
+    def test_create_a_project_without_a_sheet_then_populate(self):
+        created = self.client.post("/api/projects", json={
+            "name": "From Dolphin data", "device_pa": "IBC", "project_type": "new_installation",
+        })
+        self.assertEqual(created.status_code, 201, created.text)
+        project = created.json()["project"]
+        self.assertEqual((project["pa"], project["device_pa"], project["stop_count"]), ("IBC", "IBC", 0))
+        body = self.client.post(f"/api/projects/{project['id']}/device-sync/populate").json()
+        # DD_HFN64S, DD_OFF001 and DD_NEW001 share an address (one store, three sticks); DD_NEW002 has none.
+        self.assertEqual(body["stores_added"], 2)
+        self.assertTrue(body["sync"]["synced"])
+        self.assertEqual(body["sync"]["state"]["review_count"], 0)
+        page = self.client.get(f"/api/projects/{project['id']}/stores").json()
+        self.assertEqual(sorted(len(item["screens"]) for item in page["items"]), [1, 3])
+
+    def test_review_search_finds_a_record_by_ext_id_name_code_or_address(self):
+        self.source.rows.append(report_row("DD_HF94R6", "Offline", **{
+            "PK External ID": "OK22245", "Store Name": "Conoco - Muskogee", "Address": "1304 N York St, Muskogee, OK"}))
+        self.client.post("/api/projects/p1/device-sync")
+        for q in ("ok22245", "muskogee", "dd_hf94", "1304 n york"):
+            page = self.client.get("/api/projects/p1/device-sync/review", params={"q": q}).json()
+            self.assertEqual((page["total"], [item["key"] for item in page["items"]]), (1, ["DD_HF94R6"]), q)
+        nothing = self.client.get("/api/projects/p1/device-sync/review", params={"q": "nope"}).json()
+        self.assertEqual(nothing["total"], 0)
 
     def test_store_logs_by_dd_code(self):
         def log(code: str, date: str, category: str) -> dict:

@@ -72,6 +72,8 @@ class ImportJobCreate(ApiModel):
     filename: str = Field(min_length=1, max_length=255)
     content_type: str = Field(default="application/octet-stream", max_length=255)
     project_id: str | None = None  # set when appending to an existing project
+    # A new single-PA project's PA (typed before the upload): stores we already know are matched within their PA.
+    pa: str = Field(default="", max_length=500)
 
 
 class ImportJobCreated(ApiModel):
@@ -92,7 +94,7 @@ class SkippedStop(ApiModel):
 
 class ProjectCreated(ApiModel):
     project: Project
-    skipped: list[SkippedStop] = Field(default_factory=list)  # duplicates by IBC#, then address
+    skipped: list[SkippedStop] = Field(default_factory=list)  # duplicates by ExtID, then address
 
 
 class JobAccepted(ApiModel):
@@ -114,7 +116,7 @@ class Pin(ApiModel):
 
 class StoreDetailsUpdate(ApiModel):
     """Detail edit (STORE-MODEL §2, "editable in planner"). Omitted keys are unchanged; `fields` merges per key
-    into the stop's extra fields. Anything else (IBC#, PA, routing, progress, screens) is a 422."""
+    into the stop's extra fields. Anything else (ExtID, PA, routing, progress, screens) is a 422."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -180,6 +182,7 @@ class ProgressUpdate(ApiModel):
     model_config = ConfigDict(extra="forbid")
 
     comment: str | None = Field(default=None, max_length=2000)
+    review_notes: str | None = Field(default=None, max_length=2000)  # "" clears them
     additional_task: bool | None = None
     installer_name: str | None = Field(default=None, max_length=200)
     updated_by: str | None = Field(default=None, max_length=200)
@@ -209,6 +212,7 @@ class StoreFilterOptions(ApiModel):
     technician: list[FilterOption]
     mount: list[FilterOption]
     fulfilled: list[FilterOption]
+    review: list[FilterOption]
 
 
 class StoreFieldSpec(ApiModel):
@@ -297,8 +301,8 @@ class AppendStops(ApiModel):
 
 
 class StoreAdd(ApiModel):
-    """One store typed in by hand (the Stores page's "Add store"). Checked like a sheet row: IBC#, store name and
-    address are required, the IBC# and the address must be new to the project, and Google must verify the address."""
+    """One store typed in by hand (the Stores page's "Add store"). Checked like a sheet row: ExtID, store name and
+    address are required, the ExtID and the address must be new to the project, and Google must verify the address."""
 
     external_id: str = Field(max_length=100)
     store_name: str = Field(max_length=300)
@@ -345,7 +349,8 @@ class ImportSummary(ApiModel):
     valid: int
     needs_review: int
     invalid: int
-    duplicates: int = 0  # rows repeating an earlier row of the sheet (by IBC#, then address)
+    duplicates: int = 0  # rows repeating an earlier row of the sheet (by ExtID, then PA + address)
+    known: int = 0  # rows for a store we already know: its address and/or DD codes were reused
 
 
 class ImportScreen(ApiModel):
@@ -360,7 +365,7 @@ class ImportRow(ApiModel):
     index: int
     address: str  # as uploaded
     store_name: str
-    external_id: str = ""  # IBC#, normalised
+    external_id: str = ""  # ExtID, normalised
     pa: str
     status: Literal["valid", "needs_review", "invalid"]
     confidence: int
@@ -372,7 +377,8 @@ class ImportRow(ApiModel):
     zip: str
     lat: float | None
     lng: float | None
-    coordinates_source: Literal["", "geocode", "sheet"] = ""  # "sheet": geocoding failed, the sheet's lat/lng kept
+    # "sheet": geocoding failed, the sheet's lat/lng kept. "known": a store we already know, Google was not asked.
+    coordinates_source: Literal["", "geocode", "sheet", "known"] = ""
     place_name: str
     suggestions: list[str]
     error: str
@@ -386,6 +392,12 @@ class ImportRow(ApiModel):
     duplicate_of: int | None = None  # index of the earlier row this one repeats
     duplicate_reason: Literal["", "external_id", "address"] = ""
     fields: dict[str, str]  # unrecognised columns ("Other imported data"), keyed by normalised header
+    # A store we already know (another project's, or the Dolphin data's): what was taken from it, in words; where
+    # the address came from; and the known screens (already merged into `screens`).
+    reused: str = ""
+    known_address: str = ""
+    known_screens: list[ImportScreen] = Field(default_factory=list)
+    known_screens_from: str = ""
 
 
 class ImportMapping(ApiModel):

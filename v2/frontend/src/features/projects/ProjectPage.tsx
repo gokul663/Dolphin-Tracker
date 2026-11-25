@@ -39,6 +39,11 @@ export function useProjectContext(): Project {
   return useOutletContext<{ project: Project }>().project;
 }
 
+/** Open "Needs review" from a tab, narrowed to a search (the Stores search found records waiting there). */
+export function useOpenDeviceReview(): (search?: string) => void {
+  return useOutletContext<{ openReview?: (search?: string) => void } | null>()?.openReview ?? (() => {});
+}
+
 export function ProjectPage() {
   const { projectId = "" } = useParams();
   const query = useProject(projectId);
@@ -47,6 +52,11 @@ export function ProjectPage() {
   const canEdit = useCan("projects.edit");
   const autoSync = useAutoDeviceSync(query.data);
   const [reviewing, setReviewing] = useState(false);
+  const [reviewSearch, setReviewSearch] = useState("");
+  const openReview = (search = "") => {
+    setReviewSearch(search);
+    setReviewing(true);
+  };
   const onList = useMatch("/projects/:projectId/stores") !== null;
   const unit = useStoresUi((state) => (state.projectId === projectId ? state.unit : "locations"));
   const activeBuckets = useStoresUi((state) => (state.projectId === projectId ? state.facets.bucket : NO_BUCKETS));
@@ -105,7 +115,7 @@ export function ProjectPage() {
           <ProjectKpis
             kpi={project.kpi}
             reviewCount={project.device_sync?.review_count ?? 0}
-            onDeviceReview={() => setReviewing(true)}
+            onDeviceReview={() => openReview()}
             onMissingScreens={showMissingScreens}
             activeBuckets={activeBuckets}
             onBucket={(bucket) => {
@@ -157,8 +167,8 @@ export function ProjectPage() {
           )}
         </div>
       </div>
-      <Outlet context={{ project }} />
-      {project.device_sync && <ReviewDialog project={project} open={reviewing} onClose={() => setReviewing(false)} onMissingScreens={showMissingScreens} />}
+      <Outlet context={{ project, openReview }} />
+      {project.device_sync && <ReviewDialog project={project} open={reviewing} search={reviewSearch} onClose={() => setReviewing(false)} onMissingScreens={showMissingScreens} />}
     </section>
   );
 }

@@ -12,6 +12,8 @@
 - A store with no DMA takes the report's (from any matched screen); a DMA already set is never replaced. The venue
   type works the same way, from the report's OOH category.
 - Report records whose DD code no screen has are listed for review (Archived ones are not).
+- A project can also start from the report alone: every record no store has becomes a store of its own (records
+  sharing an ExtID, else an address, are one store with a screen each), placed at the report's location.
 """
 from __future__ import annotations
 
@@ -28,8 +30,16 @@ from dolphin_tracker.domain.device import (
     venue_code_key,
 )
 from dolphin_tracker.domain.import_mapping import dedupe_key_address
-from dolphin_tracker.domain.models import NeedsAttention, Screen, ScreenStatus, Stop, derive_store_status
-from dolphin_tracker.domain.validation import normalize_external_id
+from dolphin_tracker.domain.models import (
+    NeedsAttention,
+    Screen,
+    ScreenInput,
+    ScreenStatus,
+    Stop,
+    StopInput,
+    derive_store_status,
+)
+from dolphin_tracker.domain.validation import normalize_external_id, validate_store_values
 
 # Closed in the tracker: the report only says which of the two it is (did the device ever register).
 KEEP_STATUSES = frozenset({ScreenStatus.CANCELLED, ScreenStatus.ARCHIVED})
@@ -207,7 +217,7 @@ def store_with_code(code: object, stops: Iterable[Stop], *, exclude_uid: str = "
 
 
 def store_for_record(record: DeviceRecord, stops: Iterable[Stop]) -> Stop | None:
-    """The store a report record's stick belongs to, when the project has it: same IBC# (the CMS's external id),
+    """The store a report record's stick belongs to, when the project has it: same ExtID (the CMS's external id),
     else the same normalised address as the store's sheet address or its Dolphin data address. The record's own
     DD code is in no store (that is why it is under review), so it never decides this."""
     stops = list(stops)
@@ -230,6 +240,21 @@ def store_for_record(record: DeviceRecord, stops: Iterable[Stop]) -> Stop | None
     return None
 
 
+def placeholder_screen(screens: Iterable[Screen], record: DeviceRecord) -> Screen | None:
+    """The screen row a report record fills in, rather than adding a row: one the sheet (or a person) made for a
+    stick that had no DD code yet. A row with no DD code and this record's stick number first; else the first row
+    with no DD code and no stick number. A row with another stick number is another device, and a Cancelled or
+    Archived row is closed: neither is taken. None: the record becomes a new row."""
+    empty = [screen for screen in screens
+             if not venue_code_key(screen.venue_id) and screen.status not in KEEP_STATUSES]
+    serial = record.serial_number.strip().lower()
+    if serial:
+        same = next((screen for screen in empty if screen.stick_number.strip().lower() == serial), None)
+        if same is not None:
+            return same
+    return next((screen for screen in empty if not screen.stick_number.strip()), None)
+
+
 def add_record_changes(stop: Stop, record: DeviceRecord, snapshot: DeviceSnapshot, now: str) -> dict[str, Any]:
     """Apply one report record to the screen with its DD code only; the store's other screens keep what the last
     sync gave them. The store takes the record's values when it has no Dolphin data yet."""
@@ -245,3 +270,68 @@ def add_record_changes(stop: Stop, record: DeviceRecord, snapshot: DeviceSnapsho
     if stop.device is None:
         changes["device"] = store_device(record).model_dump(mode="json")
     return changes
+
+
+# A required value the report lacks (or has malformed): the store is still added, flagged for that value.
+_FLAG_FOR = {
+    "store_name": NeedsAttention.STORE_NAME,
+    "addr": NeedsAttention.ADDRESS,
+    "external_id": NeedsAttention.EXTERNAL_ID,
+}
+
+
+def _record_address(record: DeviceRecord) -> str:
+    return dedupe_key_address({"addr": record.addr, "city": record.city, "state": record.state, "zip": record.zip})
+
+
+def store_input_from_records(records: list[DeviceRecord]) -> StopInput:
+    """One new store from the report: the first record's name, address, ExtID, DMA and venue type, and a screen per
+    record. Located at the report's lat/lng (the CMS's own fix; no Google check). A value the store rules refuse is
+    left blank, and a required one that is missing flags the store, as "add anyway" does."""
+    first = records[0]
+    values = {
+        "external_id": normalize_external_id(first.external_id), "store_name": first.store_name or first.venue_name,
+        "addr": first.addr, "city": first.city, "state": first.state, "zip": first.zip, "dma": first.dma,
+        "venue_type": first.venue_type,
+    }
+    for name in validate_store_values(values, partial=True):
+        values[name] = ""
+    located = first.lat is not None and first.lng is not None and bool(values["addr"])
+    attention = [] if located else [NeedsAttention.ADDRESS]
+    attention += [flag for name, flag in _FLAG_FOR.items() if not values[name] and flag not in attention]
+    return StopInput(
+        **values,
+        lat=first.lat if located else None,
+        lng=first.lng if located else None,
+        geocoded=first.address if located else "",
+        screens=[ScreenInput(venue_id=record.venue_id, stick_number=record.serial_number) for record in records],
+        needs_attention=attention,
+    )
+
+
+def stores_from_records(records: Iterable[DeviceRecord], stops: Iterable[Stop]) -> list[StopInput]:
+    """New stores for the report records no store of the project has (Archived ones are skipped, as in review).
+    A record that belongs to a store already there (`store_for_record`) is left for review, where Add joins it to
+    that store. The rest are grouped the way `store_for_record` matches: same ExtID, else the same address; each
+    group is one store with a screen per record."""
+    stops = list(stops)
+    known = {venue_code_key(code) for stop in stops for screen in stop.screens for code in split_codes(screen.venue_id)}
+    groups: list[list[DeviceRecord]] = []
+    by_id: dict[str, list[DeviceRecord]] = {}
+    by_address: dict[str, list[DeviceRecord]] = {}
+    for key, record in index_records(records).items():
+        if key in known or record.status.strip().lower() in NOT_REVIEWED or store_for_record(record, stops):
+            continue
+        external_id, address = normalize_external_id(record.external_id), _record_address(record)
+        group = (by_id.get(external_id) if external_id else None) or (by_address.get(address) if address else None)
+        if group is None:
+            group = []
+            groups.append(group)
+        group.append(record)
+        if external_id:
+            by_id.setdefault(external_id, group)
+        if address:
+            by_address.setdefault(address, group)
+    groups.sort(key=lambda group: ((group[0].store_name or group[0].venue_name).lower() or "~",
+                                   venue_code_key(group[0].venue_id)))
+    return [store_input_from_records(group) for group in groups]

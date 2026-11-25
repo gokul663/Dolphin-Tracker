@@ -21,9 +21,11 @@ from dolphin_tracker.domain.device_sync import (
     add_record_changes,
     index_records,
     overwrite_changes,
+    placeholder_screen,
     review_items,
     store_for_record,
     store_with_code,
+    stores_from_records,
     sync_stop,
 )
 from dolphin_tracker.domain.errors import ConflictError, NotFoundError, ValidationFailed
@@ -35,6 +37,7 @@ from dolphin_tracker.domain.models import (
     StopInput,
     now_iso,
 )
+from dolphin_tracker.domain.search import matches, search_text
 from dolphin_tracker.repositories.device_data import DeviceDataSource, DeviceDataUnavailable
 from dolphin_tracker.repositories.device_review import DeviceReviewRepository
 from dolphin_tracker.repositories.projects import ProjectRepository
@@ -55,6 +58,11 @@ class SyncResult(ApiModel):
     synced: bool  # False: the project already had the report's newest day (only_if_stale)
     state: DeviceSyncState | None
     stores_updated: int = 0
+
+
+class PopulateResult(ApiModel):
+    stores_added: int  # new stores built from the report's records
+    sync: SyncResult  # the sync that ran right after, on the same report day
 
 
 class ReviewPage(ApiModel):
@@ -122,7 +130,23 @@ class DeviceSyncService:
         if only_if_stale and state is not None and state.pa == pa and state.snapshot_date >= source.latest_date():
             return SyncResult(synced=False, state=state)
 
-        snapshot = source.snapshot(pa)
+        return self._apply(project_id, pa, source.snapshot(pa))
+
+    def populate(self, project_id: str) -> PopulateResult:
+        """Build the project's stores from the report alone (no sheet): every record of the PA's newest day that no
+        store has becomes a store, then the sync runs on that day. Safe to repeat: stores already there are kept,
+        and a record that belongs to one of them stays in review for Add."""
+        project = self._project(project_id)
+        pa = project.device_pa.strip()
+        if not pa:
+            raise ValidationFailed("Choose this project's PA for device data first")
+        snapshot = self._require_source().snapshot(pa)
+        inputs = stores_from_records(snapshot.records, self._stores.list_all(project_id))
+        added = self._store_service.append(project_id, inputs)["appended"] if inputs else 0
+        return PopulateResult(stores_added=added, sync=self._apply(project_id, pa, snapshot))
+
+    def _apply(self, project_id: str, pa: str, snapshot: DeviceSnapshot) -> SyncResult:
+        """One sync against a snapshot already read."""
         try:  # the planner's all-venues list takes this PA's latest too; it never fails the project's sync
             self._venues.upsert(snapshot.records)
         except Exception:
@@ -184,10 +208,18 @@ class DeviceSyncService:
     # ---- review -----------------------------------------------------------------------------------------
 
     def review(
-        self, project_id: str, *, include_snoozed: bool = False, limit: int = 50, cursor: str | None = None
+        self, project_id: str, *, include_snoozed: bool = False, limit: int = 50, cursor: str | None = None,
+        q: str = "",
     ) -> ReviewPage:
+        """The records waiting for review. `q` narrows them like the store search does: ExtID, store and CMS name,
+        DD code, stick number and address."""
         self._project(project_id)
         items = self._reviews.list(project_id)
+        if q.strip():
+            items = [item for item in items if matches(q, search_text((
+                item.external_id, item.store_name, item.venue_name, item.venue_id, item.serial_number, item.address,
+                item.addr, item.city, item.state, item.zip,
+            )))]
         items.sort(key=lambda item: (item.store_name.lower() or "~", item.key))
         snoozed = sum(1 for item in items if item.snoozed_date)
         shown = items if include_snoozed else [item for item in items if not item.snoozed_date]
@@ -229,7 +261,7 @@ class DeviceSyncService:
         add_anyway: bool = False,
     ) -> Stop:
         """Add the report's stick to the project. The DD code is the key: a store can hold several sticks, so when a
-        store is already there (same IBC#, or the same address as its sheet or its Dolphin data) the stick joins it
+        store is already there (same ExtID, or the same address as its sheet or its Dolphin data) the stick joins it
         as a new screen. Otherwise the address is checked with Google like an imported row (the report's address,
         or `address` / a picked Google `place` from the person); one that cannot be verified is refused with
         Google's suggestions, unless `add_anyway` (the store is then flagged for an address check)."""
@@ -297,14 +329,25 @@ class DeviceSyncService:
         raise ValidationFailed(message, suggestions=suggestions, address=line)
 
     def _add_screen(self, project_id: str, stop: Stop, item: ReviewItem, stops: list[Stop]) -> Stop:
+        """The stick joins the store: it fills a row waiting for a DD code (the sheet's "3 screens" with no codes
+        yet) when there is one, and only becomes a new row when there is none left."""
+        waiting = placeholder_screen(stop.screens, item)
         rows = [ScreenInput(**screen.model_dump(exclude={"device", "status_changed_at"})) for screen in stop.screens]
-        rows.append(ScreenInput(venue_id=item.venue_id, stick_number=item.serial_number))
+        if waiting is None:
+            rows.append(ScreenInput(venue_id=item.venue_id, stick_number=item.serial_number))
+        else:
+            rows = [
+                row.model_copy(update={"venue_id": item.venue_id,
+                                       "stick_number": row.stick_number.strip() or item.serial_number})
+                if row.id == waiting.id else row
+                for row in rows
+            ]
         return self._store_service.update_screens(project_id, stop.uid, rows, updated_by="Dolphin data", stops=stops)
 
     def _create_store(self, project_id: str, item: ReviewItem, *, verified: bool) -> Stop:
         located = verified and item.lat is not None and item.lng is not None and bool(item.addr)
         attention = [] if located else [NeedsAttention.ADDRESS]
-        if not item.external_id:  # the CMS has no IBC# for it: never invent one, ask for it on the store
+        if not item.external_id:  # the CMS has no ExtID for it: never invent one, ask for it on the store
             attention.append(NeedsAttention.EXTERNAL_ID)
         name = item.store_name or item.venue_name
         if not name:

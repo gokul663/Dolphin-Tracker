@@ -51,7 +51,7 @@ def venue_stop(record: DeviceRecord) -> Stop | None:
     located = record.lat is not None and record.lng is not None
     return Stop(
         uid=uid,
-        # The CMS's IBC#, shown only: `external_id` must be unique within a project, and across every PA it is not.
+        # The CMS's ExtID, shown only: `external_id` must be unique within a project, and across every PA it is not.
         display_id=record.external_id,
         store_name=record.store_name or record.venue_name or record.venue_id,
         addr=record.addr or record.address,

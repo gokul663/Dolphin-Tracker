@@ -18,7 +18,7 @@ ImportDep = Annotated[ImportService, Depends(get_import_service)]
 @router.post("/imports", response_model=ImportJobCreated, status_code=201)
 def create_import(body: ImportJobCreate, service: ServiceDep) -> ImportJobCreated:
     try:
-        job, upload_url = service.create_import(body.filename, body.content_type, body.project_id)
+        job, upload_url = service.create_import(body.filename, body.content_type, body.project_id, body.pa)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return ImportJobCreated(job_id=job.id, upload_url=upload_url, upload_key=job.payload["upload_key"])

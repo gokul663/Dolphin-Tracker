@@ -62,6 +62,7 @@ class PolicyTests(unittest.TestCase):
             ("POST", stop + "/move"): "super_admin admin operator",
             ("POST", stop + "/reassign"): "super_admin admin operator",
             ("POST", stop + "/mark"): "super_admin admin operator",
+            ("DELETE", store): "super_admin admin",  # delete a store for good
             ("POST", store + "/visits"): "super_admin admin operator",
             ("PUT", store + "/screens"): "super_admin admin operator",
             ("GET", store + "/visits"): "super_admin admin operator viewer",

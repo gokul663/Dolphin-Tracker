@@ -8,7 +8,7 @@ import { keys } from "@/lib/api/keys";
 import type { Me, Permission, Role } from "@/lib/api/types";
 
 const VIEW: Permission[] = ["projects.view", "routes.view"];
-const ALL: Permission[] = [...VIEW, "projects.edit", "installers.manage", "routes.manage", "routes.arrange", "visits.log"];
+const ALL: Permission[] = [...VIEW, "projects.edit", "stores.delete", "installers.manage", "routes.manage", "routes.arrange", "visits.log"];
 /** The server's role table, for tests (backend domain/auth.py ROLE_PERMISSIONS). */
 export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
   super_admin: ALL,

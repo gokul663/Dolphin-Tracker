@@ -165,7 +165,7 @@ function SheetRow({ row, sheetHasCost }: { row: SheetScreenRow; sheetHasCost: bo
             <span className="truncate">{row.store_name || row.store_external_id}</span>
             {row.ibc_differs && (
               <span className="inline-flex shrink-0 items-center gap-1 text-xs text-amber-700" title={`The sheet says ${row.external_id}; this DD code is at ${row.store_external_id}`}>
-                <AlertTriangle size={12} /> IBC# {row.external_id}
+                <AlertTriangle size={12} /> ExtID {row.external_id}
               </span>
             )}
           </span>

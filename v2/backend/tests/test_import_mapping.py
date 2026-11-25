@@ -71,15 +71,15 @@ ROWS = (
         "Store Name": "Beta Deli", "Store Address": "9 Lost Rd", "Latitude": "34.1", "Longitude": "-84.2",
         "City": "Marietta", "State": "GA", "Zip": "30060",
     },
-    {  # 2: same IBC# as row 0 (different spelling) → duplicate by external_id
+    {  # 2: same ExtID as row 0 (different spelling) → duplicate by external_id
         "IBC#": " IBC-101 ", "Store Name": "Alpha Mart again", "Store Address": "500 Elsewhere Ave",
         "City": "Atlanta", "State": "GA", "Zip": "30303",
     },
-    {  # 3: new IBC#, same address as row 1 → duplicate by address
+    {  # 3: new ExtID, same address as row 1 → duplicate by address
         "IBC#": "IBC-104", "Store Name": "Beta Deli (dup)", "Store Address": "9 LOST RD.", "City": "marietta",
         "State": "ga", "Zip": "30060",
     },
-    {  # 4: no IBC#, three sticks by count, unusable values flagged
+    {  # 4: no ExtID, three sticks by count, unusable values flagged
         "STATUS": "on hold", "No of Sticks": "3", "Store Name": "Gamma Gas", "Store Address": "7 Pine Rd",
         "City": "Macon", "State": "GA", "Zip": "31201", "Store Owner Email": "not-an-email",
         "How many screens does store want?": "two",
@@ -183,7 +183,7 @@ class SampleSheetImportTests(unittest.TestCase):
     def test_sample_sheet(self):
         result = self.run_import(sheet(*ROWS))
         self.assertEqual(result["summary"], {"total": 5, "valid": 3, "needs_review": 2, "invalid": 0,
-                                             "duplicates": 2})
+                                             "duplicates": 2, "known": 0})
         self.assertEqual(self.jobs.get("j1").message, "3 valid, 2 to review, 0 invalid, 2 duplicate")
         alpha, beta, alpha_again, beta_dup, gamma = result["rows"]
 

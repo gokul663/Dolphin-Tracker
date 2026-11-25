@@ -39,7 +39,7 @@ SHEET_ONLY_TARGETS = ("lat", "lng", "installer_name", STATUS, STATUS_FALLBACK, S
 
 # §6, after normalize_column. Round-1 aliases kept where they don't conflict (site_address, *_name variants).
 HEADER_MAP: dict[str, str] = {
-    **dict.fromkeys(("ibc", "ibc_number", "external_id", "id"), "external_id"),
+    **dict.fromkeys(("extid", "ext_id", "ibc", "ibc_id", "ibc_number", "external_id", "id"), "external_id"),
     **dict.fromkeys(("store_name", "store", "site_name", "name"), "store_name"),
     **dict.fromkeys(ADDRESS_ALIASES, "addr"),
     "city": "city",
@@ -303,14 +303,28 @@ def dedupe_key_address(values: Mapping[str, Any]) -> str:
     return normalized_address_key(dict(values)) if clean_cell(values.get("addr", "")) else ""
 
 
+def single_pa(pa: str) -> str:
+    """A project's PA when it has exactly one; "" for a project of several PAs (each store then has its own)."""
+    return "" if "," in pa else pa.strip()
+
+
+def pa_address_key(pa: object, address: str, default_pa: str = "") -> str:
+    """An address as compared for duplicates: together with its PA. The same address under another PA is another
+    store, so the address alone never makes a duplicate. A row without a PA of its own has the project's
+    (`default_pa`, when the project has a single one)."""
+    if not address:
+        return ""
+    return f"{' '.join(str(pa or default_pa or '').lower().split())}|{address}"
+
+
 def mark_duplicates(rows: list[dict[str, Any]]) -> None:
-    """Flag rows that repeat an earlier row of the same sheet: by IBC# first, then by normalised address
+    """Flag rows that repeat an earlier row of the same sheet: by ExtID first, then by PA and normalised address
     (STORE-MODEL §1.4; venue code plays no part). Sets `duplicate_of` and `duplicate_reason` in place."""
     first_by_id: dict[str, int] = {}
     first_by_address: dict[str, int] = {}
     for row in sorted(rows, key=lambda item: item["index"]):
         external_id = normalize_external_id(row.get("external_id", ""))
-        address = dedupe_key_address(row)
+        address = pa_address_key(row.get("pa"), dedupe_key_address(row))
         if external_id and external_id in first_by_id:
             row.update(duplicate_of=first_by_id[external_id], duplicate_reason="external_id")
         elif address and address in first_by_address:
@@ -323,15 +337,19 @@ def mark_duplicates(rows: list[dict[str, Any]]) -> None:
                 first_by_address[address] = row["index"]
 
 
-def split_duplicates(existing: Iterable[Any], incoming: list[Any]) -> tuple[list[int], list[dict[str, Any]]]:
-    """Which of `incoming` (submitted stops) to keep: a stop is skipped when its IBC# or, failing that, its
-    normalised address matches a store already in the project or an earlier kept stop (STORE-MODEL §1.4).
+def split_duplicates(
+    existing: Iterable[Any], incoming: list[Any], default_pa: str = ""
+) -> tuple[list[int], list[dict[str, Any]]]:
+    """Which of `incoming` (submitted stops) to keep: a stop is skipped when its ExtID or, failing that, its PA
+    and normalised address match a store already in the project or an earlier kept stop (STORE-MODEL §1.4).
+    `default_pa`: the project's PA when it has a single one (a stop without a PA of its own has that one).
 
     Returns (indexes to keep, skipped rows with `index`, `external_id`, `store_name`, `addr`, `reason`)."""
     known_ids: set[str] = set()
     known_addresses: set[str] = set()
     def address_of(stop: Any) -> str:
-        return dedupe_key_address({"addr": stop.addr, "city": stop.city, "state": stop.state, "zip": stop.zip})
+        address = dedupe_key_address({"addr": stop.addr, "city": stop.city, "state": stop.state, "zip": stop.zip})
+        return pa_address_key(getattr(stop, "pa", ""), address, default_pa)
 
     for stop in existing:
         if stop.external_id:

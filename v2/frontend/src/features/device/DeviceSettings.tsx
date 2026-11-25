@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Loader2, RefreshCw } from "lucide-react";
+import { DatabaseZap, Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { Button } from "@/components/ui/button";
@@ -8,7 +8,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { SuggestInput } from "@/components/SuggestInput";
 import { Label } from "@/components/ui/label";
 import { DEVICE_TONE, DeviceBadge } from "@/features/device/DeviceBits";
-import { useDevicePas, useOverwriteFromDevice, useSyncNow } from "@/features/device/api";
+import { useDevicePas, useOverwriteFromDevice, usePopulateFromDevice, useSyncNow } from "@/features/device/api";
 import { useUpdateProject } from "@/features/projects/api";
 import { SectionTitle } from "@/features/settings/DetailsSection";
 import { centralTime } from "@/lib/time";
@@ -34,6 +34,7 @@ export function DeviceSettings({ project }: { project: Project }) {
   const update = useUpdateProject(project.id);
   const sync = useSyncNow(project.id);
   const overwrite = useOverwriteFromDevice(project.id);
+  const populate = usePopulateFromDevice();
   const [fields, setFields] = useState<Set<OverwriteField>>(new Set());
   const [confirming, setConfirming] = useState(false);
   const state = project.device_sync;
@@ -54,6 +55,16 @@ export function DeviceSettings({ project }: { project: Project }) {
     sync.mutate(undefined, {
       onSuccess: (result) => toast.success(`Synced: ${result.state?.status_changes ?? 0} status changes, ${result.state?.review_count ?? 0} to review`),
       onError: (error) => toast.error(error instanceof Error ? error.message : "Sync failed"),
+    });
+  const addAll = () =>
+    populate.mutate(project.id, {
+      onSuccess: (result) =>
+        toast.success(
+          result.stores_added
+            ? `${result.stores_added} stores added from the Dolphin data`
+            : "No new stores: every venue of this PA is already in the project or waiting for review",
+        ),
+      onError: (error) => toast.error(error instanceof Error ? error.message : "Could not add the stores"),
     });
   const runOverwrite = () =>
     overwrite.mutate(
@@ -103,7 +114,17 @@ export function DeviceSettings({ project }: { project: Project }) {
           ) : (
             <span className="text-slate-500">Not synced yet.</span>
           )}
-          <Button size="sm" variant="outline" className="ml-auto" onClick={syncNow} disabled={sync.isPending}>
+          <Button
+            size="sm"
+            variant="outline"
+            className="ml-auto"
+            onClick={addAll}
+            disabled={populate.isPending || sync.isPending}
+            title="Every venue of this PA that no store has becomes a store, at the report's address"
+          >
+            {populate.isPending ? <Loader2 className="animate-spin" /> : <DatabaseZap />} Add stores from Dolphin data
+          </Button>
+          <Button size="sm" variant="outline" onClick={syncNow} disabled={sync.isPending || populate.isPending}>
             {sync.isPending ? <Loader2 className="animate-spin" /> : <RefreshCw />} Sync now
           </Button>
         </div>

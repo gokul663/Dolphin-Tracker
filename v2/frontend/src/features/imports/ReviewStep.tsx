@@ -10,6 +10,7 @@ import { GoogleSearchPicker } from "@/features/places/GoogleSearchPicker";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -17,6 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { ScreensCell } from "@/features/imports/ScreensCell";
 import { useValidateAddress } from "@/features/places/api";
 import {
   applyGeocode,
@@ -29,7 +31,8 @@ import {
   isDuplicate,
   reviewSummary,
   rowProblems,
-  screensPreview,
+  looksSwapped,
+  swapScreen,
   valueProblems,
   packedScreens,
   splitRowScreens,
@@ -46,8 +49,8 @@ interface Props {
   onRowsChange: (update: (rows: ReviewRow[]) => ReviewRow[]) => void;
 }
 
-/** Fix what Google could not verify, fill a missing IBC# or store name, or exclude rows. Rows repeating an earlier
- *  row of the sheet (same IBC#, else same address) are excluded and say why (STORE-MODEL §1.4). */
+/** Fix what Google could not verify, fill a missing ExtID or store name, or exclude rows. Rows repeating an earlier
+ *  row of the sheet (same ExtID, else same address) are excluded and say why (STORE-MODEL §1.4). */
 export function ReviewStep({ rows, onRowsChange }: Props) {
   const summary = reviewSummary(rows);
   const initial: RowFilter = summary.blocked ? "blocked" : "all";
@@ -168,6 +171,31 @@ export function ReviewStep({ rows, onRowsChange }: Props) {
             summary.duplicates,
             "border-slate-300 bg-slate-50 text-slate-600",
           )}
+        {summary.screenWarnings > 0 &&
+          chip(
+            "screens",
+            "with DD codes to check",
+            summary.screenWarnings,
+            "border-amber-300 bg-white text-amber-800",
+          )}
+        {summary.swapped > 0 && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 border-amber-300 text-xs text-amber-800"
+            onClick={() =>
+              onRowsChange((current) =>
+                current.map((row) =>
+                  row.excluded
+                    ? row
+                    : { ...row, screens: row.screens.map((screen) => (looksSwapped(screen) ? swapScreen(screen) : screen)) },
+                ),
+              )
+            }
+          >
+            Swap stick number and DD code on {summary.swapped} {summary.swapped === 1 ? "row" : "rows"}
+          </Button>
+        )}
         <span className="ml-auto self-center font-mono text-xs text-slate-500">
           {summary.ready} ready · {summary.excluded} excluded
         </span>
@@ -177,19 +205,20 @@ export function ReviewStep({ rows, onRowsChange }: Props) {
           <thead className="sticky top-0 z-10 bg-slate-50 font-mono text-[10px] uppercase tracking-wider text-slate-500">
             <tr className="text-left">
               <th className="p-2">#</th>
-              <th className="p-2">IBC# *</th>
+              <th className="p-2">ExtID *</th>
               <th className="w-60 p-2">Store name *</th>
               <th className="min-w-80 p-2">Address *</th>
               <th className="w-36 p-2">Screens</th>
               <th className="p-2">Status</th>
               <th className="p-2">Suggestion</th>
+              <th className="w-56 p-2">Review notes</th>
               <th className="p-2 text-center">Exclude</th>
             </tr>
           </thead>
           <tbody>
             {shown.length === 0 && (
               <tr>
-                <td colSpan={8} className="p-6 text-center text-slate-500">
+                <td colSpan={9} className="p-6 text-center text-slate-500">
                   Nothing in this view.
                 </td>
               </tr>
@@ -211,7 +240,7 @@ export function ReviewStep({ rows, onRowsChange }: Props) {
                   </td>
                   <td className="p-2">
                     <Input
-                      aria-label={`IBC#, row ${row.index + 1}`}
+                      aria-label={`ExtID, row ${row.index + 1}`}
                       value={row.external_id}
                       disabled={duplicate}
                       aria-invalid={!row.excluded && !row.external_id.trim()}
@@ -298,7 +327,6 @@ export function ReviewStep({ rows, onRowsChange }: Props) {
                     )}
                     {!row.excluded &&
                       !duplicate &&
-                      row.external_id.trim() &&
                       overridable(row).length > 0 && (
                         <label className="mt-1.5 flex w-fit cursor-pointer items-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-xs text-amber-800">
                           <Checkbox
@@ -309,15 +337,23 @@ export function ReviewStep({ rows, onRowsChange }: Props) {
                             }
                           />
                           Add anyway — marked as needing attention
+                          {overridable(row).includes("external_id") &&
+                            " (no ExtID: enter it in the store later)"}
                           {overridable(row).includes("address") &&
                             " (no map pin until the address is fixed)"}
                         </label>
                       )}
                   </td>
                   <td className="p-2 text-xs">
-                    <div aria-label={`Screens, row ${row.index + 1}`}>
-                      {screensPreview(row)}
-                    </div>
+                    <ScreensCell
+                      row={row}
+                      onChange={(screens) => {
+                        // Once no entry holds several codes, the sheet's "several codes" problem is settled.
+                        const { venue_id: packedProblem, ...problemsLeft } = row.problems;
+                        const stillPacked = packedScreens({ screens }).length > 0;
+                        patch(row.index, { screens, problems: stillPacked || !packedProblem ? row.problems : problemsLeft });
+                      }}
+                    />
                     <span
                       className={cn(
                         "mt-1 inline-flex rounded border px-1.5 py-0.5 text-[10px]",
@@ -335,6 +371,14 @@ export function ReviewStep({ rows, onRowsChange }: Props) {
                   </td>
                   <td className="p-2">
                     <StatusChip row={row} />
+                    {row.reused && (
+                      <p
+                        className="mt-1 max-w-44 text-[11px] leading-snug text-cyan-800"
+                        aria-label={`Already known, row ${row.index + 1}`}
+                      >
+                        {row.reused}
+                      </p>
+                    )}
                   </td>
                   <td className="space-y-1.5 p-2">
                     {row.suggestions.length > 0 && row.status !== "valid" && (
@@ -390,6 +434,20 @@ export function ReviewStep({ rows, onRowsChange }: Props) {
                         <span className="text-xs text-slate-400">—</span>
                       )}
                     </div>
+                  </td>
+                  <td className="p-2">
+                    <Textarea
+                      aria-label={`Review notes, row ${row.index + 1}`}
+                      value={row.review_notes ?? ""}
+                      disabled={duplicate}
+                      maxLength={2000}
+                      rows={1}
+                      placeholder="e.g. store name not confirmed"
+                      onChange={(event) =>
+                        patch(row.index, { review_notes: event.target.value })
+                      }
+                      className="min-h-8 w-52 py-1.5 text-xs"
+                    />
                   </td>
                   <td className="p-2 pt-3.5 text-center">
                     <Checkbox
@@ -449,7 +507,6 @@ export function ReviewStep({ rows, onRowsChange }: Props) {
                   current.map((row) =>
                     !row.excluded &&
                     rowProblems(row).length &&
-                    row.external_id.trim() &&
                     !isDuplicate(row)
                       ? { ...row, addAnyway: true }
                       : row,
@@ -494,7 +551,7 @@ function StatusChip({ row }: { row: ReviewRow }) {
     invalid: "border-rose-200 bg-rose-50 text-rose-700",
   }[row.status];
   const label = {
-    valid: "Valid",
+    valid: row.coordinates_source === "known" ? "Known" : "Valid",
     needs_review: row.coordinates_source === "sheet" ? "Sheet pin" : "Review",
     invalid: "Invalid",
   }[row.status];

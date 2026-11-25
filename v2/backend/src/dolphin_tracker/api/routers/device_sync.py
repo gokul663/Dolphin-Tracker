@@ -15,6 +15,7 @@ from dolphin_tracker.services.device_sync import (
     LogPage,
     OverwriteResult,
     PaList,
+    PopulateResult,
     ReviewPage,
     SyncResult,
 )
@@ -38,6 +39,13 @@ def sync_project(
     return service.sync(project_id, only_if_stale=only_if_stale)
 
 
+@router.post("/projects/{project_id}/device-sync/populate", response_model=PopulateResult)
+def populate_from_device_data(project_id: str, service: ServiceDep) -> PopulateResult:
+    """Add a store for every record of the project's PA that no store has (a project started without a sheet),
+    located at the report's address, then sync."""
+    return service.populate(project_id)
+
+
 @router.get("/projects/{project_id}/device-sync/review", response_model=ReviewPage)
 def list_review(
     project_id: str,
@@ -45,9 +53,10 @@ def list_review(
     include_snoozed: bool = False,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     cursor: str | None = None,
+    q: Annotated[str, Query(max_length=200, description="ExtID, name, DD code, stick number or address")] = "",
 ) -> ReviewPage:
     """Report records whose DD code is in no store of the project ("Needs review")."""
-    return service.review(project_id, include_snoozed=include_snoozed, limit=limit, cursor=cursor)
+    return service.review(project_id, include_snoozed=include_snoozed, limit=limit, cursor=cursor, q=q)
 
 
 @router.post("/projects/{project_id}/device-sync/review/{key}/add", response_model=Stop, status_code=201)

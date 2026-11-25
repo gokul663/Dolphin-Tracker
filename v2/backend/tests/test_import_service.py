@@ -3,9 +3,15 @@ import unittest
 
 from dolphin_tracker.api.schemas import ImportResult
 from dolphin_tracker.domain.import_mapping import MappedRow
-from dolphin_tracker.domain.models import Job, JobStatus, JobType
+from dolphin_tracker.domain.known_stores import KnownStores, merge_known_screens
+from dolphin_tracker.domain.models import Job, JobStatus, JobType, Project, ProjectType, Screen, Stop
+from dolphin_tracker.domain.venues import VENUES_PROJECT_ID
 from dolphin_tracker.repositories.files import LocalFileStore, result_key
-from dolphin_tracker.repositories.memory import InMemoryJobRepository
+from dolphin_tracker.repositories.memory import (
+    InMemoryJobRepository,
+    InMemoryProjectRepository,
+    InMemoryStoreRepository,
+)
 from dolphin_tracker.services.imports import ImportService, verify_row
 from tests.fakes import FakeGeocoder, geocode_ok
 
@@ -127,6 +133,7 @@ class VerifyRowTests(unittest.TestCase):
                 "formatted", "addr", "city", "state", "zip", "lat", "lng", "coordinates_source", "place_name",
                 "suggestions", "error", "venue_status", "venue_status_valid", "venue_status_raw", "installer_name",
                 "details", "screens", "problems", "duplicate_of", "duplicate_reason", "fields",
+                "known_address", "known_screens", "known_screens_from", "reused",
             },
         )
 
@@ -170,14 +177,14 @@ class ImportRunTests(unittest.TestCase):
         job = self.jobs.get(job_id)
         self.assertEqual((job.status, job.progress, job.result_key), (JobStatus.SUCCEEDED, 100, result_key(job_id)))
         self.assertEqual(job.message, "25 valid, 1 to review, 1 invalid")
-        self.assertEqual(self.jobs.progress[:2], [1, 5])
-        self.assertEqual(self.jobs.progress[2:], [5 + 90 * 10 // 27, 5 + 90 * 20 // 27])  # every 10 rows
+        self.assertEqual(self.jobs.progress[:3], [1, 3, 5])
+        self.assertEqual(self.jobs.progress[3:], [5 + 90 * 10 // 27, 5 + 90 * 20 // 27])  # every 10 rows
         self.assertEqual(self.jobs.history[job_id], [JobStatus.RUNNING, JobStatus.SUCCEEDED])
 
         result = self.files.get_json(result_key(job_id))
         ImportResult.model_validate(result)  # the documented §3.4 contract the frontend type is generated from
         self.assertEqual(
-            result["summary"], {"total": 27, "valid": 25, "needs_review": 1, "invalid": 1, "duplicates": 0}
+            result["summary"], {"total": 27, "valid": 25, "needs_review": 1, "invalid": 1, "duplicates": 0, "known": 0}
         )
         self.assertEqual(result["address_column"], "address")
         self.assertEqual(result["store_column"], "store_name")
@@ -237,3 +244,161 @@ class ImportRunTests(unittest.TestCase):
     def test_missing_job_is_a_no_op(self):
         ImportService(self.jobs, self.files, FakeGeocoder()).run("ghost", {"job_id": "ghost"})
         self.assertIsNone(self.jobs.get("ghost"))
+
+
+def venue(code: str, pa: str, addr: str, ext: str = "", status: str = "Completed", **extra) -> Stop:
+    """A venue of the Dolphin data, as the all-venues list keeps it (`domain/venues.py`)."""
+    values = {"city": "Macon", "state": "GA", "zip": "31201", "lat": 32.84, "lng": -83.63,
+              "geocoded": f"{addr}, Macon, GA 31201", **extra}
+    return Stop(uid=f"v-{code}", display_id=ext, store_name=f"CMS {code}", addr=addr, pa=pa,
+                screens=[Screen(venue_id=code, stick_number=f"SN-{code}", status=status)], **values)
+
+
+class KnownStoresTests(unittest.TestCase):
+    """Same PA, and then the same ExtID or the same address. Never the address or the ExtID alone."""
+
+    def setUp(self):
+        self.known = KnownStores()
+        self.other = Project(id="p9", name="Wave 1", pa="North", device_pa="North CMS",
+                             project_type=ProjectType.OFFLINE)
+        self.fixed = Stop(uid="t1", display_id="S1", external_id="N-1", store_name="Fixed by hand", addr="9 Elm St",
+                          city="Macon", state="GA", zip="31201", lat=32.9, lng=-83.6, geocoded="9 Elm St, Macon, GA",
+                          screens=[Screen(venue_id="DD-OLD001", status="Offline")])
+        self.unverified = Stop(uid="t2", display_id="S2", external_id="N-2", store_name="Unverified", addr="5 Oak St",
+                               city="Macon", state="GA", needs_attention=["address"])
+        self.known.add_project(self.other, [self.fixed, self.unverified])
+        self.known.add_venues([
+            venue("DD_AAA111", "North CMS", "9 Elm St", ext="N-1"),
+            venue("DD_AAA222", "North CMS", "9 Elm St", ext="N-1", status="Offline"),
+            venue("DD_BBB111", "South", "9 Elm St", ext="N-1"),  # another PA: another store
+            venue("DD_CCC111", "North CMS", "77 Pine Rd"),
+        ])
+
+    def address(self, addr: str) -> dict:
+        return {"addr": addr, "city": "Macon", "state": "GA", "zip": "31201"}
+
+    def test_matches_on_pa_with_ext_id_or_address(self):
+        by_id = self.known.match("North", "n-1", self.address("somewhere else"))
+        self.assertEqual(by_id.tracker.stop.uid, "t1")
+        # "North" is the project's name for the PA the CMS calls "North CMS": the Dolphin data is found too.
+        self.assertEqual([known.stop.uid for known in by_id.dolphin], ["v-DD_AAA111", "v-DD_AAA222"])
+        by_address = self.known.match("North", "", self.address("9 ELM ST."))
+        self.assertEqual(by_address.tracker.stop.uid, "t1")
+        self.assertEqual(len(by_address.dolphin), 2)
+
+    def test_never_across_pas_and_never_without_a_pa(self):
+        self.assertFalse(self.known.match("West", "N-1", self.address("9 Elm St")))
+        self.assertFalse(self.known.match("", "N-1", self.address("9 Elm St")))
+        south = self.known.match("South", "N-1", self.address("9 Elm St"))
+        self.assertIsNone(south.tracker)
+        self.assertEqual([known.stop.uid for known in south.dolphin], ["v-DD_BBB111"])
+
+    def test_address_from_the_tracker_first_screens_from_the_dolphin_data_first(self):
+        match = self.known.match("North", "N-1", {})
+        self.assertEqual(match.location.stop.uid, "t1")  # corrected by hand there
+        self.assertEqual([screen["venue_id"] for screen in match.screens], ["DD_AAA111", "DD_AAA222"])
+        unverified = self.known.match("North", "N-2", {})
+        self.assertIsNone(unverified.location)  # still flagged for an address check: Google is asked
+        only_dolphin = self.known.match("North CMS", "", self.address("77 Pine Rd"))
+        self.assertEqual(only_dolphin.location.stop.uid, "v-DD_CCC111")
+
+    def test_known_screens_fill_rows_waiting_for_a_dd_code(self):
+        known = [{"stick_number": "SN-1", "venue_id": "DD_AAA111", "status": "Completed"},
+                 {"stick_number": "SN-2", "venue_id": "DD_AAA222", "status": "Offline"}]
+        empty = {"stick_number": "", "venue_id": "", "status": "Upcoming"}
+        rows, taken = merge_known_screens([dict(empty), dict(empty), dict(empty)], known, set())
+        self.assertEqual(taken, 2)
+        self.assertEqual([(row["venue_id"], row["status"]) for row in rows],
+                         [("DD_AAA111", "Completed"), ("DD_AAA222", "Offline"), ("", "Upcoming")])
+        rows, _ = merge_known_screens([dict(empty)], known, set())  # one row waiting: filled, then one added
+        self.assertEqual([row["venue_id"] for row in rows], ["DD_AAA111", "DD_AAA222"])
+        used = {"DD_AAA111"}  # the sheet already lists it (here or on another row): never a second time
+        rows, taken = merge_known_screens([{"stick_number": "", "venue_id": "DD-AAA111", "status": "Shipped"}],
+                                          known, used)
+        self.assertEqual((taken, [row["venue_id"] for row in rows]), (1, ["DD-AAA111", "DD_AAA222"]))
+
+
+class ImportReuseTests(ImportRunTests):
+    """A sheet whose stores we already know: no Google for them, and their DD codes come along."""
+
+    def setUp(self):
+        super().setUp()
+        self.projects = InMemoryProjectRepository()
+        self.stores = InMemoryStoreRepository()
+        self.projects.put(Project(id="p9", name="Wave 1", pa="North", project_type=ProjectType.OFFLINE))
+        self.stores.put_many("p9", [Stop(
+            uid="t1", display_id="S1", external_id="N-1", store_name="Fixed by hand", addr="9 Elm St", city="Macon",
+            state="GA", zip="31201", lat=32.9, lng=-83.6, geocoded="9 Elm St, Macon, GA 31201",
+        )])
+        self.stores.put_many(VENUES_PROJECT_ID, [
+            venue("DD_AAA111", "North", "9 Elm St", ext="N-1"),
+            venue("DD_AAA222", "North", "9 Elm St", ext="N-1", status="Offline"),
+            venue("DD_CCC111", "North", "77 Pine Rd"),
+        ])
+
+    def run_import(self, csv: bytes, pa: str = "North", geocodes: dict | None = None):
+        job_id = self._job(csv)
+        job = self.jobs.get(job_id)
+        self.jobs.put(job.model_copy(update={"payload": {**job.payload, "pa": pa}}))
+        geocoder = FakeGeocoder(geocodes=geocodes or {})
+        ImportService(self.jobs, self.files, geocoder, self.projects, self.stores).run(job_id, {"job_id": job_id})
+        return self.files.get_json(result_key(job_id)), geocoder
+
+    def test_known_rows_skip_google_and_take_the_known_screens(self):
+        csv = (b"ExtID,Store Name,Address,City,State,Zip,No of Sticks\n"
+               b"N-1,Elm Shop,9 Wrong Elm Strt,Macon,GA,31201,3\n"
+               b",Pine Shop,77 Pine Rd,Macon,GA,31201,1\n"
+               b"N-9,New Shop,1 New St,Macon,GA,31201,1\n")
+        result, geocoder = self.run_import(
+            csv, geocodes={"1 New St, Macon, GA 31201": geocode_ok("1 New St", city="Macon", zip="31201")})
+        ImportResult.model_validate(result)
+        elm, pine, new = result["rows"]
+        # Matched by ExtID within the PA: the address corrected in Wave 1, the DD codes from the Dolphin data.
+        self.assertEqual((elm["status"], elm["addr"], elm["lat"], elm["coordinates_source"]),
+                         ("valid", "9 Elm St", 32.9, "known"))
+        self.assertEqual([(s["venue_id"], s["status"]) for s in elm["screens"]],
+                         [("DD_AAA111", "Completed"), ("DD_AAA222", "Offline"), ("", "Upcoming")])
+        self.assertEqual(elm["reused"], "Address from project Wave 1 · 2 DD codes from the Dolphin data")
+        # Matched by PA + address, in the Dolphin data only.
+        self.assertEqual((pine["status"], pine["lat"]), ("valid", 32.84))
+        self.assertEqual([s["venue_id"] for s in pine["screens"]], ["DD_CCC111"])
+        self.assertEqual(pine["reused"], "Address from the Dolphin data · 1 DD code from the Dolphin data")
+        # Not known: verified with Google as before.
+        self.assertEqual((new["status"], new["coordinates_source"], new["reused"]), ("valid", "geocode", ""))
+        self.assertEqual([call for kind, call in geocoder.calls if kind == "geocode"], ["1 New St, Macon, GA 31201"])
+        self.assertEqual(result["summary"]["known"], 2)
+        self.assertIn("2 already known", self.jobs.get("j1").message)
+
+    def test_another_pa_is_another_store(self):
+        csv = b"ExtID,Store Name,Address,City,State,Zip\nN-1,Elm Shop,9 Elm St,Macon,GA,31201\n"
+        result, geocoder = self.run_import(
+            csv, pa="West", geocodes={"9 Elm St, Macon, GA 31201": geocode_ok("9 Elm St")})
+        row = result["rows"][0]
+        self.assertEqual((row["coordinates_source"], row["reused"]), ("geocode", ""))
+        self.assertEqual(len([kind for kind, _ in geocoder.calls if kind == "geocode"]), 1)
+
+    def test_same_address_under_two_pas_is_not_a_duplicate(self):
+        csv = (b"ExtID,Store Name,Address,City,State,Zip,PA\n"
+               b"A-1,One,5 Oak St,Macon,GA,31201,East\n"
+               b"B-1,Two,5 Oak St,Macon,GA,31201,West\n"
+               b"A-2,Three,5 Oak St,Macon,GA,31201,East\n")
+        result, _ = self.run_import(csv, pa="", geocodes={"5 Oak St, Macon, GA 31201": geocode_ok("5 Oak St")})
+        self.assertEqual([row["duplicate_reason"] for row in result["rows"]], ["", "", "address"])
+
+    def test_re_pointing_the_ext_id_column_looks_the_known_stores_up_again(self):
+        # "Store code" is not recognised as the ExtID, so the first pass knows the rows by address only.
+        csv = (b"Store code,Store Name,Address,City,State,Zip,No of Sticks\n"
+               b"N-1,Elm Shop,9 Wrong Elm Strt,Macon,GA,31201,2\n")
+        result, _ = self.run_import(csv)
+        self.assertEqual((result["rows"][0]["status"], result["rows"][0]["reused"]), ("needs_review", ""))
+        service = ImportService(self.jobs, self.files, projects=self.projects, stores=self.stores)
+        remapped = service.remap("j1", {**result["mapping"], "store_code": "external_id"})
+        row = remapped["rows"][0]
+        self.assertEqual((row["external_id"], row["status"], row["addr"], row["coordinates_source"]),
+                         ("N-1", "valid", "9 Elm St", "known"))
+        self.assertEqual([s["venue_id"] for s in row["screens"]], ["DD_AAA111", "DD_AAA222"])
+        self.assertEqual(remapped["summary"]["known"], 1)
+
+    def test_an_ibc_id_column_is_the_ext_id(self):
+        parsed = ImportService.parse("s.csv", b"IBC ID,Address\nOK22245,1 Main St\n")
+        self.assertEqual(parsed.rows[0].external_id, "OK22245")

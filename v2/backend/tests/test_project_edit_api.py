@@ -46,11 +46,11 @@ class AppendTests(ProjectApiTestCase):
         self.stores._items["p1"]["a"] = self.stores.get("p1", "a").model_copy(update={"external_id": "IBC-A"})
         response = self.append(
             [
-                new_stop("Dup id", "1 Other Rd", external_id=" ibc-a "),  # IBC# of stop a, normalised
+                new_stop("Dup id", "1 Other Rd", external_id=" ibc-a "),  # ExtID of stop a, normalised
                 new_stop("Dup address", "B Main St"),  # normalised address of stop b
                 new_stop("Fresh", "77 New Rd"),
                 new_stop("Fresh again", "77 new rd."),  # duplicate address inside the batch
-                new_stop("Same id", "88 Far Rd", external_id="IBC-Fresh"),  # duplicate IBC# inside the batch
+                new_stop("Same id", "88 Far Rd", external_id="IBC-Fresh"),  # duplicate ExtID inside the batch
                 new_stop("Venue only", "5 Venue Rd", venue_code="v1"),  # a venue code match no longer counts
             ]
         )

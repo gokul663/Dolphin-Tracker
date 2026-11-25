@@ -6,7 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from dolphin_tracker.domain.errors import NotFoundError, ValidationFailed
-from dolphin_tracker.domain.import_mapping import clean_mapping, split_duplicates
+from dolphin_tracker.domain.import_mapping import clean_mapping, single_pa, split_duplicates
 from dolphin_tracker.domain.kpi import KPI_ATTRIBUTES, kpi_summary
 from dolphin_tracker.domain.models import (
     FieldDef,
@@ -75,13 +75,15 @@ class ProjectService:
         """Validate and write META + stops. Stores start unrouted: routes are built in route plans.
 
         Returns (project, skipped duplicates). Every invalid stop is reported at once
-        (422); a stop repeating an earlier one (IBC#, then address) is skipped and reported."""
+        (422); a stop repeating an earlier one (ExtID, then address) is skipped and reported."""
         errors: list[Any] = []
-        name, pa = payload.name.strip(), payload.pa.strip()
+        name, pa, device_pa = payload.name.strip(), payload.pa.strip(), payload.device_pa.strip()
         if not name:
             errors.append("Project name is required")
         if not pa:  # several PAs: each stop carries its own, and the project lists them
             pa = ", ".join(sorted({stop.pa.strip() for stop in payload.stops if stop.pa.strip()}))
+        if not pa:  # no sheet: the stores come from the device report's PA
+            pa = device_pa
         if not pa:
             errors.append("PA is required (or a PA column in the sheet when the project has several)")
         schema = payload.field_schema if payload.field_schema is not None else default_field_schema()
@@ -94,13 +96,14 @@ class ProjectService:
             raise ValidationFailed(f"Project could not be created{bad_rows}", errors=errors, stops=stop_errors)
 
         assert self._stores is not None
-        keep, skipped = split_duplicates([], payload.stops)
+        keep, skipped = split_duplicates([], payload.stops, single_pa(pa))
         kept = [payload.stops[index] for index in keep]
         project_id = uuid.uuid4().hex
         project = Project(
             id=project_id,
             name=name,
             pa=pa,
+            device_pa=device_pa,
             project_type=payload.project_type,
             field_agent=payload.field_agent.strip(),
             partner_account=payload.partner_account.strip(),
@@ -131,6 +134,7 @@ class ProjectService:
                 **stop_details(stop),
                 screens=stop.build_screens(),
                 installer_name=stop.installer_name.strip(),
+                review_notes=stop.review_notes.strip(),
                 needs_attention=attention_of(stop),
             )
             for index, stop in enumerate(kept)

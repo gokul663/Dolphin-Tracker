@@ -6,7 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import { TechnicianHome } from "@/features/technician/TechnicianHome";
 import { api } from "@/lib/api/client";
 import type { NameEntry, Page } from "@/lib/api/types";
-import { getDevInstaller, setDevInstaller, setDevRole, signOut } from "@/lib/auth/token";
+import { getDevInstaller, profilePicture, setDevInstaller, setDevRole, signOut } from "@/lib/auth/token";
 import { cn } from "@/lib/utils";
 
 const NAV = [
@@ -26,10 +26,14 @@ function WhoAmI() {
     queryFn: () => api<Page<NameEntry>>("/lists/installers", { query: { limit: 500 }, headers: { "X-Dev-Role": "super_admin" } }),
     enabled: local && me?.role === "technician",
   });
+  // The Google profile photo from the sign-in, like the other Dolphin apps show it; initials when there is none.
+  const photo = useQuery({ queryKey: ["me", "picture", me?.id ?? ""], queryFn: profilePicture, enabled: Boolean(me) && !local, staleTime: Infinity });
   if (!me) return null;
+  const shownName = me.name || me.email;
+  const initials = shownName.split(/[\s@.]+/).filter(Boolean).slice(0, 2).map((part) => part[0]!.toUpperCase()).join("");
   return (
     <div className="flex items-center gap-2 text-xs" aria-label="Signed in as">
-      {!local && <span className="font-medium text-slate-800">{me.name || me.email}</span>}
+      {!local && <span className="font-medium text-slate-800">{shownName}</span>}
       {local ? (
         <label className="flex items-center gap-1.5 text-slate-500">
           View as
@@ -77,6 +81,23 @@ function WhoAmI() {
           >
             Sign out
           </button>
+          {photo.data ? (
+            <img
+              src={photo.data}
+              alt={`${shownName}'s profile photo`}
+              title={me.email || shownName}
+              referrerPolicy="no-referrer"
+              className="size-9 rounded-full object-cover ring-1 ring-slate-200"
+            />
+          ) : (
+            <span
+              aria-hidden
+              title={me.email || shownName}
+              className="flex size-9 items-center justify-center rounded-full bg-brand text-xs font-semibold text-white"
+            >
+              {initials || "?"}
+            </span>
+          )}
         </>
       )}
     </div>

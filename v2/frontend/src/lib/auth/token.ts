@@ -68,6 +68,11 @@ export async function signInAgain(): Promise<boolean> {
   return cognitoOn() ? (await cognito()).signIn(here()) : false;
 }
 
+/** The signed-in person's profile photo ("" without a login, or when the login has none for them). */
+export async function profilePicture(): Promise<string> {
+  return cognitoOn() ? (await cognito()).profilePicture() : "";
+}
+
 export async function signOut(): Promise<void> {
   if (cognitoOn()) await (await cognito()).signOut();
 }

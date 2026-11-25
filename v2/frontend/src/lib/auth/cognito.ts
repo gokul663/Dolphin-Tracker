@@ -2,6 +2,7 @@ import { Amplify } from "aws-amplify";
 import { fetchAuthSession, signInWithRedirect, signOut as amplifySignOut } from "aws-amplify/auth";
 import { cognitoUserPoolsTokenProvider } from "aws-amplify/auth/cognito";
 import { Hub } from "aws-amplify/utils";
+import { keystoneUrl } from "@/lib/auth/keystone";
 import { rememberReturnTo, safeReturnTo } from "@/lib/auth/returnTo";
 
 /**
@@ -37,6 +38,8 @@ const storage = {
 
 /** Unix seconds the ID token we last handed out expires at; 0 when signed out. */
 let expiresAt = 0;
+/** The signed-in person's Google profile photo, when the login passes one on; "" otherwise. */
+let picture = "";
 let failure = "";
 let leaving = false;
 
@@ -44,12 +47,19 @@ async function refresh(forceRefresh = false): Promise<string | null> {
   try {
     const idToken = (await fetchAuthSession({ forceRefresh })).tokens?.idToken;
     expiresAt = idToken && typeof idToken.payload.exp === "number" ? idToken.payload.exp : 0;
+    const photo = idToken?.payload.picture;
+    picture = typeof photo === "string" && photo.startsWith("https://") ? photo : "";
     return idToken ? idToken.toString() : null;
   } catch {
     expiresAt = 0;
     return null;
   }
 }
+
+/** Where signing out ends. Through Keystone (VITE_KEYSTONE_URL): its /signout, so Keystone is signed out too and
+ *  one sign-out covers every Dolphin app. Otherwise this site's root, which asks for a sign-in again. The address
+ *  must be one of the app client's allowed sign-out addresses in the login pool. */
+const signOutTo = () => (keystoneUrl() ? `${keystoneUrl()}/signout` : `${window.location.origin}/`);
 
 let configured = false;
 function configure(): void {
@@ -89,7 +99,7 @@ function configure(): void {
             domain: env.VITE_COGNITO_DOMAIN ?? "",
             scopes: ["openid", "email", "profile"],
             redirectSignIn: [`${window.location.origin}/auth/callback`],
-            redirectSignOut: [`${window.location.origin}/`],
+            redirectSignOut: [signOutTo()],
             responseType: "code",
           },
         },
@@ -116,6 +126,13 @@ export async function init(): Promise<boolean> {
 export async function getToken(renew = false): Promise<string | null> {
   configure();
   return refresh(renew || (expiresAt > 0 && expiresAt * 1000 < Date.now() + 30_000));
+}
+
+/** The profile photo of whoever is signed in ("" when there is none or nobody is). */
+export async function profilePicture(): Promise<string> {
+  configure();
+  await refresh();
+  return picture;
 }
 
 /** Why the last sign-in did not complete, as the login reported it ("" when it did not say). */
@@ -161,11 +178,11 @@ export function signInSettled() {
   failure = "";
 }
 
-/** Sign out of this app and of the shared login (the managed login's cookie), ending at the site's root, which
- *  then asks for a sign-in again. */
+/** Sign out of this app and of the shared login (the managed login's cookie), ending at `signOutTo()`. */
 export async function signOut(): Promise<void> {
   configure();
   storage.set(ATTEMPT_KEY, null);
   expiresAt = 0;
-  await amplifySignOut({ global: false });
+  // Name the address: left to choose, the library refuses one on another origin and the click does nothing.
+  await amplifySignOut({ global: false, oauth: { redirectUrl: signOutTo() } });
 }

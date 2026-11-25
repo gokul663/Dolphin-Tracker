@@ -77,6 +77,11 @@ class WebStack(cdk.Stack):
                 destination_bucket=site_bucket,
                 distribution=self.distribution,
                 distribution_paths=["/*"],
+                # Browsers must ask before reusing a file. Without this, index.html has no caching rule at all and a
+                # browser keeps the old page for hours after a deploy: an old app against the new API (a page with
+                # no sign-in talking to an API that now requires one). The hashed assets cost one cheap "not
+                # modified" check each.
+                cache_control=[s3deploy.CacheControl.no_cache()],
             )
         else:
             print(f"[web_stack] {DIST_DIR} not found; skipping site upload. Run `make frontend-build` before deploying.")

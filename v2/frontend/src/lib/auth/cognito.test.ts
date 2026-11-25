@@ -107,8 +107,15 @@ describe("the shared login (Cognito managed login, code + PKCE)", () => {
     expect(await auth.getToken(true)).toBeNull();
   });
 
-  it("signs out of the shared login too", async () => {
+  it("signs out of the shared login too, ending at this site", async () => {
     await (await pageLoad()).signOut();
-    expect(amplify.signOut).toHaveBeenCalledWith({ global: false });
+    expect(amplify.signOut).toHaveBeenCalledWith({ global: false, oauth: { redirectUrl: `${window.location.origin}/` } });
+  });
+
+  it("through Keystone, signing out ends at Keystone's sign-out so it is signed out too", async () => {
+    vi.stubEnv("VITE_KEYSTONE_URL", "https://keystone.dolphin-one.com/");
+    await (await pageLoad()).signOut();
+    expect(amplify.signOut).toHaveBeenCalledWith({ global: false, oauth: { redirectUrl: "https://keystone.dolphin-one.com/signout" } });
+    vi.unstubAllEnvs();
   });
 });

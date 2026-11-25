@@ -10,5 +10,8 @@ interface ImportMetaEnv {
   readonly VITE_COGNITO_DOMAIN?: string;
   /** "Google" goes straight to Google; empty shows the login page with Google and the password form. */
   readonly VITE_COGNITO_PROVIDER?: string;
+  /** Dolphin Keystone's address (https://keystone.dolphin-one.com): sign in through its page. Empty: go straight
+   *  to the shared login. Set it only once Keystone sends people back to Tracker after signing in. */
+  readonly VITE_KEYSTONE_URL?: string;
   readonly VITE_GOOGLE_MAPS_BROWSER_KEY?: string;
 }

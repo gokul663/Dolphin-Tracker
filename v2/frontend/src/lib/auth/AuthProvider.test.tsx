@@ -164,3 +164,47 @@ describe("/auth/callback", () => {
     expect(["https://evil.example.com/x", "//evil.example.com", "/auth/callback?code=1", "", null, "/a?b=1#c"].map(safeReturnTo)).toEqual(["/", "/", "/", "/", "/", "/a?b=1#c"]);
   });
 });
+
+describe("AuthProvider signing in through Keystone", () => {
+  beforeEach(() => {
+    vi.stubEnv("VITE_AUTH_MODE", "cognito");
+    vi.stubEnv("VITE_KEYSTONE_URL", "https://keystone.dolphin-one.com/");
+    window.sessionStorage.clear();
+    for (const mock of Object.values(cognito)) mock.mockClear();
+    cognito.init.mockResolvedValue(false);
+    cognito.signIn.mockResolvedValue(true);
+    cognito.missingConfig.mockReturnValue("");
+  });
+
+  it("shows Tracker's own sign-in page with the way to Keystone, instead of leaving on its own", async () => {
+    const api = renderGate(() => makeMe());
+    expect(await screen.findByRole("heading", { name: "Sign in to Dolphin Tracker" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Sign in through Keystone" })).toBeTruthy();
+    expect(screen.queryByText("the app")).toBeNull();
+    expect(cognito.signIn).not.toHaveBeenCalled(); // not the bare login page
+    expect(api.calls).toEqual([]);
+  });
+
+  it("the way there carries this page as the address to come back to", async () => {
+    const { keystoneLogin } = await import("@/lib/auth/keystone");
+    expect(keystoneLogin("https://tracker.dolphin-one.com/planner/p1?day=2")).toBe(
+      "https://keystone.dolphin-one.com/login?returnTo=https%3A%2F%2Ftracker.dolphin-one.com%2Fplanner%2Fp1%3Fday%3D2",
+    );
+  });
+
+  it("back from Keystone, finishes the sign-in without asking again", async () => {
+    window.history.replaceState(null, "", "/planner/p1");
+    window.sessionStorage.setItem("dolphin-tracker.via-keystone", "1");
+    renderGate(() => makeMe());
+    await waitFor(() => expect(cognito.signIn).toHaveBeenCalledWith("/planner/p1", false));
+    expect(screen.queryByRole("button", { name: "Sign in through Keystone" })).toBeNull();
+    expect(window.sessionStorage.getItem("dolphin-tracker.via-keystone")).toBeNull(); // once only
+  });
+
+  it("someone already signed in goes straight to the app", async () => {
+    cognito.init.mockResolvedValue(true);
+    cognito.getToken.mockResolvedValue("id-token");
+    renderGate(() => makeMe());
+    expect(await screen.findByText("the app")).toBeTruthy();
+  });
+});

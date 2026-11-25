@@ -114,17 +114,19 @@ const COLUMNS: Column[] = [
 ];
 
 const columnStyle = (column: Column) => ({ flex: `${column.grow ?? 0.4} 0 ${column.size}px`, minWidth: column.size });
-const WIDTH = COLUMNS.reduce((sum, column) => sum + column.size, 0);
+/** The columns for a project: without Cost when the project hides its hardware cost (Settings). */
+const columnsFor = (project: Project) => (project.hardware_costs.hidden ? COLUMNS.filter((column) => column.id !== "cost") : COLUMNS);
 
 /** The Screens view of the list: the same filters, paging and store window as the stores table, one row per screen.
  *  A click opens the screen's store. */
 export function ScreensTable({ project, rows, sort, dir, onSort, selectedId, hoveredId, onHover, onOpen, ...pager }: Props) {
+  const columns = columnsFor(project);
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border bg-white">
       <div className="min-h-0 flex-1 overflow-auto" role="grid" aria-rowcount={pager.total} aria-label="Screens">
-        <div style={{ width: WIDTH, minWidth: "100%" }}>
+        <div style={{ width: columns.reduce((sum, column) => sum + column.size, 0), minWidth: "100%" }}>
           <div role="row" className="sticky top-0 z-10 flex border-b bg-slate-50 font-mono text-[11px] uppercase tracking-wider text-slate-500">
-            {COLUMNS.map((column) => {
+            {columns.map((column) => {
               const active = column.sort !== undefined && sort === column.sort;
               return (
                 <div key={column.id} role="columnheader" aria-sort={active ? (dir === "asc" ? "ascending" : "descending") : "none"} style={columnStyle(column)} className="px-2 py-2">
@@ -154,7 +156,7 @@ export function ScreensTable({ project, rows, sort, dir, onSort, selectedId, hov
                 row.uid === selectedId ? "bg-sky-100" : row.uid === hoveredId ? "bg-sky-50" : "hover:bg-slate-50",
               )}
             >
-              {COLUMNS.map((column) => (
+              {columns.map((column) => (
                 <div key={column.id} role="gridcell" style={columnStyle(column)} className="truncate px-2">
                   {column.cell(row, project)}
                 </div>

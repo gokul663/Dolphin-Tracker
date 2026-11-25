@@ -176,13 +176,20 @@ describe("AuthProvider signing in through Keystone", () => {
     cognito.missingConfig.mockReturnValue("");
   });
 
-  it("shows Tracker's own sign-in page with the way to Keystone, instead of leaving on its own", async () => {
+  it("goes straight to Keystone's sign-in page, with this page as the address to come back to", async () => {
+    window.history.replaceState(null, "", "/planner/p1?day=2");
+    const { leaving } = await import("@/lib/auth/keystone");
+    const to = vi.spyOn(leaving, "to").mockImplementation(() => {});
     const api = renderGate(() => makeMe());
-    expect(await screen.findByRole("heading", { name: "Sign in to Dolphin Tracker" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Sign in through Keystone" })).toBeTruthy();
+    await waitFor(() => expect(to).toHaveBeenCalledTimes(1));
+    expect(to.mock.calls[0]![0]).toBe(
+      `https://keystone.dolphin-one.com/login?returnTo=${encodeURIComponent(`${window.location.origin}/planner/p1?day=2`)}`,
+    );
+    expect(screen.queryByRole("button")).toBeNull(); // no page of our own to click through
     expect(screen.queryByText("the app")).toBeNull();
-    expect(cognito.signIn).not.toHaveBeenCalled(); // not the bare login page
+    expect(cognito.signIn).not.toHaveBeenCalled();
     expect(api.calls).toEqual([]);
+    to.mockRestore();
   });
 
   it("the way there carries this page as the address to come back to", async () => {
@@ -197,7 +204,6 @@ describe("AuthProvider signing in through Keystone", () => {
     window.sessionStorage.setItem("dolphin-tracker.via-keystone", "1");
     renderGate(() => makeMe());
     await waitFor(() => expect(cognito.signIn).toHaveBeenCalledWith("/planner/p1", false));
-    expect(screen.queryByRole("button", { name: "Sign in through Keystone" })).toBeNull();
     expect(window.sessionStorage.getItem("dolphin-tracker.via-keystone")).toBeNull(); // once only
   });
 

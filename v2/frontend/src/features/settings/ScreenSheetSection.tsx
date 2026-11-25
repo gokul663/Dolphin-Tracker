@@ -37,6 +37,7 @@ export function ScreenSheetSection({ project }: { project: Project }) {
     mutationFn: (body: { filename: string; content_base64: string; apply: boolean }) => screenSheetApi.send(project.id, body),
     onSuccess: (next) => {
       setResult(next);
+      void client.invalidateQueries({ queryKey: keys.projectUploads(project.id) }); // the sheet is kept: list it
       if (next.applied) {
         toast.success(`${next.screens_updated} ${next.screens_updated === 1 ? "screen" : "screens"} updated from the sheet`);
         void client.invalidateQueries({ queryKey: keys.project(project.id) });
@@ -72,7 +73,7 @@ export function ScreenSheetSection({ project }: { project: Project }) {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <SectionTitle
           title="Screen cost sheet"
-          hint="A sheet with one row per DD code: Venue ID, Stick Count, Screen Size and Screen Count. It sets each matching screen's size and whether it is a Dolphin screen (Screen Count 1) or the store's own TV (0: the stick only). The cost is worked out from those counts and the prices in Hardware costs. Nothing is saved until you press Apply."
+          hint="Every sheet uploaded here is kept under Uploaded sheets. A sheet with one row per DD code: Venue ID, Stick Count, Screen Size and Screen Count. It sets each matching screen's size and whether it is a Dolphin screen (Screen Count 1) or the store's own TV (0: the stick only). The cost is worked out from those counts and the prices in Hardware costs. Nothing is saved until you press Apply."
         />
         <input ref={input} type="file" accept=".csv,.xlsx" className="hidden" aria-label="Screen cost sheet file" onChange={(event) => void onFile(event.target.files?.[0]).finally(() => (event.target.value = ""))} />
         <Button onClick={() => input.current?.click()} disabled={send.isPending}>

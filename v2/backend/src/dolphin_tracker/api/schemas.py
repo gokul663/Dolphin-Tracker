@@ -246,6 +246,15 @@ class HardwareCounts(ApiModel):
     installed_mounts: dict[str, int] = Field(default_factory=dict)
 
 
+class StoreOverview(ApiModel):
+    """What the Stores page shows beside its table, in one answer (one read of the stores instead of four)."""
+
+    pins: list[Pin]
+    filters: StoreFilterOptions
+    by_state: list[StateCount]
+    hardware: HardwareCounts
+
+
 class ProjectUpdate(ApiModel):
     """Metadata edit. Installers change only through the installer endpoints; routing state only through jobs."""
 

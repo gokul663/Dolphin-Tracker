@@ -169,6 +169,9 @@ class HardwareCosts(ApiModel):
     screens: list[ScreenPrice] = Field(default_factory=list, max_length=100)
     # Mounts, by the screen size they hold: counted in the hardware cost only when asked for.
     mounts: list[MountPrice] = Field(default_factory=list, max_length=50)
+    # Hide the hardware cost in this project: the cost column of the tables, the cost chart and the cost lines in
+    # the store window. The prices stay saved; showing it again brings everything back.
+    hidden: bool = False
 
     @model_validator(mode="before")
     @classmethod
@@ -200,17 +203,18 @@ class HardwareCosts(ApiModel):
 
 
 class ProjectUpload(ApiModel):
-    """One sheet uploaded into the project (on create or append), kept for good: the file itself is in the file
-    store under `key`."""
+    """One sheet uploaded into the project (on create or append, or a screen cost sheet), kept for good: the file
+    itself is in the file store under `key`."""
 
     id: str  # the import job that read it
     filename: str
     key: str
     uploaded_at: str = Field(default_factory=now_iso)
-    kind: str = "append"  # "create" (the project's first sheet) or "append"
+    # "create" (the project's first sheet), "append", or "screen_cost" (a screen cost sheet, Settings)
+    kind: str = "append"
     size: int = 0  # bytes
-    submitted: int = 0  # stores sent from the sheet's review
-    added: int = 0
+    submitted: int = 0  # stores sent from the sheet's review; for a screen cost sheet, its rows
+    added: int = 0  # stores added; for a screen cost sheet, the screens it updated once applied
     skipped: int = 0  # duplicates of stores already there (same ExtID or address)
 
 

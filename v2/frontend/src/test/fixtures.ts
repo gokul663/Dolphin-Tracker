@@ -6,7 +6,7 @@ export function makeProject(overrides: Partial<Project> = {}): Project {
   return {
     id: "p1", name: "Atlanta refresh", pa: "North", device_pa: "", device_sync: null, project_type: "new_installation", installers: ["Ann", "Bo"],
     field_agent: "Fay", partner_account: "Acme", pa_percentage: 40, dolphin_percentage: 60, store_percentage: null,
-    fa_percentage: null, hardware_costs: { stick: null, screens: [], mounts: [] }, uploads: [], stops_per_day: 8, field_schema: DEFAULT_SCHEMA_FOR_TESTS, import_mappings: {},
+    fa_percentage: null, hardware_costs: { stick: null, screens: [], mounts: [], hidden: false }, uploads: [], stops_per_day: 8, field_schema: DEFAULT_SCHEMA_FOR_TESTS, import_mappings: {},
     routing_status: "ready", routing_job_id: "", stop_count: 3, version: 1, created_at: "2026-10-01T00:00:00+00:00",
     updated_at: "2026-10-01T00:00:00+00:00", ...overrides,
   };

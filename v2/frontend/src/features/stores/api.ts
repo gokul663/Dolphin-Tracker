@@ -48,6 +48,17 @@ export function useStoreSuggestions(projectId: string, q: string) {
   });
 }
 
+/** Everything beside the table on the Stores page in one request: the map pins, the filter options, the top
+ *  states and the hardware counts, all under the same filters. One read of the stores on the server instead of
+ *  four, and one Lambda instead of four. The top states ignore the State filter (the server sees to it). */
+export function useStoresOverview(projectId: string, filters: StoreFilters, unit: "stores" | "screens" = "stores") {
+  return useQuery({
+    queryKey: keys.storesOverview(projectId, filters, unit),
+    queryFn: () => storesApi.overview(projectId, filters, unit),
+    placeholderData: keepPreviousData,
+  });
+}
+
 export function usePins(projectId: string, filters: StoreFilters) {
   return useQuery({
     queryKey: keys.pins(projectId, filters),
@@ -57,11 +68,12 @@ export function usePins(projectId: string, filters: StoreFilters) {
 }
 
 /** Values per filter with counts, under the other active filters (greys out filters with nothing to pick). */
-export function useFilterOptions(projectId: string, filters: StoreFilters) {
+export function useFilterOptions(projectId: string, filters: StoreFilters, enabled = true) {
   return useQuery({
     queryKey: keys.storeFacets(projectId, filters),
     queryFn: () => storesApi.filters(projectId, filters),
     placeholderData: keepPreviousData,
+    enabled,
   });
 }
 

@@ -6,17 +6,23 @@ from __future__ import annotations
 
 import base64
 import binascii
+import hashlib
 import re
+
+from aws_lambda_powertools import Logger
 
 from dolphin_tracker.domain.base import ApiModel
 from dolphin_tracker.domain.device import split_codes, venue_code_key
 from dolphin_tracker.domain.errors import NotFoundError, ValidationFailed
-from dolphin_tracker.domain.models import HardwareCosts, Screen, Stop
+from dolphin_tracker.domain.models import HardwareCosts, ProjectUpload, Screen, Stop
 from dolphin_tracker.domain.parsing import Row, read_table
 from dolphin_tracker.domain.statuses import screen_size_label
 from dolphin_tracker.domain.validation import normalize_external_id
+from dolphin_tracker.repositories.files import FileStore, project_upload_key
 from dolphin_tracker.repositories.projects import ProjectRepository
 from dolphin_tracker.repositories.stores import StoreRepository
+
+logger = Logger(child=True)
 
 MAX_BYTES = 3_000_000
 MAX_ROWS = 20_000
@@ -100,9 +106,38 @@ def screen_cost(
     return None if row is None or row.cost is None else total + screens * row.cost
 
 
+MAX_UPLOADS = 200  # as for imported sheets (services/uploads.py): the oldest entries drop off the list
+
+
 class ScreenSheetService:
-    def __init__(self, projects: ProjectRepository, stores: StoreRepository) -> None:
-        self._projects, self._stores = projects, stores
+    def __init__(self, projects: ProjectRepository, stores: StoreRepository, files: FileStore | None = None) -> None:
+        self._projects, self._stores, self._files = projects, stores, files
+
+    def _keep(self, project_id: str, filename: str, raw: bytes, result: ScreenSheetResult) -> None:
+        """Keep the uploaded sheet with the project, listed in Settings with the imported sheets. One entry per
+        file (by its content): reading it again, or applying it, updates that entry instead of adding another.
+        Never fails the upload it follows."""
+        if self._files is None:
+            return
+        try:
+            upload_id = "sc-" + hashlib.sha256(raw).hexdigest()[:24]
+            project = self._projects.get(project_id)
+            if project is None:
+                return
+            known = next((item for item in project.uploads if item.id == upload_id), None)
+            if known is None:
+                key = project_upload_key(project_id, upload_id, filename)
+                self._files.put_bytes(key, raw, content_type="application/octet-stream")
+                known = ProjectUpload(id=upload_id, filename=filename, key=key, kind="screen_cost", size=len(raw),
+                                      submitted=len(result.rows))
+            elif not result.applied:
+                return  # read again, nothing new to record
+            if result.applied:
+                known = known.model_copy(update={"added": known.added + result.screens_updated})
+            uploads = [*(item for item in project.uploads if item.id != upload_id), known][-MAX_UPLOADS:]
+            self._projects.update(project_id, {"uploads": [item.model_dump(mode="json") for item in uploads]})
+        except Exception:
+            logger.exception("Could not keep the screen cost sheet", extra={"project_id": project_id})
 
     def run(self, project_id: str, filename: str, content_base64: str, *, apply: bool = False) -> ScreenSheetResult:
         """Read the sheet and line it up with the project's screens; with `apply`, also write the sizes and owners
@@ -188,4 +223,5 @@ class ScreenSheetService:
                 self._stores.update_screens(project_id, uid, screens, updated_by="Screen cost sheet")
                 result.screens_updated += len(changes)
             result.applied = True
+        self._keep(project_id, filename, raw, result)
         return result

@@ -59,6 +59,7 @@ POLICY: dict[tuple[str, str], Permission | str] = {
     ("GET", _PROJECT + "/stores/field-usage"): P.PROJECTS_VIEW,
     ("GET", _PROJECT + "/stores/export.csv"): P.PROJECTS_VIEW,
     ("POST", _PROJECT + "/stores/append"): P.PROJECTS_EDIT,
+    ("GET", _PROJECT + "/stores/overview"): P.PROJECTS_VIEW,
     ("GET", _STORE): P.PROJECTS_VIEW,
     ("DELETE", _STORE): P.STORES_DELETE,
     ("PUT", _STORE + "/external-id"): P.PROJECTS_EDIT,

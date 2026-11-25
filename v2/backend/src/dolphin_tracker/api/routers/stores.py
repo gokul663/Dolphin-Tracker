@@ -18,6 +18,7 @@ from dolphin_tracker.api.schemas import (
     StoreAdd,
     StoreDetailsUpdate,
     StoreFilterOptions,
+    StoreOverview,
 )
 from dolphin_tracker.domain.auth import (
     SERVICE_PROGRESS_FIELDS,
@@ -131,6 +132,23 @@ def list_screens(
     bounds = Bounds(north, south, east, west) if north is not None else None  # type: ignore[arg-type]
     try:
         return service.screens(project_id, query, limit=limit, offset=offset, bounds=bounds)
+    except ValueError as exc:
+        raise _bad_request(exc) from exc
+
+
+@router.get("/overview", response_model=StoreOverview)
+def stores_overview(
+    project_id: str,
+    service: ServiceDep,
+    query: QueryDep,
+    pending: bool = True,
+    limit: Annotated[int, Query(ge=1, le=60)] = 10,
+    unit: Annotated[str, Query(pattern="^(stores|screens)$")] = "stores",
+) -> dict:
+    """The map pins, the filter options, the top states (`pending`, `limit`, `unit` as for /by-state) and the
+    hardware counts under the same filters, from one read of the project's stores."""
+    try:
+        return service.overview(project_id, query, pending=pending, limit=limit, unit=unit)
     except ValueError as exc:
         raise _bad_request(exc) from exc
 

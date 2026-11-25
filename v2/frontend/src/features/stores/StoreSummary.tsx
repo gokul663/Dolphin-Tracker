@@ -106,7 +106,7 @@ export function StoreSummary({
         installed={done.installed}
         committed={done.committed}
         fulfilled={done.fulfilled}
-        cost={hardwareCost(draft.rows, costs)}
+        cost={costs.hidden ? null : hardwareCost(draft.rows, costs)}
       />
       <section aria-label="Mounts needed" className="flex flex-col gap-2 rounded-xl bg-white p-4 shadow-sm ring-1 ring-slate-900/5">
         <CardTitle
@@ -221,7 +221,8 @@ function InstalledCard({
   installed: number;
   committed: number;
   fulfilled: boolean;
-  cost: ReturnType<typeof hardwareCost>;
+  /** Null: the project hides its hardware cost (Settings). */
+  cost: ReturnType<typeof hardwareCost> | null;
 }) {
   return (
     <section aria-label="Installed" className={cn("flex flex-col gap-2 rounded-xl bg-white p-4 shadow-sm ring-1 ring-slate-900/5", fulfilled && "bg-green-50 ring-green-300")}>
@@ -264,28 +265,32 @@ function InstalledCard({
       ) : (
         <p className="text-xs text-slate-500">Completed, Offline or Needs More Work (no commitment yet)</p>
       )}
-      {/* What the installed hardware cost Dolphin: a stick per screen, plus the screen for a Dolphin TV. */}
-      <div className="flex items-baseline justify-between gap-2 border-t pt-2 text-sm" aria-label="Hardware cost">
-        <span className="text-slate-500">Hardware cost</span>
-        {cost.installed === 0 ? (
-          <span className="text-slate-300">—</span>
-        ) : cost.total === null ? (
-          <span className="text-xs text-amber-700">Set the {cost.missing.join(", ")} price in Settings</span>
-        ) : (
-          <span className="font-mono font-semibold tabular-nums text-slate-800">{money(cost.total)}</span>
-        )}
-      </div>
-      {cost.installed > 0 && (
-        <ul className="space-y-0.5 text-xs text-slate-500" aria-label="Hardware cost lines">
-          {cost.lines.map((line) => (
-            <li key={line.label} className="flex justify-between gap-2">
-              <span>
-                {line.count} × {line.label}
-              </span>
-              <span className="font-mono tabular-nums">{line.price === null ? "no price" : money(line.count * line.price)}</span>
-            </li>
-          ))}
-        </ul>
+      {cost && (
+        <>
+          {/* What the installed hardware cost Dolphin: a stick per screen, plus the screen for a Dolphin TV. */}
+          <div className="flex items-baseline justify-between gap-2 border-t pt-2 text-sm" aria-label="Hardware cost">
+            <span className="text-slate-500">Hardware cost</span>
+            {cost.installed === 0 ? (
+              <span className="text-slate-300">—</span>
+            ) : cost.total === null ? (
+              <span className="text-xs text-amber-700">Set the {cost.missing.join(", ")} price in Settings</span>
+            ) : (
+              <span className="font-mono font-semibold tabular-nums text-slate-800">{money(cost.total)}</span>
+            )}
+          </div>
+          {cost.installed > 0 && (
+            <ul className="space-y-0.5 text-xs text-slate-500" aria-label="Hardware cost lines">
+              {cost.lines.map((line) => (
+                <li key={line.label} className="flex justify-between gap-2">
+                  <span>
+                    {line.count} × {line.label}
+                  </span>
+                  <span className="font-mono tabular-nums">{line.price === null ? "no price" : money(line.count * line.price)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
       )}
     </section>
   );

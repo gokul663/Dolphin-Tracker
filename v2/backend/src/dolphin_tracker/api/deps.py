@@ -71,15 +71,16 @@ def get_list_service(lists: Annotated[ListRepository, Depends(get_list_repositor
     return ListService(lists)
 
 
+def get_file_store(settings: SettingsDep) -> FileStore:
+    return make_file_store(settings)
+
+
 def get_screen_sheet_service(
     projects: Annotated[ProjectRepository, Depends(get_project_repository)],
     stores: Annotated[StoreRepository, Depends(get_store_repository)],
+    files: Annotated[FileStore, Depends(get_file_store)],
 ) -> ScreenSheetService:
-    return ScreenSheetService(projects, stores)
-
-
-def get_file_store(settings: SettingsDep) -> FileStore:
-    return make_file_store(settings)
+    return ScreenSheetService(projects, stores, files)
 
 
 @lru_cache

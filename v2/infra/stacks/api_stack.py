@@ -128,7 +128,7 @@ class ApiStack(cdk.Stack):
             architecture=ARCH,
             handler="index.handler" if placeholder else "dolphin_tracker.handlers.api.handler",
             code=code,
-            memory_size=1024,
+            memory_size=cfg.api_memory_mb,
             timeout=Duration.seconds(29),
             environment={**common_env, "DT_WORKER_FUNCTION_NAME": self.worker_fn.function_name},
             description="FastAPI via Mangum: all synchronous endpoints",
@@ -164,7 +164,18 @@ class ApiStack(cdk.Stack):
                 max_age=Duration.hours(1),
             ),
         )
-        integration = integrations.HttpLambdaIntegration("ApiIntegration", self.api_fn)
+        # Warm instances belong to a published version, reached through an alias: the HTTP API calls the alias, so
+        # every request lands on the version that has them. Each deploy publishes a new version and moves the alias.
+        api_target: lambda_.IFunction = self.api_fn
+        if cfg.api_warm_instances > 0 and not placeholder:
+            api_target = lambda_.Alias(
+                self,
+                "ApiLive",
+                alias_name="live",
+                version=self.api_fn.current_version,
+                provisioned_concurrent_executions=cfg.api_warm_instances,
+            )
+        integration = integrations.HttpLambdaIntegration("ApiIntegration", api_target)
         self.http_api.add_routes(path="/api", methods=[apigwv2.HttpMethod.ANY], integration=integration)
         self.http_api.add_routes(path="/api/{proxy+}", methods=[apigwv2.HttpMethod.ANY], integration=integration)
 

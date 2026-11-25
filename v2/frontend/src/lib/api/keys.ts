@@ -24,6 +24,7 @@ export const keys = {
   storeList: (id: string, filters: StoreFilters, page: StorePageParams = { offset: 0, limit: 20, bounds: null }) =>
     ["projects", id, "stores", "list", filters, page] as const,
   screenList: (id: string, filters: StoreFilters, page: StorePageParams) => ["projects", id, "stores", "screens", filters, page] as const,
+  storesOverview: (id: string, filters: StoreFilters, unit: string) => ["projects", id, "stores", "overview", filters, unit] as const,
   pins: (id: string, filters: StoreFilters) => ["projects", id, "stores", "pins", filters] as const,
   storeFacets: (id: string, filters: StoreFilters) => ["projects", id, "stores", "facets", filters] as const,
   byState: (id: string, filters: StoreFilters) => ["projects", id, "stores", "by-state", filters] as const,

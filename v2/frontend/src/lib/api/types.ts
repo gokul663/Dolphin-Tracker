@@ -109,6 +109,7 @@ export type ReviewPage = Schemas["ReviewPage"];
 export type DeviceLog = Schemas["DeviceLog"];
 export type LogPage = Schemas["LogPage"];
 export type SyncResult = Schemas["SyncResult"];
+export type StoreOverview = Schemas["StoreOverview"];
 export type PopulateResult = Schemas["PopulateResult"];
 export type PaList = Schemas["PaList"];
 export type OverwriteResult = Schemas["OverwriteResult"];

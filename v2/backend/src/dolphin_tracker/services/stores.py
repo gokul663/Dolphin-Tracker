@@ -484,10 +484,30 @@ class StoreService:
             raise NotFoundError(f"Stop {stop_uid} not found")
         return stop
 
-    def pins(self, project_id: str, query: StoreQuery | None = None) -> list[dict[str, Any]]:
-        """Whole-project map payload, located stops only (deliberately unpaginated, rule 4)."""
+    def overview(
+        self, project_id: str, query: StoreQuery | None = None, *, pending: bool = True, limit: int = 10,
+        unit: str = "stores",
+    ) -> dict[str, Any]:
+        """Everything beside the table on the Stores page, from one read of the project's stores: the map pins, the
+        filter options, the top states and the hardware counts. Each is exactly what its own endpoint returns; asked
+        for separately they would each read (and parse) every store again, on a Lambda of their own."""
+        query = query or StoreQuery()
+        stops = self._stores.list_all(project_id)
+        return {
+            "pins": self.pins(project_id, query, stops=stops),
+            "filters": self.filters(project_id, query, stops=stops),
+            "by_state": self.by_state(project_id, query, pending=pending, limit=limit, unit=unit, stops=stops),
+            "hardware": self.hardware(project_id, query, stops=stops),
+        }
+
+    def pins(
+        self, project_id: str, query: StoreQuery | None = None, *, stops: list[Stop] | None = None
+    ) -> list[dict[str, Any]]:
+        """Whole-project map payload, located stops only (deliberately unpaginated, rule 4). `stops`: the project's
+        stores when the caller has just read them (`overview`)."""
         project = self._project(project_id)
-        located = [(stop, *shown_location(stop)) for stop in self._query(project, query or StoreQuery())]
+        mine = None if stops is None else list(stops)  # `_query` sorts in place
+        located = [(stop, *shown_location(stop)) for stop in self._query(project, query or StoreQuery(), mine)]
         return [
             {
                 "uid": stop.uid,
@@ -505,7 +525,9 @@ class StoreService:
             if lat is not None and lng is not None
         ]
 
-    def filters(self, project_id: str, query: StoreQuery | None = None) -> dict[str, list[dict[str, Any]]]:
+    def filters(
+        self, project_id: str, query: StoreQuery | None = None, *, stops: list[Stop] | None = None
+    ) -> dict[str, list[dict[str, Any]]]:
         """Distinct values per filter with store counts, for the filter bar (STORE-MODEL §5).
 
         Each filter's options are counted over the stores matching every *other* active filter and the search,
@@ -513,7 +535,7 @@ class StoreService:
         greys it out). Statuses come in precedence order, other values alphabetically."""
         project = self._project(project_id)
         query = query or StoreQuery()
-        everything = self._stores.list_all(project_id)
+        everything = self._stores.list_all(project_id) if stops is None else stops
         result: dict[str, list[dict[str, Any]]] = {}
         for name in FILTER_FIELDS:
             counts: Counter[str] = Counter()
@@ -542,6 +564,7 @@ class StoreService:
         pending: bool = True,
         limit: int = 10,
         unit: str = "stores",
+        stops: list[Stop] | None = None,
     ) -> list[dict[str, Any]]:
         """Stores or screens per state, most first (the "Top states by upcoming installs" chart): the active filters
         apply except State itself, so clicking a bar never empties the chart. `pending` keeps pending-status stores
@@ -549,7 +572,8 @@ class StoreService:
         if unit not in ("stores", "screens"):
             raise ValueError("unit must be stores or screens")
         project = self._project(project_id)
-        stops = self._filter(project, self._stores.list_all(project_id), (query or StoreQuery()).without("state"))
+        everything = self._stores.list_all(project_id) if stops is None else stops
+        stops = self._filter(project, everything, (query or StoreQuery()).without("state"))
         counts: Counter[str] = Counter()
         for stop in stops:
             state = stop.place_state
@@ -563,11 +587,14 @@ class StoreService:
         ranked = sorted(((s, c) for s, c in counts.items() if c), key=lambda item: (-item[1], item[0]))[:limit]
         return [{"state": state, "count": count} for state, count in ranked]
 
-    def hardware(self, project_id: str, query: StoreQuery | None = None) -> dict[str, Any]:
+    def hardware(
+        self, project_id: str, query: StoreQuery | None = None, *, stops: list[Stop] | None = None
+    ) -> dict[str, Any]:
         """The installed hardware of the stores the filters keep (the "Hardware cost" chart): installed screens (a stick
         each) and installed Dolphin screens by model. Prices live on the project; the page multiplies."""
         project = self._project(project_id)
-        stops = self._filter(project, self._stores.list_all(project_id), query or StoreQuery())
+        everything = self._stores.list_all(project_id) if stops is None else stops
+        stops = self._filter(project, everything, query or StoreQuery())
         by_model: dict[str, int] = {}
         # Screens with a mount chosen (not Cancelled or Archived): the 24 inch wall mount is its own piece.
         mounts = {"wall_24": 0, "wall_other": 0, "ceiling": 0}

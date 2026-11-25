@@ -50,7 +50,7 @@ describe("full-page map and chart", () => {
     const bar = screen.getByRole("group", { name: "Filters" });
     expect(within(bar).getByRole("button", { name: "State: TX" })).toBeTruthy();
     expect(screen.getByRole("radio", { name: "Screens" }).getAttribute("aria-checked")).toBe("true");
-    await waitFor(() => expect(api.calls.some((c) => c.url.pathname.endsWith("/pins") && c.url.searchParams.get("state") === "TX")).toBe(true));
+    await waitFor(() => expect(api.calls.some((c) => c.url.pathname.endsWith("/overview") && c.url.searchParams.get("state") === "TX")).toBe(true));
     expect(screen.queryByText("Only stores in map view")).toBeNull(); // no table here
     await userEvent.click(screen.getByRole("radio", { name: "Locations" }));
     await waitFor(() => expect(screen.getByTestId("where").textContent).toBe("?state=TX"));
@@ -60,7 +60,7 @@ describe("full-page map and chart", () => {
     useStoresUi.setState({ projectId: null });
     const api = renderPage("states", "unit=screens");
     expect(await screen.findByRole("region", { name: "Top states by screens" })).toBeTruthy();
-    const byState = api.calls.filter((c) => c.url.pathname.endsWith("/by-state")).at(-1)!.url;
+    const byState = api.calls.filter((c) => c.url.pathname.endsWith("/overview")).at(-1)!.url;
     expect(byState.searchParams.get("unit")).toBe("screens");
   });
 

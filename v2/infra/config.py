@@ -11,6 +11,13 @@ class EnvConfig:
     certificate_arn: str | None = None      # ACM cert in us-east-1 for the domain above
     cloudfront_domain: str | None = None    # e.g. "d1234abcd.cloudfront.net", once the Web stack has deployed
     log_retention_days: int = 30
+    # The API Lambda. Memory also sets its CPU share: 2048 MB parses a project's stores about twice as fast as
+    # 1024, for about the same cost per request (it finishes sooner).
+    api_memory_mb: int = 2048
+    # Instances kept started and ready (provisioned concurrency), so opening a page does not wait about 3 s for a
+    # cold start. Opening a project needs two or three at once. Billed around the clock, by memory: roughly $17 a
+    # month each at 2048 MB. 0 = none (every instance starts on demand).
+    api_warm_instances: int = 0
     # Public by design (Maps JS runs in the browser); restrict it by HTTP referrer in Google Cloud. Not a secret,
     # but it can also come from `-c google_browser_key=...` so it need not be committed.
     google_browser_key: str = ""
@@ -75,6 +82,7 @@ ENVIRONMENTS: dict[str, EnvConfig] = {
         certificate_arn="arn:aws:acm:us-east-1:519747127986:certificate/ac51e029-8352-408c-979b-ece470505075",
         cloudfront_domain="d2nm60ijusfh0v.cloudfront.net",  # the live site (DolphinTracker-Dev-Web)
         log_retention_days=14,
+        api_warm_instances=1,
         # Sign-in through the shared Dolphin Nexus login. Remove these three lines to deploy without a login.
         auth_issuer="https://cognito-idp.us-east-1.amazonaws.com/us-east-1_U2DnRTmXT",
         auth_jwks_url="https://cognito-idp.us-east-1.amazonaws.com/us-east-1_U2DnRTmXT/.well-known/jwks.json",

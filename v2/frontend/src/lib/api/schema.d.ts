@@ -396,6 +396,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{project_id}/stores/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Stores Overview
+         * @description The map pins, the filter options, the top states (`pending`, `limit`, `unit` as for /by-state) and the
+         *     hardware counts under the same filters, from one read of the project's stores.
+         */
+        get: operations["stores_overview_api_projects__project_id__stores_overview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects/{project_id}/stores/pins": {
         parameters: {
             query?: never;
@@ -1879,6 +1900,11 @@ export interface components {
             screens?: components["schemas"]["ScreenPrice-Input"][];
             /** Mounts */
             mounts?: components["schemas"]["MountPrice-Input"][];
+            /**
+             * Hidden
+             * @default false
+             */
+            hidden?: boolean;
         };
         /**
          * HardwareCosts
@@ -1893,6 +1919,11 @@ export interface components {
             screens: components["schemas"]["ScreenPrice-Output"][];
             /** Mounts */
             mounts: components["schemas"]["MountPrice-Output"][];
+            /**
+             * Hidden
+             * @default false
+             */
+            hidden: boolean;
         };
         /**
          * HardwareCounts
@@ -3466,8 +3497,8 @@ export interface components {
         };
         /**
          * ProjectUpload
-         * @description One sheet uploaded into the project (on create or append), kept for good: the file itself is in the file
-         *     store under `key`.
+         * @description One sheet uploaded into the project (on create or append, or a screen cost sheet), kept for good: the file
+         *     itself is in the file store under `key`.
          */
         ProjectUpload: {
             /** Id */
@@ -5064,6 +5095,18 @@ export interface components {
             review: components["schemas"]["FilterOption"][];
         };
         /**
+         * StoreOverview
+         * @description What the Stores page shows beside its table, in one answer (one read of the stores instead of four).
+         */
+        StoreOverview: {
+            /** Pins */
+            pins: components["schemas"]["Pin"][];
+            filters: components["schemas"]["StoreFilterOptions"];
+            /** By State */
+            by_state: components["schemas"]["StateCount"][];
+            hardware: components["schemas"]["HardwareCounts"];
+        };
+        /**
          * StorePage
          * @description A page of the store list, with the filtered total and where the page starts.
          */
@@ -6172,6 +6215,80 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ScreenPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stores_overview_api_projects__project_id__stores_overview_get: {
+        parameters: {
+            query?: {
+                pending?: boolean;
+                limit?: number;
+                unit?: string;
+                status?: components["schemas"]["ScreenStatus"][] | null;
+                /** @description Repeatable; empty value = unassigned */
+                installer?: string[] | null;
+                /** @description Repeatable; a store matches any of the values */
+                pa?: string[] | null;
+                /** @description Repeatable; a store matches any of the values */
+                state?: string[] | null;
+                /** @description Repeatable; a store matches any of the values */
+                city?: string[] | null;
+                /** @description Repeatable; a store matches any of the values */
+                dma?: string[] | null;
+                /** @description Repeatable; a store matches any of the values */
+                venue_type?: string[] | null;
+                /** @description Repeatable; any screen's venue id */
+                dd_code?: string[] | null;
+                /** @description Repeatable; any screen's size */
+                screen_size?: string[] | null;
+                /** @description Repeatable; "In route" or "Not in route" */
+                route?: string[] | null;
+                /** @description Repeatable; Visited, Partly visited, Not visited */
+                visit?: string[] | null;
+                /** @description Repeatable; the store's status group */
+                bucket?: components["schemas"]["StatusBucket"][] | null;
+                /** @description Repeatable; Technician, Self install, … */
+                install_type?: string[] | null;
+                /** @description Repeatable; a technician's name, "" = none */
+                technician?: string[] | null;
+                /** @description Repeatable; "Needs mount" or "No mount needed" */
+                mount?: string[] | null;
+                /** @description Repeatable; "Fulfilled", "Not fulfilled" or "No commitment" */
+                fulfilled?: string[] | null;
+                /** @description Repeatable; "Has review notes" or "No review notes" */
+                review?: string[] | null;
+                q?: string;
+                /** @description Only stores added without a name or a verified address */
+                needs_attention?: boolean;
+                /** @description a store attribute, status, installer, day, screens, fields.<key> */
+                sort?: string;
+                dir?: string;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoreOverview"];
                 };
             };
             /** @description Validation Error */

@@ -3,6 +3,7 @@ import { Loader2, Plus, Trash2, Usb } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useUpdateProject } from "@/features/projects/api";
@@ -122,6 +123,7 @@ export function HardwareCostsSection({ project }: { project: Project }) {
   const [draft, setDraft] = useState<Draft>(() => draftOf(project.hardware_costs));
   useEffect(() => setDraft(draftOf(project.hardware_costs)), [project.hardware_costs]);
   const update = useUpdateProject(project.id);
+  const hidden = Boolean(project.hardware_costs.hidden);
   const errors = { ...draftErrors(draft.sizes), ...mountErrors(draft.mounts) };
   const setMounts = (next: (mounts: MountRow[]) => MountRow[]) => setDraft((current) => ({ ...current, mounts: next(current.mounts) }));
   const patchMount = (key: string, change: Partial<MountRow>) => setMounts((mounts) => mounts.map((row) => (row.key === key ? { ...row, ...change } : row)));
@@ -141,18 +143,46 @@ export function HardwareCostsSection({ project }: { project: Project }) {
   const save = async () => {
     if (bad) return;
     try {
-      await update.mutateAsync({ hardware_costs: toCosts(draft), expected_version: project.version });
+      await update.mutateAsync({ hardware_costs: { ...toCosts(draft), hidden }, expected_version: project.version });
       toast.success("Hardware prices saved");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Save failed");
     }
   };
+  /** Show or hide the hardware cost across the project. Saved at once, with the prices as they are saved now (a
+   *  half-edited price is not swept along). */
+  const setHidden = async (next: boolean) => {
+    try {
+      await update.mutateAsync({ hardware_costs: { ...toCosts(draftOf(project.hardware_costs)), hidden: next }, expected_version: project.version });
+      toast.success(next ? "Hardware cost hidden in this project" : "Hardware cost shown again");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Save failed");
+    }
+  };
+  const toggle = (
+    <label className="flex w-fit cursor-pointer items-center gap-2 text-sm">
+      <Checkbox checked={!hidden} disabled={update.isPending} onCheckedChange={(checked) => void setHidden(checked !== true)} />
+      Show the hardware cost in this project
+    </label>
+  );
+  if (hidden) {
+    return (
+      <Card className="gap-3 p-5" aria-label="Hardware costs">
+        <SectionTitle
+          title="Hardware costs"
+          hint="Hidden: the cost column in the stores and screens tables, the hardware cost chart and the cost lines in the store window are not shown. The prices stay saved."
+        />
+        {toggle}
+      </Card>
+    );
+  }
   return (
     <Card className="gap-4 p-5" aria-label="Hardware costs">
       <SectionTitle
         title="Hardware costs"
         hint="What each piece costs us. A store's hardware cost counts its installed screens (Completed, Offline, Needs More Work): a stick for each, plus the screen for a Dolphin-owned one."
       />
+      {toggle}
       <div className="max-w-56 space-y-1.5">
         <Label htmlFor="price-stick" className="flex items-center gap-1.5">
           <Usb size={14} /> Stick

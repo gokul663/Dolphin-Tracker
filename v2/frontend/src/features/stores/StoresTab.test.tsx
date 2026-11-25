@@ -181,7 +181,7 @@ describe("StoresTab", () => {
       ],
     });
     await screen.findByText("Alpha Mart");
-    const byState = () => calls.filter((call) => call.url.pathname.endsWith("/by-state")).at(-1)!.url;
+    const byState = () => calls.filter((call) => call.url.pathname.endsWith("/overview")).at(-1)!.url;
     await waitFor(() => expect(byState().searchParams.get("unit")).toBe("stores"));
     expect(byState().searchParams.get("limit")).toBe("60"); // every state, not just the top ten
     const legend = screen.getByRole("group", { name: "Map legend" });
@@ -325,7 +325,7 @@ describe("StoresTab", () => {
     await waitFor(() => expect(lastList(calls)?.searchParams.getAll("status")).toEqual(["Completed"]));
     await userEvent.type(screen.getByLabelText("Search stores"), "oak");
     await waitFor(() => expect(lastList(calls)?.searchParams.get("q")).toBe("oak"), { timeout: 2000 });
-    await waitFor(() => expect([...calls].reverse().find((call) => call.url.pathname.endsWith("/pins"))?.url.searchParams.get("q")).toBe("oak"));
+    await waitFor(() => expect([...calls].reverse().find((call) => call.url.pathname.endsWith("/overview"))?.url.searchParams.get("q")).toBe("oak"));
 
     await userEvent.click(within(screen.getByRole("columnheader", { name: /Store name/ })).getByRole("button"));
     await waitFor(() => expect(lastList(calls)?.searchParams.get("dir")).toBe("desc"));
@@ -471,7 +471,7 @@ describe("StoresTab", () => {
 
   it("hardware cost sits under Top states: completed screens only, priced from Settings, following the filters", async () => {
     const { calls } = renderTab({
-      "GET /api/projects/p1": () => makeSummary({ hardware_costs: { stick: 40, screens: [{ size: '24"', type: "Dolphin", cost: 120, is_default: true }, { size: '43"', type: "Dolphin", cost: 300, is_default: true }], mounts: [{ size: '24"', wall: 15, ceiling: null }, { size: '43"', wall: 30, ceiling: 50 }] } }),
+      "GET /api/projects/p1": () => makeSummary({ hardware_costs: { stick: 40, screens: [{ size: '24"', type: "Dolphin", cost: 120, is_default: true }, { size: '43"', type: "Dolphin", cost: 300, is_default: true }], mounts: [{ size: '24"', wall: 15, ceiling: null }, { size: '43"', wall: 30, ceiling: 50 }], hidden: false } }),
       "GET /api/projects/p1/stores/hardware": () => ({ installed_screens: 5, installed_stores: 4, installed_dolphin_by_model: { '24"|': 3, '43"|Dolphin': 1 }, mounts: { wall_24: 3, wall_other: 1, ceiling: 2 }, installed_mounts: { '24"|wall': 2, '43"|ceiling': 1 } }),
     });
     await screen.findByText("Alpha Mart");
@@ -491,7 +491,7 @@ describe("StoresTab", () => {
     await userEvent.click(await screen.findByRole("menuitemcheckbox", { name: /Decatur/ }));
     await userEvent.keyboard("{Escape}");
     await waitFor(() =>
-      expect([...calls].reverse().find((call) => call.url.pathname.endsWith("/hardware"))?.url.searchParams.getAll("city")).toEqual(["Decatur"]),
+      expect([...calls].reverse().find((call) => call.url.pathname.endsWith("/overview"))?.url.searchParams.getAll("city")).toEqual(["Decatur"]),
     );
   });
 
@@ -772,9 +772,9 @@ describe("StoresTab", () => {
     await userEvent.click(screen.getByRole("menuitemcheckbox", { name: /Decatur/ }));
     await userEvent.keyboard("{Escape}");
     await waitFor(() => expect(lastList(calls)?.searchParams.getAll("city")).toEqual(["Decatur"]));
-    const pins = [...calls].reverse().find((call) => call.url.pathname.endsWith("/pins"))?.url;
+    const pins = [...calls].reverse().find((call) => call.url.pathname.endsWith("/overview"))?.url;
     expect(pins?.searchParams.getAll("city")).toEqual(["Decatur"]);
-    const facets = [...calls].reverse().find((call) => call.url.pathname.endsWith("/filters"))?.url;
+    const facets = [...calls].reverse().find((call) => call.url.pathname.endsWith("/overview"))?.url;
     expect(facets?.searchParams.getAll("city")).toEqual(["Decatur"]); // options are counted under the selection
     expect(within(bar).getByRole("button", { name: "City: Decatur" })).toBeTruthy();
   });
@@ -787,8 +787,8 @@ describe("StoresTab", () => {
     await userEvent.click(within(chips).getByRole("button", { name: /Online/ }));
     await waitFor(() => expect(lastList(calls)?.searchParams.getAll("bucket")).toEqual(["Completed"]));
     const last = (suffix: string) => [...calls].reverse().find((call) => call.url.pathname.endsWith(suffix))?.url;
-    expect(last("/pins")?.searchParams.getAll("bucket")).toEqual(["Completed"]);
-    expect(last("/by-state")?.searchParams.getAll("bucket")).toEqual(["Completed"]);
+    // The pins and the chart come with the same request, under the same filters.
+    await waitFor(() => expect(last("/overview")?.searchParams.getAll("bucket")).toEqual(["Completed"]));
     expect(within(chips).getByRole("button", { name: /Online/ }).getAttribute("aria-pressed")).toBe("true");
   });
 
@@ -804,7 +804,7 @@ describe("StoresTab", () => {
     expect(chart.parentElement?.className).toContain("overflow-y-auto"); // the panel scrolls when they don't fit
     expect(within(chart).queryByRole("button")).toBeNull(); // no state chips to click
     expect(within(chart).getByRole("link", { name: /Open chart in a new tab/ })).toBeTruthy();
-    const byState = [...calls].reverse().find((call) => call.url.pathname.endsWith("/by-state"))?.url;
+    const byState = [...calls].reverse().find((call) => call.url.pathname.endsWith("/overview"))?.url;
     expect(byState?.searchParams.get("pending")).toBe("false"); // every status: the status chips decide
   });
 
@@ -852,6 +852,23 @@ describe("StoresTab", () => {
     expect(calls.some((call) => call.url.pathname.endsWith("/device-sync/review") && call.url.searchParams.get("limit") === "25" && call.url.searchParams.get("q") === "OK22245")).toBe(true);
   });
 
+  it("a project that hides its hardware cost shows no cost column, chart or cost lines", async () => {
+    renderTab();
+    await screen.findByText("Alpha Mart");
+    expect(screen.getByRole("columnheader", { name: "Hardware cost" })).toBeTruthy(); // shown unless hidden
+    expect(screen.getByRole("region", { name: "Hardware cost" })).toBeTruthy();
+  });
+
+  it("…and with it hidden, none of them", async () => {
+    renderTab({ "GET /api/projects/p1": () => makeSummary({ hardware_costs: { stick: 40, screens: [], mounts: [], hidden: true } }) });
+    await screen.findByText("Alpha Mart");
+    expect(screen.queryByRole("columnheader", { name: "Hardware cost" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "Hardware cost" })).toBeNull();
+    const drawer = await openDrawer();
+    await within(drawer).findByRole("region", { name: "Installed" });
+    expect(within(drawer).queryByLabelText("Hardware cost")).toBeNull();
+  });
+
   it("an admin deletes a store from its window after an 'Are you sure?' prompt", async () => {
     const { calls, db } = renderTab({
       "DELETE /api/projects/p1/stores/u1": () => {
@@ -874,5 +891,18 @@ describe("StoresTab", () => {
     await waitFor(() => expect(calls.some((call) => call.method === "DELETE" && call.url.pathname === "/api/projects/p1/stores/u1")).toBe(true));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull()); // the store window closes too
     await waitFor(() => expect(screen.queryByText("IBC-1")).toBeNull()); // and the list no longer has it
+  });
+});
+
+describe("StoresTab: one request for the map side", () => {
+  it("asks for pins, filters, top states and hardware together, never one by one", async () => {
+    const { calls } = renderTab();
+    await screen.findByText("Alpha Mart");
+    await waitFor(() => expect(calls.some((call) => call.url.pathname === "/api/projects/p1/stores/overview")).toBe(true));
+    const separate = calls.filter((call) => /\/stores\/(pins|filters|by-state|hardware)$/.test(call.url.pathname));
+    expect(separate).toEqual([]);
+    const overview = calls.find((call) => call.url.pathname === "/api/projects/p1/stores/overview")!.url;
+    expect(overview.searchParams.get("pending")).toBe("false"); // every status: the status chips decide
+    expect(overview.searchParams.get("limit")).toBe("60"); // every state
   });
 });

@@ -63,5 +63,12 @@ class SignInTests(unittest.TestCase):
             EnvConfig(name="dev", retain_data=False, auth_issuer=self.ISSUER).auth_env()
 
 
+class ApiSizingTests(unittest.TestCase):
+    def test_dev_keeps_api_instances_warm_and_a_new_environment_starts_with_none(self):
+        self.assertEqual(load("dev").api_warm_instances, 1)
+        self.assertEqual(load("dev").api_memory_mb, 2048)
+        self.assertEqual(EnvConfig(name="x", retain_data=False).api_warm_instances, 0)
+
+
 if __name__ == "__main__":
     unittest.main()

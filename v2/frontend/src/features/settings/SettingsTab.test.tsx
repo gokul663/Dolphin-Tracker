@@ -3,6 +3,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Route, Routes } from "react-router";
 import { ProjectPage } from "@/features/projects/ProjectPage";
+import { HardwareCostsSection } from "@/features/settings/HardwareCostsSection";
 import { SettingsTab } from "@/features/settings/SettingsTab";
 import { jsonError, mockApi, renderWithProviders } from "@/test/render";
 import { makeProject, makeSummary } from "@/test/fixtures";
@@ -202,6 +203,7 @@ describe("Settings tab", () => {
           { size: '43"', type: "", cost: 300, is_default: true },
         ],
         mounts: [{ size: '24"', wall: 15, ceiling: null }, { size: '43"', wall: 30, ceiling: 55.5 }],
+        hidden: false,
       },
       expected_version: 1,
     }));
@@ -244,5 +246,29 @@ describe("Settings tab", () => {
     await waitFor(() => expect(sent).toHaveLength(2));
     expect(sent[1]).toMatchObject({ filename: "costs.csv", apply: true });
     expect(await within(card).findByText("applied")).toBeTruthy();
+  });
+  it("hardware cost can be hidden: saved at once with the prices kept, and the section folds away", async () => {
+    const costs = { stick: 40, screens: [{ size: '24"', type: "Dolphin", cost: 120, is_default: true }], mounts: [], hidden: false };
+    let project = makeProject({ id: "p1", hardware_costs: costs });
+    const { calls } = mockApi({
+      "GET /api/projects/p1/uploads": () => ({ items: [] }),
+      "GET /api/device-data/pas": () => ({ date: "", pas: [] }),
+      "GET /api/projects/p1/stores/field-usage": () => ({}),
+      "PATCH /api/projects/p1": (_url, init) => {
+        const sent = JSON.parse(String(init.body)) as { hardware_costs: typeof costs };
+        project = { ...project, hardware_costs: sent.hardware_costs, version: project.version + 1 };
+        return project;
+      },
+    });
+    const view = renderWithProviders(<HardwareCostsSection project={project} />);
+    const card = screen.getByLabelText("Hardware costs");
+    expect(within(card).getByRole("button", { name: /Save prices/ })).toBeTruthy();
+    await userEvent.click(within(card).getByRole("checkbox", { name: "Show the hardware cost in this project" }));
+    await waitFor(() => expect(body(calls, "PATCH", "/api/projects/p1")).toMatchObject({ hardware_costs: { stick: 40, hidden: true } }));
+    view.rerender(<HardwareCostsSection project={project} />);
+    const folded = screen.getByLabelText("Hardware costs");
+    expect(within(folded).queryByRole("button", { name: /Save prices/ })).toBeNull();
+    expect(folded.textContent).toContain("The prices stay saved");
+    expect((within(folded).getByRole("checkbox", { name: "Show the hardware cost in this project" })).getAttribute("aria-checked")).toBe("false");
   });
 });

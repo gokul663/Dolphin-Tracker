@@ -510,3 +510,41 @@ class SearchTests(StoresApiTestCase):
         self.assertEqual(self.found("alpha"), ["b"])
         self.assertEqual(self.found("V3"), [])  # a screen's DD code: the DD code filter
         self.assertEqual(self.found("charlie gas macon"), ["c"])
+
+
+class OverviewTests(StoresApiTestCase):
+    """One answer for the map side of the Stores page, from one read of the stores."""
+
+    def test_it_is_exactly_the_four_answers_it_replaces(self):
+        for params in ({}, {"state": "GA"}, {"q": "atlanta"}, {"status": "Completed", "unit": "screens"}):
+            with self.subTest(params=params):
+                own = {key: value for key, value in params.items() if key != "unit"}
+                unit = params.get("unit", "stores")
+                overview = self.client.get("/api/projects/p1/stores/overview",
+                                           params={**params, "pending": "false", "limit": 60}).json()
+                self.assertEqual(overview["pins"], self.part("pins", own))
+                self.assertEqual(overview["filters"], self.part("filters", own))
+                by_state = self.part("by-state", {**own, "pending": "false", "limit": 60, "unit": unit})
+                self.assertEqual(overview["by_state"], by_state)
+                self.assertEqual(overview["hardware"], self.part("hardware", own))
+
+    def part(self, path: str, params: dict):
+        return self.client.get(f"/api/projects/p1/stores/{path}", params=params).json()
+
+    def test_it_reads_the_stores_once(self):
+        reads = []
+        original = self.stores.list_all
+
+        def spy(project_id):
+            reads.append(project_id)
+            return original(project_id)
+
+        self.stores.list_all = spy
+        self.assertEqual(self.client.get("/api/projects/p1/stores/overview").status_code, 200)
+        self.assertEqual(reads, ["p1"])
+
+    def test_a_viewer_may_read_it_and_a_technician_may_not(self):
+        self.assertEqual(self.client.get("/api/projects/p1/stores/overview",
+                                         headers={"X-Dev-Role": "viewer"}).status_code, 200)
+        self.assertEqual(self.client.get("/api/projects/p1/stores/overview",
+                                         headers={"X-Dev-Role": "technician"}).status_code, 403)

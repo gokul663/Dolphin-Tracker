@@ -98,7 +98,8 @@ export function StoreDrawer({ project, stopId, open, onClose }: Props) {
   };
   const plans = useRoutePlans("active");
   // Everyone already assigned somewhere in the project, offered when assigning this store.
-  const options = useFilterOptions(project.id, {});
+  // Only once the window is open: closed, it would read every store of the project on each page load for nothing.
+  const options = useFilterOptions(project.id, {}, open);
   const technicians = (options.data?.technician ?? []).map((option) => option.value).filter(Boolean);
   const planNames = new Map((plans.data ?? []).map((plan) => [plan.id, plan.name]));
   return (

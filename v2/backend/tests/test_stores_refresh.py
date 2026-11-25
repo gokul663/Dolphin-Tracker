@@ -446,6 +446,40 @@ class ScreenCostSheetTests(StoresApiTestCase):
         'X9,"9 Far Rd, Macon, Georgia 31201",DD-NOWHERE,1,50",1,$750.00,\n'
     )
 
+    def setUp(self):
+        super().setUp()
+        import tempfile
+
+        from dolphin_tracker.api.deps import get_file_store
+        from dolphin_tracker.repositories.files import LocalFileStore
+
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.files = LocalFileStore(self.tmp.name)
+        self.app.dependency_overrides[get_file_store] = lambda: self.files
+
+    def test_every_uploaded_sheet_is_kept_and_listed_once(self):
+        screens = [Screen(venue_id="DD-ONE"), Screen(venue_id="DD-TWO", screen_size='24"')]
+        self.stores.update_fields("p1", "a", {"screens": [screen.model_dump(mode="json") for screen in screens]})
+        self.send()  # the preview: the sheet is kept already
+        listed = self.client.get("/api/projects/p1/uploads").json()["items"]
+        self.assertEqual([(item["filename"], item["kind"], item["submitted"], item["added"]) for item in listed],
+                         [("costs.csv", "screen_cost", 3, 0)])
+        self.send()  # read again: still one entry
+        self.send(apply=True)  # applied: the same entry now says how many screens it updated
+        listed = self.client.get("/api/projects/p1/uploads").json()["items"]
+        self.assertEqual([(item["kind"], item["added"]) for item in listed], [("screen_cost", 1)])
+        downloaded = self.client.get(listed[0]["download_url"])
+        self.assertEqual(downloaded.content.decode(), self.SHEET)  # the file itself, as uploaded
+
+    def test_hardware_cost_can_be_hidden_and_the_prices_stay(self):
+        prices = {"stick": 175, "screens": [{"size": "24", "type": "Dolphin", "cost": 300}]}
+        saved = self.client.patch("/api/projects/p1", json={"hardware_costs": prices}).json()["hardware_costs"]
+        self.assertFalse(saved["hidden"])  # shown unless asked
+        hidden = self.client.patch("/api/projects/p1", json={"hardware_costs": {**prices, "hidden": True}}).json()
+        self.assertTrue(hidden["hardware_costs"]["hidden"])
+        self.assertEqual(hidden["hardware_costs"]["stick"], 175)
+
     def send(self, apply=False):
         import base64
         content = base64.b64encode(self.SHEET.encode()).decode()

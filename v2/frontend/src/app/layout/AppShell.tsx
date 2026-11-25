@@ -1,6 +1,8 @@
 import { Link, Outlet, useLocation } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
+import { LogOut } from "lucide-react";
 import { HealthBadge } from "@/app/layout/HealthBadge";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { ROLE_LABEL, ROLES, useMe } from "@/lib/auth/me";
 import { useQuery } from "@tanstack/react-query";
 import { TechnicianHome } from "@/features/technician/TechnicianHome";
@@ -14,6 +16,17 @@ const NAV = [
   { to: "/planner", label: "Route Planner", match: (path: string) => path.startsWith("/planner") },
   { to: "/installers", label: "Installers", match: (path: string) => path.startsWith("/installers") },
 ];
+
+/** The signed-in person's Google photo, or their initials on the brand colour when there is none. */
+function Avatar({ photo, name, initials, className }: { photo?: string; name: string; initials: string; className?: string }) {
+  return photo ? (
+    <img src={photo} alt={`${name}'s profile photo`} referrerPolicy="no-referrer" className={cn("shrink-0 rounded-full object-cover", className)} />
+  ) : (
+    <span aria-hidden className={cn("flex shrink-0 items-center justify-center rounded-full bg-brand font-semibold text-white", className)}>
+      {initials || "?"}
+    </span>
+  );
+}
 
 /** Who is signed in. Without a login (local work) the role is a picker, to see the app as each role does. */
 function WhoAmI() {
@@ -33,7 +46,6 @@ function WhoAmI() {
   const initials = shownName.split(/[\s@.]+/).filter(Boolean).slice(0, 2).map((part) => part[0]!.toUpperCase()).join("");
   return (
     <div className="flex items-center gap-2 text-xs" aria-label="Signed in as">
-      {!local && <span className="font-medium text-slate-800">{shownName}</span>}
       {local ? (
         <label className="flex items-center gap-1.5 text-slate-500">
           View as
@@ -72,33 +84,34 @@ function WhoAmI() {
           )}
         </label>
       ) : (
-        <>
-          <span className="rounded border bg-slate-50 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-slate-600">{ROLE_LABEL[me.role]}</span>
-          <button
-            type="button"
-            className="text-slate-500 underline hover:text-slate-800"
-            onClick={() => void signOut()}
-          >
-            Sign out
-          </button>
-          {photo.data ? (
-            <img
-              src={photo.data}
-              alt={`${shownName}'s profile photo`}
-              title={me.email || shownName}
-              referrerPolicy="no-referrer"
-              className="size-9 rounded-full object-cover ring-1 ring-slate-200"
-            />
-          ) : (
-            <span
-              aria-hidden
-              title={me.email || shownName}
-              className="flex size-9 items-center justify-center rounded-full bg-brand text-xs font-semibold text-white"
+        // Like Keystone: the photo is the button; who it is, their role here and Sign out are behind it.
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              aria-label={`Account: ${shownName}`}
+              className="rounded-full outline-none ring-2 ring-transparent ring-offset-2 transition hover:ring-brand/40 focus-visible:ring-brand data-[state=open]:ring-brand"
             >
-              {initials || "?"}
-            </span>
-          )}
-        </>
+              <Avatar photo={photo.data} name={shownName} initials={initials} className="size-9 text-xs" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-72 p-0">
+            <div className="flex items-center gap-3 p-4">
+              <Avatar photo={photo.data} name={shownName} initials={initials} className="size-11 text-sm" />
+              <div className="min-w-0 space-y-1">
+                <p className="truncate text-sm font-semibold text-slate-900">{shownName}</p>
+                {me.email && me.email !== shownName && <p className="truncate text-xs text-slate-500">{me.email}</p>}
+                <span className="inline-block rounded border border-brand/30 bg-brand/5 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-brand">
+                  Tracker {ROLE_LABEL[me.role]}
+                </span>
+              </div>
+            </div>
+            <DropdownMenuSeparator className="m-0" />
+            <DropdownMenuItem className="m-1 gap-2 px-3 py-2" onSelect={() => void signOut()}>
+              <LogOut /> Sign out
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       )}
     </div>
   );

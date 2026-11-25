@@ -39,7 +39,7 @@ describe("ScreensEditor", () => {
 
   it("size first; then who the screen belongs to, its brand, and for ours the mount (or none)", async () => {
     mockApi({});
-    const costs = { stick: 40, screens: [{ size: '24"', type: "Dolphin", cost: 120, is_default: true }, { size: '24"', type: "Dell", cost: 95, is_default: false }, { size: '43"', type: "Dolphin", cost: 300, is_default: true }], mounts: [] };
+    const costs = { stick: 40, screens: [{ size: '24"', type: "Dolphin", cost: 120, is_default: true }, { size: '24"', type: "Dell", cost: 95, is_default: false }, { size: '43"', type: "Dolphin", cost: 300, is_default: true }], mounts: [], hidden: false };
     const draft = draftScreens(makeProject({ hardware_costs: costs }), makeStop({ screens: [makeScreen({ id: "s1", screen_size: "" })] }));
     renderWithProviders(draft.element);
     // Nothing is asked until a size is picked.

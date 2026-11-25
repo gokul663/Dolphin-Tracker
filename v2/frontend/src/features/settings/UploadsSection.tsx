@@ -23,7 +23,7 @@ export function UploadsSection({ project }: { project: Project }) {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <SectionTitle
           title="Uploaded sheets"
-          hint="Every sheet imported into this project is kept here. Uploading another adds its new stores; a store already in the project (same ExtID or address) is skipped, not updated."
+          hint="Every sheet uploaded into this project is kept here: store lists and screen cost sheets. Uploading another store list adds its new stores; a store already in the project (same ExtID, or same PA and address) is skipped, not updated."
         />
         <Button onClick={() => setImporting(true)}>
           <Upload /> Upload a sheet
@@ -41,18 +41,32 @@ export function UploadsSection({ project }: { project: Project }) {
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium text-slate-900">{item.filename}</p>
                 <p className="text-xs text-slate-500">
-                  {centralTime(item.uploaded_at)} · {size(item.size)} · {item.kind === "create" ? "created the project" : "added to the project"}
+                  {centralTime(item.uploaded_at)} · {size(item.size)} ·{" "}
+                  {item.kind === "screen_cost" ? "screen cost sheet" : item.kind === "create" ? "created the project" : "added to the project"}
                 </p>
               </div>
-              <p className="text-xs text-slate-600">
-                <span className="font-semibold text-slate-900">{item.added.toLocaleString()}</span> added
-                {item.skipped > 0 && (
-                  <>
-                    {" · "}
-                    <span className="font-semibold text-amber-700">{item.skipped.toLocaleString()}</span> already there
-                  </>
-                )}
-              </p>
+              {item.kind === "screen_cost" ? (
+                <p className="text-xs text-slate-600">
+                  <span className="font-semibold text-slate-900">{item.submitted.toLocaleString()}</span> rows ·{" "}
+                  {item.added > 0 ? (
+                    <>
+                      <span className="font-semibold text-slate-900">{item.added.toLocaleString()}</span> screens updated
+                    </>
+                  ) : (
+                    "checked, not applied"
+                  )}
+                </p>
+              ) : (
+                <p className="text-xs text-slate-600">
+                  <span className="font-semibold text-slate-900">{item.added.toLocaleString()}</span> added
+                  {item.skipped > 0 && (
+                    <>
+                      {" · "}
+                      <span className="font-semibold text-amber-700">{item.skipped.toLocaleString()}</span> already there
+                    </>
+                  )}
+                </p>
+              )}
               <Button asChild size="sm" variant="outline">
                 <a href={item.download_url} download={item.filename}>
                   <Download /> Download

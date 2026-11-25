@@ -134,7 +134,13 @@ export type ScreenPrice = { size: string; type: string; cost: number | null; is_
 /** The project's prices: a stick, and the Dolphin-owned screen models (size + type) from Settings. */
 /** What the mounts for one screen size cost; null = none for this size, or not priced. */
 export type MountPrice = { size: string; wall: number | null; ceiling: number | null };
-export type HardwareCosts = { stick: number | null; screens: ScreenPrice[]; mounts?: MountPrice[] };
+export type HardwareCosts = {
+  stick: number | null;
+  screens: ScreenPrice[];
+  mounts?: MountPrice[];
+  /** Settings: the hardware cost is not shown in this project (the table column, the chart, the store window). */
+  hidden?: boolean;
+};
 
 /** A size as the prices key it: "43", "43in", '43"' → '43"'; "" when it holds no inches. */
 export function sizeLabel(value: string): string {

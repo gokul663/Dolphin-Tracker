@@ -6,7 +6,7 @@ import { OpenFullPage } from "@/features/stores/StoresViewControls";
 import { useDeviceReview } from "@/features/device/api";
 import { DEVICE_TONE, REPORT_STATUS_TONE } from "@/features/device/DeviceBits";
 import { useOpenDeviceReview, useProjectContext } from "@/features/projects/ProjectPage";
-import { DEFAULT_STORE_PAGE_SIZE, useFilterOptions, usePins, useScreenList, useStoreHardware, useStoreList, useStoresByState } from "@/features/stores/api";
+import { DEFAULT_STORE_PAGE_SIZE, useScreenList, useStoreList, useStoresOverview } from "@/features/stores/api";
 import { HardwareCostChart } from "@/features/stores/HardwareCostChart";
 import { BucketChips } from "@/features/stores/BucketChips";
 import { FilterBar } from "@/features/stores/FilterBar";
@@ -69,10 +69,12 @@ export function StoresTab() {
   const screenList = useScreenList(project.id, filters, page, byScreen);
   const list = byScreen ? screenList : storeList;
   const noun = byScreen ? "screens" : "stores";
-  const pins = usePins(project.id, selection);
-  const options = useFilterOptions(project.id, selection);
-  const byState = useStoresByState(project.id, selection, unit === "screens" ? "screens" : "stores");
-  const hardware = useStoreHardware(project.id, selection);
+  // The pins, the filter options, the top states and the hardware counts come in one request (`useStoresOverview`).
+  const overview = useStoresOverview(project.id, selection, unit === "screens" ? "screens" : "stores");
+  const pins = { data: overview.data?.pins };
+  const options = { data: overview.data?.filters };
+  const byState = { data: overview.data?.by_state };
+  const hardware = { data: overview.data?.hardware };
 
   // The search also looks in "Needs review": a screen the Dolphin data reports that is in no store yet is not in
   // the list below, so a search for its ExtID or address would otherwise find nothing and say nothing.
@@ -163,7 +165,7 @@ export function StoresTab() {
               />
             </Suspense>
           </div>
-          <HardwareCostChart counts={hardware.data} costs={project.hardware_costs} projectId={project.id} />
+          {!project.hardware_costs.hidden && <HardwareCostChart counts={hardware.data} costs={project.hardware_costs} projectId={project.id} />}
         </div>
       </div>
       {/* As tall as its rows, up to three quarters of the screen (then the rows scroll): no empty band under a short

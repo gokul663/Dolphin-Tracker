@@ -47,7 +47,7 @@ import type {
   RoutePlanCreate,
   RoutePlanUpdate,
   Visit,
-  VisitInput, OverwriteField, ReviewAdd, OverwriteResult, PaList, ReviewItem, ReviewPage, LogPage, UploadList, SyncResult, PopulateResult, DayInsert, DayLockSet, StopMove, StopMark, InsertOptions, InsertQuery, StorePage, ScreenPage, PlaceHit, InstallerSave, InstallerSaved, InstallerWorkReport, ScreenSheetResult } from "@/lib/api/types";
+  VisitInput, OverwriteField, ReviewAdd, OverwriteResult, PaList, ReviewItem, ReviewPage, LogPage, UploadList, SyncResult, PopulateResult, StoreOverview, DayInsert, DayLockSet, StopMove, StopMark, InsertOptions, InsertQuery, StorePage, ScreenPage, PlaceHit, InstallerSave, InstallerSaved, InstallerWorkReport, ScreenSheetResult } from "@/lib/api/types";
 import type { StorePageParams } from "@/lib/api/keys";
 import type { StatusBucket } from "@/lib/status";
 
@@ -170,6 +170,11 @@ export const storesApi = {
   screens: (projectId: string, filters: StoreFilters, page: StorePageParams) =>
     api<ScreenPage>(`/projects/${enc(projectId)}/stores/screens`, {
       query: { ...storeQuery(filters), limit: page.limit, offset: page.offset, ...(page.bounds ?? {}) },
+    }),
+  /** Pins, filter options, top states (every status, every state) and hardware counts in one answer. */
+  overview: (projectId: string, filters: StoreFilters, unit: "stores" | "screens" = "stores") =>
+    api<StoreOverview>(`/projects/${enc(projectId)}/stores/overview`, {
+      query: { ...storeQuery(filters), pending: false, unit, limit: 60 },
     }),
   pins: (projectId: string, filters: StoreFilters = {}) =>
     api<Pin[]>(`/projects/${enc(projectId)}/stores/pins`, { query: storeQuery(filters) }),

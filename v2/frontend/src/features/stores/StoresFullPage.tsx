@@ -5,7 +5,7 @@ import { useShallow } from "zustand/react/shallow";
 import { Card } from "@/components/ui/card";
 import { MapView } from "@/components/map/MapView";
 import { useProject } from "@/features/projects/api";
-import { useFilterOptions, usePins, useStoresByState } from "@/features/stores/api";
+import { useStoresOverview } from "@/features/stores/api";
 import { BucketChips } from "@/features/stores/BucketChips";
 import { FilterBar } from "@/features/stores/FilterBar";
 import { toStoreFilters } from "@/features/stores/filters";
@@ -47,9 +47,10 @@ export function StoresFullPage({ view }: { view: "map" | "states" }) {
 
   const selection = useMemo(() => toStoreFilters(ui.facets, ui.search, needsAttention), [ui.facets, ui.search, needsAttention]);
   const filters: StoreFilters = useMemo(() => ({ ...selection, sort: "store_name", dir: "asc" }), [selection]);
-  const pins = usePins(projectId, selection);
-  const options = useFilterOptions(projectId, selection);
-  const byState = useStoresByState(projectId, selection, ui.unit === "screens" ? "screens" : "stores");
+  const overview = useStoresOverview(projectId, selection, ui.unit === "screens" ? "screens" : "stores"); // one request
+  const pins = { data: overview.data?.pins };
+  const options = { data: overview.data?.filters };
+  const byState = { data: overview.data?.by_state };
 
   if (project.isPending || !ready) return <p className="p-6 text-center font-mono text-sm text-slate-500">Loading…</p>;
   if (project.isError) return <p className="p-6 text-center text-sm text-rose-700">Could not load the project: {project.error.message}</p>;

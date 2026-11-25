@@ -26,10 +26,9 @@ const Waiting = ({ children = "Loading…" }: { children?: ReactNode }) => (
   <div className="p-10 text-center font-mono text-sm text-slate-500">{children}</div>
 );
 
-/** `signed-out`: not signed in, on a site that signs in through Keystone: Tracker's own sign-in page shows, with
- *  the way there. `starting`: restoring the session or finishing the redirect back from the login. `leaving`: on the way to the
+/** `starting`: restoring the session or finishing the redirect back from the login. `leaving`: on the way to the
  *  managed login. `failed`: came back from it still not signed in (or the site is not set up), so no second trip. */
-type SignIn = "starting" | "signed-in" | "signed-out" | "leaving" | "failed";
+type SignIn = "starting" | "signed-in" | "leaving" | "failed";
 
 /** The session of the shared Dolphin Nexus login. Nobody clicks "Sign in": not signed in means going straight to
  *  the managed login, unless that was just tried, which is said instead of tried again in a loop. */
@@ -53,8 +52,11 @@ function useSignIn(): { state: SignIn; why: string; goToSignIn: (again?: boolean
       .then((signedIn) => {
         if (!live) return;
         if (signedIn) setState("signed-in");
-        // Through Keystone: say so and let them go there. Back from it, the shared login knows them: finish here.
-        else if (keystoneUrl() && !backFromKeystone()) setState("signed-out");
+        // Through Keystone: straight to its sign-in page, with no page of our own in between. Someone already
+        // signed in there (they came from its launcher, say) is sent back at once and never sees it. Back from
+        // Keystone, the shared login knows them: finish here. Without a way to remember the trip (storage
+        // blocked) we would go round for ever, so then we use the shared login directly.
+        else if (keystoneUrl() && !backFromKeystone() && leaveForKeystone()) setState("leaving");
         else goToSignIn();
       });
     return () => {
@@ -89,17 +91,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         <Button size="lg" onClick={() => goToSignIn(true)}>
           Try again
         </Button>
-      </Notice>
-    );
-  }
-  if (state === "signed-out") {
-    return (
-      <Notice title="Sign in to Dolphin Tracker">
-        <p>Tracker uses your Dolphin Keystone sign-in: one account for every Dolphin app.</p>
-        <Button size="lg" onClick={leaveForKeystone}>
-          Sign in through Keystone
-        </Button>
-        <p className="text-xs text-slate-500">You come back to this page once you are signed in.</p>
       </Notice>
     );
   }

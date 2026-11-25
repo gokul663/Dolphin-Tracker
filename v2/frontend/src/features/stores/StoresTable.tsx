@@ -359,12 +359,17 @@ export function StoresTable(props: Props) {
           );
         },
       }),
-      helper.accessor((stop) => String(hardwareCost(stop.screens, project.hardware_costs).total ?? ""), {
-        id: "hardware",
-        header: "Hardware cost",
-        size: 110,
-        cell: (info) => <HardwareCostCell cost={hardwareCost(info.row.original.screens, project.hardware_costs)} />,
-      }),
+      // Left out when the project hides its hardware cost (Settings).
+      ...(project.hardware_costs.hidden
+        ? []
+        : [
+            helper.accessor((stop) => String(hardwareCost(stop.screens, project.hardware_costs).total ?? ""), {
+              id: "hardware",
+              header: "Hardware cost",
+              size: 110,
+              cell: (info) => <HardwareCostCell cost={hardwareCost(info.row.original.screens, project.hardware_costs)} />,
+            }),
+          ]),
     ],
     [project.pa, project.hardware_costs, onOpen, planNames, hidePa], // the mutation object is stable per project
   );

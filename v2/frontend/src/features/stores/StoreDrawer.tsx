@@ -1,9 +1,9 @@
 import { useCan } from "@/lib/auth/me";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link } from "react-router";
 import { useRoutePlans } from "@/features/planner/api";
 import { VisitHistory, VisitPanel } from "@/features/visits/VisitPanel";
-import { AlertTriangle, CheckCircle2, CircleSlash, ChevronLeft, ChevronRight, ExternalLink, X, Pencil, ClipboardCheck, ChevronsDownUp, ChevronsUpDown, Eye, EyeOff, ImageOff, Loader2, MapPin, Trash2, Undo2, Wifi } from "lucide-react";
+import { AlertTriangle, BadgeCheck, CheckCircle2, CircleSlash, ChevronRight, X, ClipboardCheck, ChevronsDownUp, ChevronsUpDown, Eye, EyeOff, Loader2, MapPin, Route, Trash2, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 import { TriStateCheckbox } from "@/components/TriStateCheckbox";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useStoreFields, useValidateAddress } from "@/features/places/api";
@@ -21,8 +21,13 @@ import { screensChanged, ScreensEditor, ScreensView, toInputs, toRows, type Scre
 import { deviceDifferences, StoreDeviceSection } from "@/features/device/StoreDeviceSection";
 import { StoreLogs } from "@/features/device/StoreLogs";
 import { reportDay, splitCodes } from "@/features/device/DeviceBits";
-import { StoreLocationMap } from "@/components/map/StoreLocationMap";
+import { shownLocation, StoreLocationMap } from "@/components/map/StoreLocationMap";
+import { WhenVisible } from "@/components/WhenVisible";
+import { ImagePreviews } from "@/features/stores/Pictures";
 import { COUNT_KEYS, NO_TECHNICIAN, StoreSummary, type SummaryDraft } from "@/features/stores/StoreSummary";
+import { MismatchNotice, StoreTagPicker } from "@/features/stores/StoreFlags";
+import { EditToggle, ToneChip } from "@/features/stores/SectionChrome";
+import { SECTION_TONE } from "@/features/stores/sectionTone";
 import { useDeleteStore, useFilterOptions, useSetExternalId, useStore, useUpdateProgress, useUpdateScreens, useUpdateStoreDetails } from "@/features/stores/api";
 import {
   addressChanged,
@@ -30,7 +35,6 @@ import {
   detailsFormFrom,
   detailsPatch,
   filledCount,
-  previewSrc,
   type DetailsForm,
   type FormValue,
 } from "@/features/stores/details";
@@ -47,17 +51,36 @@ interface Props {
 }
 
 type Group = StoreFieldSpec["group"];
-/** The collapsible sections on the left; the right-hand details are always shown as line items. */
-const SECTIONS = ["Identity & address", "Screens", "Notes"] as const;
+/** Every collapsible section, in order: on the left what gets edited on site, on the right the reference material
+ *  (the Dolphin data comparison sits after WiFi and is not collapsible: it shows only while something differs). */
+const SECTIONS = [
+  "Identity & address", "Screens", "Notes", "Pictures", "Location",
+  "WiFi", "Contacts", "Installation", "Site notes", "Site checklist", "Other imported data",
+] as const;
 type SectionName = (typeof SECTIONS)[number];
-const DEFAULT_OPEN: SectionName[] = ["Identity & address", "Screens", "Notes"];
+/** Every section starts open, so the window reads top to bottom without a click; each still collapses, its header
+ *  then saying what is inside ("3 of 7 filled", "2 pictures", "empty"). */
+const DEFAULT_OPEN: readonly SectionName[] = SECTIONS;
+/** The two exceptions: Notes and Pictures open only when the store has some. Empty, they are just blank boxes in the
+ *  way; their header says "empty" and one click opens them. */
+function hasContent(stop: Stop): Partial<Record<SectionName, boolean>> {
+  return {
+    Notes: Boolean(stop.comment.trim() || stop.review_notes.trim()),
+    Pictures: urlTokens(stop.image_url).length > 0,
+  };
+}
 /** The right-hand column: reference material, still editable but out of the way of address and screens. */
-const ASIDE_GROUPS: Group[] = ["WiFi", "Contacts", "Installation", "Site notes", "Site checklist"];
+const ASIDE_GROUPS: (Group & SectionName)[] = ["WiFi", "Contacts", "Installation", "Site notes", "Site checklist"];
 
 interface Sections {
   isOpen: (name: SectionName) => boolean;
   toggle: (name: SectionName) => void;
+  /** Opened by its Edit button, so it stays open after View. */
+  open: (name: SectionName) => void;
 }
+
+/** The header's information chips: status, Dolphin data, anything to fix, the route. One shape, 28 px high. */
+const CHIP = "inline-flex h-7 items-center gap-1 rounded-full border px-2.5 text-xs font-medium";
 
 /** Full editor for one store in a large modal, in two columns like the visit log: on the left what gets edited on
  *  site (address, then the screens right under it, then the manager's notes); on the right the
@@ -78,8 +101,24 @@ export function StoreDrawer({ project, stopId, open, onClose }: Props) {
         if (!next.delete(name)) next.add(name);
         return next;
       }),
+    open: (name) => setExpanded((current) => (current.has(name) ? current : new Set([...current, name]))),
   };
   const allOpen = expanded.size === SECTIONS.length;
+  // On each store: Notes and Pictures open when it has some, closed when not (see hasContent). Set once per store,
+  // while rendering, so the window never shows the other state first; after that the person's clicks decide.
+  const [fittedTo, setFittedTo] = useState("");
+  if (stop && stop.uid !== fittedTo) {
+    setFittedTo(stop.uid);
+    const filled = hasContent(stop);
+    setExpanded((current) => {
+      const next = new Set(current);
+      for (const [name, has] of Object.entries(filled) as [SectionName, boolean][]) {
+        if (has) next.add(name);
+        else next.delete(name);
+      }
+      return next;
+    });
+  }
   const [logging, setLogging] = useState(false);
   const canDelete = useCan("stores.delete"); // admins
   const remove = useDeleteStore(project.id);
@@ -104,39 +143,40 @@ export function StoreDrawer({ project, stopId, open, onClose }: Props) {
   const planNames = new Map((plans.data ?? []).map((plan) => [plan.id, plan.name]));
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
-      <DialogContent className="flex max-h-[94vh] w-[90vw] max-w-[90vw] flex-col gap-0 overflow-hidden rounded-2xl border-0 bg-slate-100 p-0 shadow-2xl ring-1 ring-slate-900/10 sm:max-w-[90vw]">
-        <DialogHeader className="border-b border-slate-200/70 bg-white px-6 pt-5 pb-3 pr-12">
-          <DialogTitle className="font-mono uppercase tracking-wider text-brand">
-            {stop ? `${stop.external_id || stop.display_id} · ${stop.store_name}` : "Store"}
-          </DialogTitle>
-          <DialogDescription asChild>
-            <div className="flex flex-wrap items-center gap-2">
-              {stop && (
-                <span className={cn("rounded border px-1.5 py-0.5 text-xs font-medium", STATUS_META[stop.status].chip)}>
-                  {storeStatusLabel(stop.status)}
-                </span>
-              )}
-              {stop && <StoreAlerts project={project} stop={stop} />}
-              {/* At the right: the route it is in, Log visit, and collapse / expand. */}
-              <span className="ml-auto flex flex-wrap items-center gap-2">
-              {stop?.route_plan_id ? (
-                <Link to={`/planner/${stop.route_plan_id}`} className="rounded bg-blue-100 px-1.5 py-0.5 text-xs font-medium text-blue-800 hover:underline">
-                  In route: {planNames.get(stop.route_plan_id) ?? "open the plan"}
-                </Link>
-              ) : (
-                <span>Not in a route</span>
-              )}
+      {/* The window is glass over the dimmed page; its header and Save bar a near-white glass bar; every section a
+          solid card on it (index.css, .glass-pane / .glass-bar). */}
+      <DialogContent
+        showCloseButton={false}
+        className="glass-pane flex max-h-[94vh] w-[90vw] max-w-[90vw] flex-col gap-0 overflow-hidden rounded-[22px] p-0 sm:max-w-[90vw]"
+      >
+        <DialogHeader className="glass-bar z-10 gap-0 border-b border-(--glass-bar-line) px-6 py-4 text-left sm:text-left">
+          <div className="flex flex-wrap items-start gap-x-6 gap-y-3">
+            {/* Left: what the store is and where it stands. */}
+            <div className="min-w-0 flex-[1_1_26rem] space-y-2.5">
+              <DialogTitle className="font-mono text-base leading-snug uppercase tracking-wider text-brand [overflow-wrap:anywhere]">
+                {stop ? `${stop.external_id || stop.display_id} · ${stop.store_name}` : "Store"}
+              </DialogTitle>
+              <DialogDescription asChild>
+                <div role="group" aria-label="Store standing" className="flex flex-wrap items-center gap-1.5">
+                  {stop && <span className={cn(CHIP, STATUS_META[stop.status].chip)}>{storeStatusLabel(stop.status)}</span>}
+                  {stop && <StoreAlerts project={project} stop={stop} />}
+                  {stop && <RouteChip stop={stop} planName={stop.route_plan_id ? planNames.get(stop.route_plan_id) : undefined} />}
+                </div>
+              </DialogDescription>
+            </div>
+            {/* Right: what can be done: the manager's tag, Log visit, Delete, expand / collapse every section, close. */}
+            <div role="group" aria-label="Store actions" className="ml-auto flex flex-wrap items-center justify-end gap-2">
+              {stop && <StoreTagPicker project={project} stop={stop} />}
               {stop && canLog && (
-                <Button type="button" size="sm" variant="outline" className="h-7 text-xs" onClick={() => setLogging(true)}>
+                <Button type="button" variant="outline" onClick={() => setLogging(true)}>
                   <ClipboardCheck /> Log visit
                 </Button>
               )}
               {stop && canDelete && (
                 <Button
                   type="button"
-                  size="sm"
                   variant="outline"
-                  className="h-7 border-rose-200 text-xs text-rose-700 hover:bg-rose-50 hover:text-rose-800"
+                  className="border-rose-200 text-rose-700 hover:bg-rose-50 hover:text-rose-800"
                   onClick={() => setConfirmingDelete(true)}
                 >
                   <Trash2 /> Delete store
@@ -145,15 +185,20 @@ export function StoreDrawer({ project, stopId, open, onClose }: Props) {
               <Button
                 type="button"
                 variant="ghost"
-                size="sm"
-                className="h-7 text-xs"
+                size="icon"
+                aria-label={allOpen ? "Collapse all" : "Expand all"}
+                title={allOpen ? "Collapse every section" : "Expand every section"}
                 onClick={() => setExpanded(new Set(allOpen ? [] : SECTIONS))}
               >
-                {allOpen ? <ChevronsDownUp /> : <ChevronsUpDown />} {allOpen ? "Collapse all" : "Expand all"}
+                {allOpen ? <ChevronsDownUp /> : <ChevronsUpDown />}
               </Button>
-              </span>
+              <DialogClose asChild>
+                <Button type="button" variant="ghost" size="icon" aria-label="Close" title="Close (Esc)">
+                  <X />
+                </Button>
+              </DialogClose>
             </div>
-          </DialogDescription>
+          </div>
         </DialogHeader>
         <div className="min-h-0 flex-1 overflow-y-auto px-6">
           {(store.isPending || specs.isPending) && open && <p className="py-4 text-sm text-slate-500">Loading…</p>}
@@ -168,14 +213,10 @@ export function StoreDrawer({ project, stopId, open, onClose }: Props) {
               specs={specs.data}
               sections={sections}
               technicians={[...project.installers, ...technicians]}
-              aside={
-                <>
-                  <OtherData project={project} stop={stop} />
-                </>
-              }
+              aside={<OtherData project={project} stop={stop} sections={sections} />}
               logs={
                 // Under Logs, after the CMS's entries: the visits logged in this app for the store.
-                <section aria-label="Servicing history" className="border-t border-slate-100 pt-4">
+                <section aria-label="Servicing history" className={cn(SURFACE, "p-4")}>
                   <h3 className="mb-2 font-mono text-[11px] uppercase tracking-wider text-slate-600">Visits logged here</h3>
                   <VisitHistory projectId={project.id} stop={stop} bare />
                 </section>
@@ -225,7 +266,7 @@ function StoreAlerts({ project, stop }: { project: Project; stop: Stop }) {
   const verified = Boolean(stop.geocoded) && stop.lat !== null && !stop.needs_attention.includes("address");
   const clubbed = stop.screens.filter((screen) => splitCodes(screen.venue_id).length > 1).length;
   const pill = (tone: string, text: string, icon: React.ReactNode, title?: string) => (
-    <span key={text} className={cn("inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium", tone)} title={title}>
+    <span key={text} className={cn(CHIP, tone)} title={title}>
       {icon}
       {text}
     </span>
@@ -243,7 +284,7 @@ function StoreAlerts({ project, stop }: { project: Project; stop: Stop }) {
         ? pill("border-slate-200 bg-slate-50 text-slate-600", "Not synced with Dolphin data", <CircleSlash size={12} />, "None of its DD codes is in the Dolphin data")
         : null;
   return (
-    <span className="flex flex-wrap items-center gap-1.5" aria-label="Store alerts">
+    <span className="contents" aria-label="Store alerts">
       {sync}
       {!verified && pill(warn, "Address not verified", <MapPin size={12} />)}
       {clubbed > 0 && pill(warn, clubbed === 1 ? "DD code holds several codes" : `${clubbed} DD codes hold several codes`, <AlertTriangle size={12} />, "Split them under Screens so each matches its device")}
@@ -253,51 +294,76 @@ function StoreAlerts({ project, stop }: { project: Project; stop: Stop }) {
   );
 }
 
-/** A collapsible section. Closed content stays mounted (hidden), so unsaved edits inside it survive a collapse;
- *  `forceOpen` keeps a section with a validation problem visible. */
+/** The route the store is in (a link to its plan), or "Not in a route": information, so a chip with the others. The
+ *  link's hit area reaches 36 px though the chip is 28. */
+function RouteChip({ stop, planName }: { stop: Stop; planName?: string }) {
+  if (!stop.route_plan_id) {
+    return (
+      <span className={cn(CHIP, "border-slate-200 bg-white text-slate-600")}>
+        <Route size={12} aria-hidden /> Not in a route
+      </span>
+    );
+  }
+  return (
+    <Link
+      to={`/planner/${stop.route_plan_id}`}
+      title="Open the route plan"
+      className={cn(CHIP, "relative border-blue-200 bg-blue-50 text-blue-800 after:absolute after:inset-x-0 after:-inset-y-1 hover:bg-blue-100 hover:underline")}
+    >
+      <Route size={12} aria-hidden /> In route: {planName ?? "open the plan"}
+    </Link>
+  );
+}
+
+/** A collapsible section, as its own card. Closed content stays mounted (hidden), so unsaved edits inside it survive
+ *  a collapse (`lazy` skips that for content with nothing to lose, like the map); `forceOpen` keeps a section being
+ *  edited or with a validation problem visible. The header says what is inside (`summary`) while it is closed. */
 function Section({
   title,
   sections,
-  hint,
+  summary,
   forceOpen = false,
-  icon,
+  lazy = false,
   className,
   action,
   children,
 }: {
   title: SectionName;
   sections: Sections;
-  hint?: string;
+  /** What is inside, in a few words, on the right of the title. */
+  summary?: string;
   forceOpen?: boolean;
-  icon?: React.ReactNode;
+  lazy?: boolean;
   className?: string;
-  /** A button beside the title (Edit / View). */
+  /** A button or link beside the title (Edit / View, Open in Google Maps). */
   action?: React.ReactNode;
   children: React.ReactNode;
 }) {
   const open = forceOpen || sections.isOpen(title);
   const bodyId = `store-section-${title.replace(/\W+/g, "-").toLowerCase()}`;
+  // The section's hue (sectionTone.ts): an icon chip, the title, and a light tint on the header strip.
+  const tone = SECTION_TONE[title];
   return (
     <section className={cn(SURFACE, "overflow-hidden", className)} aria-label={title}>
-      <div className="flex items-center gap-2 pr-3">
+      <div className={cn("flex items-center gap-2 pr-3 transition-colors motion-reduce:transition-none", tone.header)}>
         <h3 className="min-w-0 flex-1">
           <button
             type="button"
             aria-expanded={open}
             aria-controls={bodyId}
             onClick={() => sections.toggle(title)}
-            className="flex w-full items-center gap-2 px-4 py-2.5 text-left font-mono text-[11px] uppercase tracking-wider text-slate-600 hover:bg-slate-50"
+            className="flex min-h-11 w-full items-center gap-2 py-2 pr-2 pl-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
           >
-            <ChevronRight size={14} className={cn("transition-transform", open && "rotate-90")} />
-            {icon}
-            <span>{title}</span>
-            {hint && <span className="ml-auto font-sans text-xs normal-case tracking-normal text-slate-400">{hint}</span>}
+            <ChevronRight size={14} aria-hidden className={cn("shrink-0 text-slate-500 transition-transform motion-reduce:transition-none", open && "rotate-90")} />
+            <ToneChip name={title} />
+            <span className={cn("font-mono text-[11px] font-medium uppercase tracking-wider", tone.title)}>{title}</span>
+            {summary && <span className={cn("ml-auto min-w-0 truncate pl-2 text-xs", tone.summary)}>{summary}</span>}
           </button>
         </h3>
         {action}
       </div>
-      <div id={bodyId} hidden={!open} className="space-y-3 border-t border-slate-100 p-4">
-        {children}
+      <div id={bodyId} hidden={!open} className={cn("space-y-3 border-t p-4", tone.line)}>
+        {lazy && !open ? null : children}
       </div>
     </section>
   );
@@ -306,7 +372,7 @@ function Section({
 /** A value as a line item: Yes/No for checks, links for URLs, dots for the WiFi password (with a reveal). */
 function DetailValue({ spec, value }: { spec: StoreFieldSpec; value: unknown }) {
   const [shown, setShown] = useState(false);
-  if (value === null || value === undefined || value === "") return <span className="font-normal text-slate-300">—</span>;
+  if (value === null || value === undefined || value === "") return <span className="font-normal text-slate-400">—</span>;
   if (spec.kind === "bool" || spec.kind === "tristate") return <span>{value ? "Yes" : "No"}</span>;
   if (spec.name === "store_ssid_password") {
     return (
@@ -332,27 +398,29 @@ function DetailValue({ spec, value }: { spec: StoreFieldSpec; value: unknown }) 
   return <span className="whitespace-pre-wrap">{String(value)}</span>;
 }
 
-/** One section in the visit log's style: every field as a label / value line; Edit turns it into its form and View
- *  back into lines. Both show the draft (the window's Save sends it, Discard drops it), so View never loses an edit. */
+/** One section in the visit log's style, as a collapsible card: every field as a label / value line; Edit turns it
+ *  into its form and View back into lines. Both show the draft (the window's Save sends it, Discard drops it), so View
+ *  never loses an edit. */
 function DetailPanel({
   group,
   stop,
   project,
   specs,
+  sections,
+  summary,
   editing,
   forced = false,
-  flat = false,
   values,
   onEdit,
   onView,
   children,
 }: {
-  /** In the right-hand column: no box of its own, the column's dividers separate the sections. */
-  flat?: boolean;
-  group: Group;
+  group: Group & SectionName;
   stop: Stop;
   project: Project;
   specs: StoreFieldSpec[];
+  sections: Sections;
+  summary?: string;
   editing: boolean;
   /** Kept in edit mode (a value there is invalid). */
   forced?: boolean;
@@ -368,40 +436,39 @@ function DetailPanel({
   const editable = specs.some((spec) => spec.editable);
   const pictures = group === "Pictures" ? urlTokens(String(values.image_url ?? stop.image_url)) : [];
   return (
-    <section
-      aria-label={group}
-      className={cn(
-        flat ? "py-3.5" : cn(SURFACE, "p-4"),
-        // Being edited: a card gets a brand ring, a flat section an accent bar down its left.
-        editing && (flat ? "border-l-2 border-l-brand pl-3" : "ring-2 ring-brand/30"),
-      )}
+    <Section
+      title={group}
+      sections={sections}
+      summary={summary}
+      forceOpen={editing}
+      // Being edited: a brand ring round the card.
+      className={cn(editing && "ring-2 ring-brand/30")}
+      action={editable ? <EditToggle label={group} editing={editing} disabled={forced} onEdit={onEdit} onView={onView} /> : undefined}
     >
-      <div className="mb-2 flex items-center gap-2">
-        {group === "WiFi" && <Wifi size={13} className="text-sky-600" />}
-        <h3 className="font-mono text-[11px] uppercase tracking-wider text-slate-600">{group}</h3>
-        {editable && (
-          <span className="ml-auto">
-            <EditToggle label={group} editing={editing} disabled={forced} onEdit={onEdit} onView={onView} />
-          </span>
-        )}
-      </div>
       {editing ? (
         <div className="space-y-3">{children}</div>
       ) : group === "Pictures" ? (
-        pictures.length ? <ImagePreviews label="Pictures" urls={pictures} /> : <p className="text-sm text-slate-400">No pictures yet.</p>
+        pictures.length ? <ImagePreviews label="Pictures" urls={pictures} /> : <p className="text-sm text-slate-400">—</p>
       ) : (
         <dl className="space-y-1.5 text-sm">
           {specs.map((spec) => (
             <div key={spec.name} className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] gap-3">
               <dt className="text-slate-500">{spec.label}</dt>
               <dd className="min-w-0 break-words font-medium text-slate-900" aria-label={spec.label}>
-                <DetailValue spec={spec} value={valueOf(spec)} />
+                {/* The network to join, the one value a technician looks for here: a light pill of the section's hue. */}
+                {spec.name === "store_ssid" && valueOf(spec) ? (
+                  <span className={cn("inline-flex max-w-full items-center gap-1.5 rounded-md px-2 py-0.5", SECTION_TONE.WiFi.value)}>
+                    <span className="min-w-0 break-all">{String(valueOf(spec))}</span>
+                  </span>
+                ) : (
+                  <DetailValue spec={spec} value={valueOf(spec)} />
+                )}
               </dd>
             </div>
           ))}
         </dl>
       )}
-    </section>
+    </Section>
   );
 }
 
@@ -429,29 +496,13 @@ function IdentityMeta({ stop, project, specs }: { stop: Stop; project: Project; 
           <div key={spec.name} className="flex items-baseline gap-1.5">
             <dt className="font-mono text-[10px] uppercase tracking-wider text-slate-500">{spec.label}</dt>
             <dd className="font-semibold text-slate-900" aria-label={spec.label}>
-              {value || <span className="text-slate-300">—</span>}
-              {spec.name === "pa" && !stop.pa && project.pa && <span className="ml-1 font-normal text-slate-400">(project)</span>}
+              {value || <span className="font-normal text-slate-400">—</span>}
+              {spec.name === "pa" && !stop.pa && project.pa && <span className="ml-1 font-normal text-slate-500">(project)</span>}
             </dd>
           </div>
         );
       })}
     </dl>
-  );
-}
-
-/** Edit, then View to see the section as text again. Neither saves nor drops anything: the window's Save and
- *  Discard do that for every section at once. */
-function EditToggle({ label, editing, disabled = false, onEdit, onView }: { label: string; editing: boolean; disabled?: boolean; onEdit: () => void; onView: () => void }) {
-  const canEdit = useCan("projects.edit");
-  if (!canEdit) return null; // view only: no section opens for editing
-  return editing ? (
-    <Button type="button" size="xs" variant="outline" aria-label={`View ${label}`} disabled={disabled} title={disabled ? "Fix the highlighted value first" : "Back to the text view; the changes stay until you save or discard"} onClick={onView}>
-      <Eye /> View
-    </Button>
-  ) : (
-    <Button type="button" size="xs" variant="outline" aria-label={`Edit ${label}`} onClick={onEdit}>
-      <Pencil /> Edit
-    </Button>
   );
 }
 
@@ -462,8 +513,8 @@ function ReadOnly({ label, value, hint }: { label: string; value: string; hint?:
     <div className="space-y-1">
       <p className="text-sm font-medium">{label}</p>
       <p className="text-sm text-slate-700" aria-label={label}>
-        {value || <span className="text-slate-300">—</span>}
-        {hint && <span className="ml-1 text-xs text-slate-400">{hint}</span>}
+        {value || <span className="text-slate-400">—</span>}
+        {hint && <span className="ml-1 text-xs text-slate-500">{hint}</span>}
       </p>
     </div>
   );
@@ -588,6 +639,8 @@ function DetailsEditor({
   // install type included), the technician, the manager's notes and the screen rows.
   const [rows, setRows] = useState<ScreenRow[]>(() => toRows(stop));
   const [editingScreens, setEditingScreens] = useState(false);
+  // The committed counts in the Screens card: read as numbers until its Edit (like a section), kept in the draft.
+  const [editingCommitted, setEditingCommitted] = useState(false);
   const [technician, setTechnician] = useState(stop.installer_name);
   const [comment, setComment] = useState(stop.comment);
   const [reviewNotes, setReviewNotes] = useState(stop.review_notes);
@@ -631,6 +684,7 @@ function DetailsEditor({
     setServerErrors({});
     setEditing(new Set());
     setEditingScreens(false);
+    setEditingCommitted(false);
   };
   const groupOf = new Map(specs.map((spec) => [spec.name, spec.group]));
   const failing = new Set(Object.keys(errors).map((name) => groupOf.get(name)));
@@ -638,7 +692,7 @@ function DetailsEditor({
   const groupSpecs = (group: Group) => specs.filter((spec) => spec.group === group && spec.name !== "install_type");
   const hint = (group: Group) => {
     const { filled, total } = filledCount(form, groupSpecs(group));
-    return total ? `${filled} of ${total} filled` : undefined;
+    return !total ? undefined : filled ? `${filled} of ${total} filled` : "empty";
   };
 
   const set = (name: string, value: FormValue) => {
@@ -686,6 +740,7 @@ function DetailsEditor({
       setDeviceLocation(false);
       setEditing(new Set());
       setEditingScreens(false);
+      setEditingCommitted(false);
       toast.success(addressChanged(patch) ? "Address verified and saved; the route is marked for re-optimising" : "Store saved");
     } catch (error) {
       const detail = error instanceof ApiError ? error.validation : null;
@@ -734,18 +789,23 @@ function DetailsEditor({
   };
 
   /** A right-hand style section: its values as line items, Edit turns them into controls. */
-  const detailPanel = (group: Group, flat = false) => (
+  const pictureCount = urlTokens(String(form.image_url ?? stop.image_url)).length;
+  const detailPanel = (group: Group & SectionName) => (
     <DetailPanel
       key={group}
-      flat={flat}
       group={group}
       stop={stop}
       project={project}
       specs={groupSpecs(group)}
+      sections={sections}
+      summary={group === "Pictures" ? (pictureCount ? `${pictureCount} ${pictureCount === 1 ? "picture" : "pictures"}` : "empty") : hint(group)}
       editing={editing.has(group) || failing.has(group)}
       forced={failing.has(group)}
       values={form}
-      onEdit={() => setEditingGroup(group, true)}
+      onEdit={() => {
+        sections.open(group);
+        setEditingGroup(group, true);
+      }}
       onView={() => setEditingGroup(group, false)}
     >
       <div className={cn("grid gap-3", group === "Site checklist" || group === "Pictures" ? "" : "sm:grid-cols-2")}>
@@ -775,7 +835,7 @@ function DetailsEditor({
       key={group}
       title={group}
       sections={sections}
-      hint={hint(group)}
+      summary={hint(group)}
       forceOpen={failing.has(group) || (group === "Identity & address" && geoProblem !== null)}
       action={
         <EditToggle
@@ -783,7 +843,10 @@ function DetailsEditor({
           editing={identityEditing}
           // An invalid value, or an address Google is still being asked about, keeps the form open.
           disabled={failing.has(group) || geoProblem !== null}
-          onEdit={() => setEditingGroup(group, true)}
+          onEdit={() => {
+            sections.open(group);
+            setEditingGroup(group, true);
+          }}
           onView={() => {
             setEditingGroup(group, false);
             setBeforePick(null);
@@ -806,7 +869,7 @@ function DetailsEditor({
               <div key={label} className="grid grid-cols-[minmax(0,1fr)_minmax(0,3fr)] gap-3">
                 <dt className="text-slate-500">{label}</dt>
                 <dd className="min-w-0 break-words font-medium text-slate-900" aria-label={label}>
-                  {value || <span className="font-normal text-slate-300">—</span>}
+                  {value || <span className="font-normal text-slate-400">—</span>}
                 </dd>
               </div>
             ))}
@@ -830,13 +893,18 @@ function DetailsEditor({
       )}
       {group === "Identity & address" && (
         <>
+          {/* The address's standing, in words and an icon as well as its colour: green once Google placed it, amber
+              while it is not verified. */}
           {verified ? (
-            <p className="flex items-center gap-1 text-xs text-slate-500">
-              <MapPin size={12} /> Verified as {stop.geocoded}
+            <p role="note" aria-label="Address verified" className="flex items-start gap-1.5 rounded-md border border-green-200 bg-green-50 px-2 py-1.5 text-xs text-green-900">
+              <BadgeCheck size={14} aria-hidden className="mt-px shrink-0 text-green-700" />
+              <span className="min-w-0 [overflow-wrap:anywhere]">
+                <span className="font-semibold">Verified</span> as {stop.geocoded}
+              </span>
             </p>
           ) : (
-            <div className="flex flex-wrap items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-xs text-amber-800">
-              <AlertTriangle size={12} /> This address is not verified with Google, so the map pin may be off.
+            <div role="note" aria-label="Address not verified" className="flex flex-wrap items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-xs text-amber-900">
+              <AlertTriangle size={14} aria-hidden className="shrink-0 text-amber-700" /> This address is not verified with Google, so the map pin may be off.
               <Button size="xs" variant="outline" className="ml-auto" disabled={verifying} onClick={() => void verifyAddress()}>
                 {verifying ? <Loader2 className="animate-spin" /> : <MapPin />} Verify address
               </Button>
@@ -889,7 +957,7 @@ function DetailsEditor({
   );
 
   return (
-    <div className="space-y-4 pt-4">
+    <div className="space-y-4 pt-5">
       <StoreSummary
         draft={{
           counts: Object.fromEntries(COUNT_KEYS.map((key) => [key, String(form[key] ?? "")])) as SummaryDraft["counts"],
@@ -900,20 +968,32 @@ function DetailsEditor({
         }}
         technicians={technicians}
         costs={project.hardware_costs}
+        editingCommitted={editingCommitted}
+        onEditCommitted={setEditingCommitted}
         onCount={set}
         onTechnician={setTechnician}
         // Technician is the default: a store saved without a type keeps "" (it reads as Technician once named).
         onInstallType={(type) => set("install_type", type === "Technician" && !stop.install_type ? "" : type)}
       />
+      {/* Done with fewer screen rows than committed: Ignore mismatch / Undo (saved at once). */}
+      <MismatchNotice project={project} stop={stop} />
       <div className="grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <div className="min-w-0 space-y-3" aria-label="Edit">
           {groupSection("Identity & address")}
           <Section
             title="Screens"
             sections={sections}
-            hint={`${rows.length} screen${rows.length === 1 ? "" : "s"}`}
+            summary={`${rows.length} screen${rows.length === 1 ? "" : "s"}`}
             action={
-              <EditToggle label="Screens" editing={editingScreens} onEdit={() => setEditingScreens(true)} onView={() => setEditingScreens(false)} />
+              <EditToggle
+                label="Screens"
+                editing={editingScreens}
+                onEdit={() => {
+                  sections.open("Screens");
+                  setEditingScreens(true);
+                }}
+                onView={() => setEditingScreens(false)}
+              />
             }
           >
             {editingScreens ? (
@@ -924,21 +1004,27 @@ function DetailsEditor({
           </Section>
           {/* The project manager's own notes (stored as the store's `comment`). Installation and site notes come
               from the sheet and the people on site, and sit under Other details. */}
-          <Section title="Notes" sections={sections}>
-            <div className="space-y-1.5">
-              <Textarea
-                aria-label="Manager notes"
-                value={comment}
-                onChange={(event) => setComment(event.target.value)}
-                rows={4}
-                placeholder="Your notes on this store: follow-ups, decisions, anything to remember"
-              />
-              <p className="text-xs text-slate-500">For whoever manages the project. Installation and site notes are under Other details.</p>
-            </div>
+          <Section
+            title="Notes"
+            sections={sections}
+            summary={reviewNotes.trim() ? "Review notes to check" : comment.trim() ? undefined : "empty"}
+          >
+            <Textarea
+              aria-label="Manager notes"
+              title="For whoever manages the project. Installation and site notes are under Other details."
+              value={comment}
+              onChange={(event) => setComment(event.target.value)}
+              rows={4}
+              placeholder="Your notes on this store: follow-ups, decisions, anything to remember"
+            />
             {/* What the import's review left to check; cleared here once it is settled (the Review notes filter
                 lists the stores that still have some). */}
-            <div className="mt-3 space-y-1.5">
-              <Label htmlFor="store-review-notes" className={cn("flex items-center gap-1", reviewNotes.trim() && "text-amber-800")}>
+            <div className="space-y-1.5">
+              <Label
+                htmlFor="store-review-notes"
+                title="From the import's review step. Clear them once checked."
+                className={cn("flex items-center gap-1", reviewNotes.trim() && "text-amber-800")}
+              >
                 {reviewNotes.trim() && <AlertTriangle size={12} />} Review notes
               </Label>
               <Textarea
@@ -950,19 +1036,18 @@ function DetailsEditor({
                 placeholder="What still needs checking, e.g. store name not confirmed"
                 className={cn(reviewNotes.trim() && "border-amber-300 bg-amber-50/50")}
               />
-              <p className="text-xs text-slate-500">From the import's review step. Clear them once checked.</p>
             </div>
           </Section>
           {/* Pictures, with the store on a small map under them: last, below the notes. */}
           {detailPanel("Pictures")}
-          <StoreLocationMap stop={stop} />
+          <LocationSection stop={stop} sections={sections} />
         </div>
         <aside
-          className={cn(SURFACE, "min-w-0 space-y-2 p-4 lg:sticky lg:top-4 lg:max-h-[calc(94vh-12rem)] lg:self-start lg:overflow-y-auto")}
+          className="min-w-0 space-y-3 lg:sticky lg:top-4 lg:-m-1 lg:max-h-[calc(94vh-12rem)] lg:self-start lg:overflow-y-auto lg:p-1"
           aria-label="Store details"
         >
           {/* The column shows the store's other details, or the CMS's servicing logs for its DD codes. */}
-          <div role="tablist" aria-label="Right column" className="inline-flex rounded-lg bg-slate-100 p-0.5 text-xs font-medium">
+          <div role="tablist" aria-label="Right column" className="inline-flex rounded-xl bg-white/60 p-1 text-sm font-medium shadow-sm ring-1 ring-slate-900/5">
             {(["details", "logs"] as const).map((view) => (
               <button
                 key={view}
@@ -970,19 +1055,19 @@ function DetailsEditor({
                 role="tab"
                 aria-selected={asideView === view}
                 onClick={() => setAsideView(view)}
-                className={cn("rounded-md px-3 py-1 transition-colors", asideView === view ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800")}
+                className={cn("h-8 rounded-lg px-4 transition-colors motion-reduce:transition-none", asideView === view ? "bg-white text-slate-900 shadow-sm ring-1 ring-slate-900/5" : "text-slate-600 hover:text-slate-900")}
               >
                 {view === "details" ? "Other details" : "Logs"}
               </button>
             ))}
           </div>
           {/* Hidden, not unmounted, while the logs show: a section being edited keeps its place. */}
-          <div hidden={asideView !== "details"} className="divide-y divide-slate-100">
+          <div hidden={asideView !== "details"} className="space-y-3">
             {ASIDE_GROUPS.flatMap((group) => {
-              const panel = detailPanel(group, true);
-              // The Dolphin data's values sit right after WiFi, as before.
+              const panel = detailPanel(group);
+              // The Dolphin data's values sit right after WiFi, as before; shown (open) only while something differs.
               return group === "WiFi"
-                ? [panel, <div key="device" className="py-3 empty:hidden"><StoreDeviceSection project={project} stop={stop} pending={overwritten} onOverwrite={takeFromDevice} /></div>]
+                ? [panel, <div key="device" className="empty:hidden"><StoreDeviceSection project={project} stop={stop} pending={overwritten} onOverwrite={takeFromDevice} /></div>]
                 : [panel];
             })}
             {aside}
@@ -995,7 +1080,7 @@ function DetailsEditor({
           )}
         </aside>
       </div>
-      <div hidden={!canEdit} className="sticky bottom-0 -mx-6 mt-3 flex justify-end gap-2 border-t border-white/60 bg-white/70 px-6 py-3 shadow-[0_-8px_24px_-12px_rgb(15_23_42/0.18)] backdrop-blur-xl backdrop-saturate-150">
+      <div hidden={!canEdit} className="glass-bar sticky bottom-0 -mx-6 mt-3 flex justify-end gap-2 border-t border-(--glass-bar-line) px-6 py-3 shadow-[0_-8px_24px_-12px_rgb(15_23_42/0.18)]">
         {dirty && <span className="mr-auto self-center text-xs text-amber-700">Unsaved changes</span>}
         <Button variant="ghost" disabled={!dirty || saving} onClick={discard}>
           Discard
@@ -1008,132 +1093,49 @@ function DetailsEditor({
   );
 }
 
-/** Previews of the picture links, shown a moment after typing stops. A link that is not an image (or not
- *  reachable) falls back to a plain link. */
-function ImagePreviews({ label, urls }: { label: string; urls: string[] }) {
-  const key = urls.join(" ");
-  const [shown, setShown] = useState(urls);
-  const [open, setOpen] = useState<number | null>(null);
-  useEffect(() => {
-    const timer = window.setTimeout(() => setShown(urls), 400);
-    return () => window.clearTimeout(timer);
-  }, [key]); // the list is rebuilt on every render; its text is what changes
+/** The store on a small map. The section is open like the others, but the Google map (a billed map load) is drawn
+ *  only once the section is opened and scrolls into view, so opening a store to read its notes loads no map. */
+function LocationSection({ stop, sections }: { stop: Stop; sections: Sections }) {
+  const at = shownLocation(stop);
+  const place = [stop.city, stop.state].filter(Boolean).join(", ");
   return (
-    <>
-      <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3" aria-label={`${label} links`}>
-        {shown.map((url, index) => (
-          <li key={url}>
-            <ImagePreview url={url} onOpen={() => setOpen(index)} />
-          </li>
-        ))}
-      </ul>
-      {open !== null && shown[open] && <Lightbox urls={shown} index={open} onIndex={setOpen} onClose={() => setOpen(null)} />}
-    </>
-  );
-}
-
-function ImagePreview({ url, onOpen }: { url: string; onOpen: () => void }) {
-  const [failed, setFailed] = useState(false);
-  return (
-    <div className="overflow-hidden rounded-md border bg-slate-50 hover:border-brand">
-      {failed ? (
-        <a href={url} target="_blank" rel="noreferrer" className="flex h-40 flex-col items-center justify-center gap-1 p-3 text-center text-xs text-slate-500">
-          <ImageOff size={18} /> No preview for this link. Open it
-        </a>
-      ) : (
-        <button type="button" className="block w-full cursor-zoom-in" aria-label="Show picture full size" onClick={onOpen}>
-          <img
-            src={previewSrc(url)}
-            alt="Store picture"
-            loading="lazy"
-            referrerPolicy="no-referrer"
-            onError={() => setFailed(true)}
-            className="h-48 w-full object-cover"
-          />
-        </button>
-      )}
-      <a href={url} target="_blank" rel="noreferrer" className="block truncate border-t px-2 py-1 text-xs text-brand hover:underline">
-        {url}
-      </a>
-    </div>
-  );
-}
-
-/** A picture filling the store window (not a new tab): Esc or × closes it, arrows step through several. The store
- *  window's transform makes `fixed` cover the window itself rather than the whole screen. */
-function Lightbox({ urls, index, onIndex, onClose }: { urls: string[]; index: number; onIndex: (index: number) => void; onClose: () => void }) {
-  const many = urls.length > 1;
-  const step = (by: number) => onIndex((index + by + urls.length) % urls.length);
-  useEffect(() => {
-    // Capture on window, ahead of the dialog's own Esc handler, so Esc closes the picture and not the store.
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-      else if (many && event.key === "ArrowRight") step(1);
-      else if (many && event.key === "ArrowLeft") step(-1);
-      else return;
-      event.preventDefault();
-      event.stopPropagation();
-    };
-    window.addEventListener("keydown", onKey, true);
-    return () => window.removeEventListener("keydown", onKey, true);
-  });
-  const url = urls[index]!;
-  return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label="Store picture"
-      className="fixed inset-0 z-50 flex flex-col bg-slate-950/95 sm:rounded-lg"
-      onClick={onClose}
+    <Section
+      title="Location"
+      sections={sections}
+      lazy
+      summary={at ? place || "On the map" : "No map location"}
+      action={
+        at && (
+          <a
+            href={`https://www.google.com/maps/search/?api=1&query=${at.lat},${at.lng}`}
+            target="_blank"
+            rel="noreferrer"
+            className="relative shrink-0 text-xs text-brand after:absolute after:-inset-x-1 after:-inset-y-3 hover:underline"
+          >
+            Open in Google Maps
+          </a>
+        )
+      }
     >
-      <div className="flex items-center gap-2 px-4 py-3 text-sm text-white/80" onClick={(event) => event.stopPropagation()}>
-        {many && (
-          <span className="font-mono text-xs">
-            {index + 1} / {urls.length}
-          </span>
-        )}
-        <a href={url} target="_blank" rel="noreferrer" className="ml-auto inline-flex items-center gap-1 text-xs hover:text-white">
-          <ExternalLink size={13} /> Open original
-        </a>
-        <Button type="button" size="icon" variant="ghost" className="text-white hover:bg-white/10 hover:text-white" aria-label="Close picture" onClick={onClose}>
-          <X />
-        </Button>
-      </div>
-      <div className="relative flex min-h-0 flex-1 items-center justify-center px-12 pb-6">
-        <img
-          src={previewSrc(url)}
-          alt="Store picture, full size"
-          referrerPolicy="no-referrer"
-          className="max-h-full max-w-full object-contain"
-          onClick={(event) => event.stopPropagation()}
-        />
-        {many && (
-          <>
-            <Button type="button" size="icon" variant="ghost" className="absolute left-2 text-white hover:bg-white/10 hover:text-white" aria-label="Previous picture" onClick={(event) => { event.stopPropagation(); step(-1); }}>
-              <ChevronLeft />
-            </Button>
-            <Button type="button" size="icon" variant="ghost" className="absolute right-2 text-white hover:bg-white/10 hover:text-white" aria-label="Next picture" onClick={(event) => { event.stopPropagation(); step(1); }}>
-              <ChevronRight />
-            </Button>
-          </>
-        )}
-      </div>
-    </div>
+      <WhenVisible placeholder={<div className="h-64 rounded-lg bg-emerald-50/50" aria-hidden />}>
+        <StoreLocationMap stop={stop} bare />
+      </WhenVisible>
+    </Section>
   );
 }
 
 /** Columns the import did not recognise (`fields`), read only (STORE-MODEL §3.8), as line items. */
-function OtherData({ project, stop }: { project: Project; stop: Stop }) {
+function OtherData({ project, stop, sections }: { project: Project; stop: Stop; sections: Sections }) {
   const labels = new Map(project.field_schema.map((field) => [field.key, field.label]));
   const entries = Object.entries(stop.fields).filter(([, value]) => value !== null && value !== undefined && value !== "");
   return (
-    <section aria-label="Other imported data" className="py-3">
-      <h3 className="mb-2 flex items-center font-mono text-[11px] uppercase tracking-wider text-slate-600">
-        Other imported data
-        {entries.length > 0 && <span className="ml-auto font-sans text-xs normal-case tracking-normal text-slate-400">{entries.length} values</span>}
-      </h3>
+    <Section
+      title="Other imported data"
+      sections={sections}
+      summary={entries.length ? `${entries.length} ${entries.length === 1 ? "value" : "values"}` : "empty"}
+    >
       {entries.length === 0 ? (
-        <p className="text-sm text-slate-400">Nothing else came with this store.</p>
+        <p className="text-sm text-slate-400" title="Nothing else came with this store">—</p>
       ) : (
         <dl className="space-y-1.5 text-sm">
           {entries.map(([key, value]) => (
@@ -1144,7 +1146,7 @@ function OtherData({ project, stop }: { project: Project; stop: Stop }) {
           ))}
         </dl>
       )}
-    </section>
+    </Section>
   );
 }
 
@@ -1177,7 +1179,7 @@ function ExternalIdInput({ projectId, uid }: { projectId: string; uid: string })
           {save.isPending && <Loader2 className="animate-spin" />} Save
         </Button>
       </form>
-      <p className="text-xs text-slate-500">The Dolphin data has no ExtID for this store. It cannot be changed once saved.</p>
+      <p className="text-xs text-slate-600" title="The Dolphin data has no ExtID for this store.">It cannot be changed once saved.</p>
     </div>
   );
 }

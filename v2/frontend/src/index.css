@@ -1,11 +1,15 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
-/* Brand tokens carried over from v1. */
+/* Dolphin's brand colours (dolphin-digital.com): two blues and a magenta.
+   Primary: the deep blue, for buttons, links and anything selected (white text on it passes AAA).
+   Secondary: the bright blue, for focus rings, highlights and icons; too light to carry white text.
+   Accent: the magenta, used sparingly for the one thing to notice (counts, the current page); white text passes AA. */
 @theme {
-  --color-brand: #0f5b7c;
-  --color-brand-strong: #0c4a64;
-  --color-brand-accent: #0891b2;
+  --color-brand: #034ea1;
+  --color-brand-strong: #023a7a;
+  --color-brand-accent: #009dda;
+  --color-brand-magenta: #c5168c;
   --font-display: "Bebas Neue", sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, monospace;
   --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
@@ -17,7 +21,7 @@
   --color-status-other: #7c3aed;
 }
 
-/* shadcn/ui tokens (new-york), light only, primary = v1 brand. */
+/* shadcn/ui tokens (new-york), light only, primary = the brand's deep blue. */
 :root {
   color-scheme: light;
   --radius: 0.625rem;
@@ -27,18 +31,18 @@
   --card-foreground: #0f172a;
   --popover: #ffffff;
   --popover-foreground: #0f172a;
-  --primary: #0f5b7c;
+  --primary: #034ea1;
   --primary-foreground: #ffffff;
   --secondary: #f1f5f9;
   --secondary-foreground: #0f172a;
   --muted: #f1f5f9;
   --muted-foreground: #64748b;
-  --accent: #e0f2fe;
-  --accent-foreground: #0c4a64;
+  --accent: #e3f1fc;
+  --accent-foreground: #023a7a;
   --destructive: #dc2626;
   --border: #e2e8f0;
   --input: #cbd5e1;
-  --ring: #0891b2;
+  --ring: #009dda;
 }
 
 @theme inline {
@@ -72,5 +76,90 @@
   }
   body {
     @apply bg-background text-foreground font-sans antialiased;
+  }
+}
+
+/* Frosted glass for the surfaces that float over the page: the More Filters sheet, the Nearby and date popovers and
+   the map pop-up. Mostly opaque white (85%) so text keeps AA contrast whatever is behind it; never for tables or cards.
+   The map pop-up reuses the same tokens on Google's own InfoWindow box. */
+:root {
+  --glass-bg: rgb(255 255 255 / 0.85);
+  --glass-filter: blur(20px) saturate(1.6);
+  --glass-border: rgb(255 255 255 / 0.75);
+  --glass-shadow: 0 0 0 1px rgb(15 23 42 / 0.07), inset 0 1px 0 rgb(255 255 255 / 0.9), 0 2px 6px -2px rgb(15 23 42 / 0.08),
+    0 18px 40px -12px rgb(15 23 42 / 0.28);
+}
+
+/* A second tier for a large window made of glass (the store window): the pane is a cooler, more see-through glass
+   that only carries cards and chrome, never body text of its own; the bar is its header and Save bar, near-white.
+   Body text and inputs sit on solid cards inside the pane. */
+:root {
+  --glass-pane-bg: rgb(241 245 249 / 0.8);
+  --glass-pane-filter: blur(28px) saturate(1.5);
+  --glass-pane-shadow: 0 0 0 1px rgb(15 23 42 / 0.08), inset 0 1px 0 rgb(255 255 255 / 0.7), 0 4px 12px -4px rgb(15 23 42 / 0.12),
+    0 32px 64px -24px rgb(15 23 42 / 0.45);
+  --glass-bar-bg: rgb(255 255 255 / 0.78);
+  --glass-bar-line: rgb(15 23 42 / 0.07);
+}
+
+/* In the utilities layer and after Tailwind's own, so it wins over a component's bg-popover, border and shadow. */
+@layer utilities {
+  .glass {
+    background-color: var(--glass-bg);
+    -webkit-backdrop-filter: var(--glass-filter);
+    backdrop-filter: var(--glass-filter);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--glass-shadow);
+  }
+  .glass-pane {
+    background-color: var(--glass-pane-bg);
+    -webkit-backdrop-filter: var(--glass-pane-filter);
+    backdrop-filter: var(--glass-pane-filter);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--glass-pane-shadow);
+  }
+  .glass-bar {
+    background-color: var(--glass-bar-bg);
+    -webkit-backdrop-filter: var(--glass-filter);
+    backdrop-filter: var(--glass-filter);
+  }
+}
+
+.gm-style .gm-style-iw-c:has(.map-popup) {
+  background-color: var(--glass-bg);
+  -webkit-backdrop-filter: var(--glass-filter);
+  backdrop-filter: var(--glass-filter);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+  border-radius: 14px;
+}
+.gm-style .gm-style-iw-c:has(.map-popup) + .gm-style-iw-tc::after {
+  background: var(--glass-bg);
+}
+
+/* No blur available, or the person asked for less transparency: plain white. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :root {
+    --glass-bg: #fff;
+    --glass-pane-bg: #f1f5f9;
+    --glass-bar-bg: #fff;
+  }
+}
+@media (prefers-reduced-transparency: reduce) {
+  :root {
+    --glass-bg: #fff;
+    --glass-filter: none;
+    --glass-pane-bg: #f1f5f9;
+    --glass-pane-filter: none;
+    --glass-bar-bg: #fff;
+  }
+}
+/* Less motion: the glass surfaces appear and go without sliding or zooming. */
+@media (prefers-reduced-motion: reduce) {
+  .glass,
+  .glass *,
+  .glass-pane {
+    animation: none !important;
+    transition: none !important;
   }
 }

@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrig
 import { actualCounts, defaultScreenPrice, screenTechnicians, screenTypesFor, type HardwareCosts } from "@/features/stores/details";
 import { useVisits } from "@/features/visits/api";
 import { DEVICE_TONE, ScreenDeviceLine, splitCodes } from "@/features/device/DeviceBits";
+import { ScreenPictureCount } from "@/features/stores/Pictures";
 import { AlertTriangle } from "lucide-react";
 import { deriveStatus, STOP_STATUSES, type Project, type ScreenStatus, type Stop } from "@/lib/api/types";
 import { BUCKET_META, BUCKETS, bucketOf, STATUS_META, storeStatusLabel } from "@/lib/status";
@@ -29,6 +30,8 @@ export interface ScreenRow {
   has_ceiling_mount: boolean;
   needs_mount: boolean;
   status: ScreenStatus;
+  /** Picture links of the screen (STORE-MODEL §4.1), sent back with the row so they stay. */
+  pictures: string[];
 }
 
 let nextKey = 0;
@@ -43,6 +46,7 @@ export const DOLPHIN_SCREEN_SIZE = '24"';
 export const newRow = (): ScreenRow => ({
   key: `new-${(nextKey += 1)}`, stick_number: "", venue_id: "", screen_size: "", is_dolphin_screen: true, screen_type: "",
   cms_name: "", venue_type: "", has_mount: false, has_ceiling_mount: false, needs_mount: false, status: "Upcoming",
+  pictures: [],
 });
 
 /** One choice out of a few, as a row of joined buttons. With `clearable`, pressing the chosen one again clears it
@@ -533,6 +537,7 @@ export function ScreensView({ project, stop, rows }: { project: Project; stop: S
               <th className={head}>Dolphin data</th>
               <th className={head}>Registered</th>
               <th className={head}>Last visit</th>
+              <th className={head}>Pictures</th>
             </tr>
           </thead>
           <tbody className="divide-y">
@@ -579,6 +584,9 @@ export function ScreensView({ project, stop, rows }: { project: Project; stop: S
                     ) : (
                       dash
                     )}
+                  </td>
+                  <td className="whitespace-nowrap px-2 py-2 text-xs">
+                    <ScreenPictureCount pictures={row.pictures} screen={index + 1} />
                   </td>
                 </tr>
               );

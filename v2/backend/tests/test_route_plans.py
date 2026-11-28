@@ -36,7 +36,14 @@ from dolphin_tracker.domain.route_plans import (
     match_clusters,
 )
 from dolphin_tracker.domain.statuses import StatusBucket
-from dolphin_tracker.domain.visits import Visit, VisitInput, store_outcome
+from dolphin_tracker.domain.visits import (
+    StoreCommentInput,
+    Visit,
+    VisitInput,
+    VisitState,
+    store_outcome,
+    visit_state,
+)
 from dolphin_tracker.repositories.dynamo import TABLE_DEFINITION
 from dolphin_tracker.repositories.memory import (
     InMemoryListRepository,
@@ -479,6 +486,29 @@ class VisitPlanLinkTests(ServiceTestCase):
         visits.create("p1", "w0", body.model_copy(update={"outcome": "done"}))  # the screen's latest entry wins
         self.assertEqual(self.plans.get_stop(bundle.plan.id, "p1#w0").outcome, "done")
 
+    def test_a_store_comment_is_logged_with_the_plan_but_visits_no_screen(self):
+        bundle = self.create(["w0"]).bundle
+        visits = VisitService(InMemoryVisitRepository(self.stores), self.stores, self.projects, self.lists,
+                              self.service)
+        before = self.stores.get("p1", "w0")
+        entry = visits.add_comment("p1", "w0", StoreCommentInput(text=" Back door locked ", visit_date="2026-11-06",
+                                                                 dolphin_manager="Zoe"), created_by="Dana")
+        self.assertEqual((entry.text, entry.route_plan_id, entry.plan_name, entry.plan_day, entry.created_by),
+                         ("Back door locked", bundle.plan.id, "GA week", 1, "Dana"))
+        after = self.stores.get("p1", "w0")
+        self.assertEqual(after.comment, "Back door locked")  # the store's latest comment, for the rest of the app
+        # Not a visit: no screen counts as visited, the store's visit state and the plan stop are as they were.
+        self.assertEqual((after.screen_visits, after.last_visit_at), (before.screen_visits, before.last_visit_at))
+        self.assertEqual(visit_state([s.id for s in after.screens], after.screen_visits, after.last_planned_at),
+                         VisitState.NONE)
+        stop = self.plans.get_stop(bundle.plan.id, "p1#w0")
+        self.assertEqual((stop.visited_screens, stop.outcome), ([], ""))
+        self.assertEqual(visits.list("p1", "w0").items, [])  # nor in the screens' history
+        self.assertEqual(visits.list_comments("p1", "w0").items, [entry])
+        self.service.close(bundle.plan.id)
+        later = visits.add_comment("p1", "w0", StoreCommentInput(text="Later", visit_date="2026-11-09"))
+        self.assertEqual((later.route_plan_id, later.plan_name, later.plan_day), ("", "", None))
+
     def test_store_outcome_needs_every_screen(self):
         def visit(screen, outcome, plan="plan"):
             return Visit(screen_id=screen, visit_date="2026-11-06", dd_code="DD", venue_name="V", stick_number="S",
@@ -758,6 +788,8 @@ class AllVenuesTests(ServiceTestCase):
             def snapshot(self, pa):
                 if pa == "Broken":
                     raise RuntimeError("unreachable")
+                if not pa:  # the venues with no PA: none here
+                    return DeviceSnapshot(pa="", date="2026-11-18", records=[])
                 code = "DD_NEW1" if pa == "Other" else "DD_OFF1"
                 return DeviceSnapshot(pa=pa, date="2026-11-18", records=[test.record(code, pa_name=pa)])
 

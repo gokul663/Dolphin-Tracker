@@ -10,6 +10,7 @@ import { DEFAULT_STORE_PAGE_SIZE, useScreenList, useStoreList, useStoresOverview
 import { HardwareCostChart } from "@/features/stores/HardwareCostChart";
 import { BucketChips } from "@/features/stores/BucketChips";
 import { FilterBar } from "@/features/stores/FilterBar";
+import { NearbyControl, useNearbyPinActions } from "@/features/stores/NearbyControl";
 import { toStoreFilters } from "@/features/stores/filters";
 import { StoreDrawer } from "@/features/stores/StoreDrawer";
 import { ScreensTable } from "@/features/stores/ScreensTable";
@@ -55,8 +56,17 @@ export function StoresTab() {
   useEffect(() => ui.enterProject(project.id), [project.id]); // the store action is stable
 
   const needsAttention = useStoresUi((state) => state.needsAttention);
-  const selection = useMemo(() => toStoreFilters(ui.facets, ui.search, needsAttention), [ui.facets, ui.search, needsAttention]);
-  const filters: StoreFilters = useMemo(() => ({ ...selection, sort: ui.sort, dir: ui.dir }), [selection, ui.sort, ui.dir]);
+  const ranges = useStoresUi((state) => state.ranges);
+  const near = useStoresUi((state) => state.near);
+  const numbers = useStoresUi((state) => state.numbers);
+  const selection = useMemo(
+    () => toStoreFilters(ui.facets, ui.search, needsAttention, { ranges, near, numbers }),
+    [ui.facets, ui.search, needsAttention, ranges, near, numbers],
+  );
+  // The distance sort exists only while Nearby is on.
+  const sort = ui.sort === "distance" && !near ? "store_name" : ui.sort;
+  const filters: StoreFilters = useMemo(() => ({ ...selection, sort, dir: ui.dir }), [selection, sort, ui.dir]);
+  const circle = useMemo(() => (near ? { lat: near.lat, lng: near.lng, radiusMiles: near.radius, label: near.address } : null), [near]);
   const [pageSize, setPageSize] = useState<number>(DEFAULT_STORE_PAGE_SIZE);
   const [pageIndex, setPageIndex] = useState(0);
   // A new filter, sort, page size or map view starts again at page 1.
@@ -87,9 +97,10 @@ export function StoresTab() {
 
   const total = list.data?.total ?? 0;
   const paging = { total, offset: page.offset, pageSize, fetching: list.isFetching, onPage: setPageIndex, onPageSize: setPageSize };
-  const rowState = { sort: ui.sort, dir: ui.dir, onSort: ui.setSort, selectedId: ui.selectedId, hoveredId: ui.hoveredId, onHover: ui.hover };
+  const rowState = { sort, dir: ui.dir, onSort: ui.setSort, selectedId: ui.selectedId, hoveredId: ui.hoveredId, onHover: ui.hover };
 
   const open = useCallback((uid: string) => ui.select(uid, true), []); // stable store action
+  const pinActions = useNearbyPinActions();
 
   return (
     <div className="space-y-3">
@@ -144,10 +155,16 @@ export function StoresTab() {
             unit={unit}
             className="min-h-0 flex-1"
             action={<OpenFullPage projectId={project.id} view="map" label="Open map in a new tab" />}
+            controls={<NearbyControl />}
+            circle={circle}
             pins={pins.data ?? []}
             selectedId={ui.selectedId}
             hoveredId={ui.hoveredId}
-            onSelect={open}
+            // One click: the store's pop-up; a double click (or the pop-up's Open store): its window.
+            popup
+            onOpen={open}
+            onPinClick={pinActions.onPinClick}
+            onNearby={pinActions.onNearby}
             onBoundsChange={ui.setBounds}
           />
         </div>
@@ -187,7 +204,7 @@ export function StoresTab() {
         ) : byScreen ? (
           <ScreensTable project={project} rows={screenList.data?.items ?? []} {...paging} {...rowState} onOpen={open} />
         ) : (
-          <StoresTable project={project} stops={storeList.data?.items ?? []} {...paging} {...rowState} onOpen={open} />
+          <StoresTable project={project} stops={storeList.data?.items ?? []} distances={near ? storeList.data?.distances : null} {...paging} {...rowState} onOpen={open} onFilter={ui.toggleFacet} />
         )}
       </div>
       <StoreDrawer project={project} stopId={ui.selectedId} open={ui.drawerOpen} onClose={ui.closeDrawer} />

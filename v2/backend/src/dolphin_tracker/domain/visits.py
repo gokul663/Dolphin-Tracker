@@ -83,6 +83,39 @@ class Visit(VisitInput):
     created_at: str = Field(default_factory=now_iso)
 
 
+class StoreCommentInput(ApiModel):
+    """A comment on the store as a whole, kept as a log entry of its own (no screen). Saving one also makes it
+    the store's `comment` (the latest), which the store window and the CSV read. It is not a visit: no screen
+    counts as visited and no plan outcome changes."""
+
+    text: str = Field(min_length=1, max_length=2000)
+    visit_date: str = Field(pattern=DATE_PATTERN)
+    # Who was there, as the store window's "This visit" row has them; either may be blank.
+    installer: str = Field(default="", max_length=200)
+    dolphin_manager: str = Field(default="", max_length=200)
+    route_plan_id: str = Field(default="", max_length=64)  # "" → the store's active plan, if any
+
+    @field_validator("text", mode="before")
+    @classmethod
+    def _strip(cls, value: object) -> object:
+        return value.strip() if isinstance(value, str) else value
+
+    @field_validator("installer", "dolphin_manager", mode="before")
+    @classmethod
+    def _clean(cls, value: object) -> object:
+        return clean_name(value) if isinstance(value, str) else value
+
+
+class StoreComment(StoreCommentInput):
+    id: str = Field(default_factory=lambda: uuid.uuid4().hex)
+    project_id: str
+    stop_uid: str
+    created_by: str = ""  # the signed-in person who saved it (named when the row above was left blank)
+    plan_name: str = ""  # snapshot, so the entry still says where it came from after the plan is renamed
+    plan_day: int | None = None
+    created_at: str = Field(default_factory=now_iso)
+
+
 def store_outcome(screen_ids: Iterable[str], visits: Iterable[Visit], plan_id: str) -> str:
     """What a store's screens add up to in a plan, from each screen's latest log entry there (`visits` newest
     first): "incomplete" when any screen was left incomplete, "done" when every screen is done, else "" (some

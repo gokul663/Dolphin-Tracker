@@ -161,12 +161,26 @@ class ListTests(StoresApiTestCase):
         pins = self.get("/pins").json()
         self.assertEqual({pin["uid"] for pin in pins}, {"a", "b", "d"})
         self.assertEqual(set(pins[0]), {"uid", "lat", "lng", "status", "store_name", "installer", "day",
-                                        "route_plan_id", "visit_state", "screen_statuses"})
+                                        "route_plan_id", "visit_state", "screen_statuses",
+                                        "display_id", "addr", "city", "state", "zip"})
         by_uid = {pin["uid"]: pin for pin in pins}
         self.assertEqual(by_uid["b"]["screen_statuses"], ["Upcoming", "Shipped"])  # one per screen row
         self.assertEqual(by_uid["d"]["screen_statuses"], ["Upcoming"])  # a store always has at least one screen
         self.assertEqual([p["uid"] for p in self.get("/pins", status="Completed").json()], ["a"])
         self.assertEqual([p["uid"] for p in self.get("/pins", state="TN").json()], ["d"])
+
+    def test_pins_carry_the_address_and_extid_as_the_table_shows_them(self):
+        """The full-page map's pop-up: ExtID (else the minted id), street, city / state as shown, zip."""
+        b = self.stores.get("p1", "b")
+        self.stores.put_many("p1", [b.model_copy(update={"external_id": "", "city": "decatur", "state": "georgia",
+                                                         "geocoded": "5 Elm St, Decatur, GA 30030, USA"})])
+        pins = {pin["uid"]: pin for pin in self.get("/pins").json()}
+        self.assertEqual({key: pins["a"][key] for key in ("display_id", "addr", "city", "state", "zip")},
+                         {"display_id": "IBC-1", "addr": "10 Oak St", "city": "Atlanta", "state": "GA", "zip": "30303"})
+        self.assertEqual({key: pins["b"][key] for key in ("display_id", "city", "state")},
+                         {"display_id": "S2", "city": "Decatur", "state": "GA"})  # no ExtID; the verified spelling
+        overview = self.get("/overview").json()["pins"]
+        self.assertEqual({pin["uid"]: pin["addr"] for pin in overview}["d"], "7 Ash Ave")
 
     def test_route_and_visit_overlays(self):
         """ROUTE-PLANNER §6: In route from the store's plan; Visited when every stick has a visit since that plan."""

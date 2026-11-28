@@ -15,10 +15,10 @@ export function shownLocation(stop: Pick<Stop, "lat" | "lng" | "device">): { lat
 }
 
 /** This store alone on a small map, zoomed to its neighbourhood (about a mile around), with a link to Google Maps. */
-export function StoreLocationMap({ stop, className }: { stop: Stop; className?: string }) {
-  const config = useMapsConfig();
-  const key = config.data?.google_maps_browser_key ?? "";
+export function StoreLocationMap({ stop, className, bare = false, mapHeight = "h-64" }: { stop: Stop; className?: string; bare?: boolean; /** The map's height class (the visit dialog's is lower). */ mapHeight?: string }) {
   const at = shownLocation(stop);
+  // Bare: just the map, for a host that draws its own box and heading (the store window's Location section).
+  if (bare) return <LocationBody stop={stop} at={at} mapHeight={mapHeight} />;
   return (
     <section aria-label="Location" className={cn("rounded-xl bg-white p-4 shadow-sm ring-1 ring-slate-900/5", className)}>
       <div className="mb-2 flex items-center gap-2">
@@ -36,36 +36,42 @@ export function StoreLocationMap({ stop, className }: { stop: Stop; className?: 
           </a>
         )}
       </div>
-      {!at ? (
-        <p className="flex h-24 items-center justify-center gap-1.5 rounded-md bg-slate-50 text-sm text-slate-400">
-          <MapPinOff size={15} /> No map location yet: verify the address.
-        </p>
-      ) : config.isPending ? (
-        <div className="h-64 animate-pulse rounded-md bg-slate-50" />
-      ) : !key ? (
-        <p className="flex h-24 items-center justify-center rounded-md bg-slate-50 text-sm text-slate-400">Map unavailable (no Google Maps key).</p>
-      ) : (
-        <div className="relative h-64 overflow-hidden rounded-lg">
-          <APIProvider apiKey={key}>
-            {/* Keyed by position, so a verified or overwritten location recentres the map. */}
-            <Map
-              key={`${at.lat},${at.lng}`}
-              defaultCenter={at}
-              defaultZoom={NEIGHBOURHOOD_ZOOM}
-              gestureHandling="cooperative"
-              mapTypeControl={false}
-              streetViewControl={false}
-              // Plain + / − zoom buttons (bottom right) instead of the combined camera control.
-              zoomControl
-              cameraControl={false}
-              fullscreenControl={false}
-              className="absolute inset-0"
-            >
-              <Marker position={at} title={stop.store_name} />
-            </Map>
-          </APIProvider>
-        </div>
-      )}
+      <LocationBody stop={stop} at={at} mapHeight={mapHeight} />
     </section>
+  );
+}
+
+function LocationBody({ stop, at, mapHeight }: { stop: Stop; at: { lat: number; lng: number } | null; mapHeight: string }) {
+  const config = useMapsConfig();
+  const key = config.data?.google_maps_browser_key ?? "";
+  return !at ? (
+    <p className="flex h-24 items-center justify-center gap-1.5 rounded-md bg-slate-50 text-sm text-slate-600">
+      <MapPinOff size={15} /> No map location yet: verify the address.
+    </p>
+  ) : config.isPending ? (
+    <div className={cn(mapHeight, "animate-pulse rounded-md bg-slate-50")} />
+  ) : !key ? (
+    <p className="flex h-24 items-center justify-center rounded-md bg-slate-50 text-sm text-slate-600">Map unavailable (no Google Maps key).</p>
+  ) : (
+    <div className={cn("relative overflow-hidden rounded-lg", mapHeight)}>
+      <APIProvider apiKey={key}>
+        {/* Keyed by position, so a verified or overwritten location recentres the map. */}
+        <Map
+          key={`${at.lat},${at.lng}`}
+          defaultCenter={at}
+          defaultZoom={NEIGHBOURHOOD_ZOOM}
+          gestureHandling="cooperative"
+          mapTypeControl={false}
+          streetViewControl={false}
+          // Plain + / − zoom buttons (bottom right) instead of the combined camera control.
+          zoomControl
+          cameraControl={false}
+          fullscreenControl={false}
+          className="absolute inset-0"
+        >
+          <Marker position={at} title={stop.store_name} />
+        </Map>
+      </APIProvider>
+    </div>
   );
 }

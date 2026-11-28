@@ -4,14 +4,15 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Any, Generic, Self, TypeVar
+from typing import Annotated, Any, Generic, Self, TypeVar
 
 from pydantic import ConfigDict, Field, computed_field, field_validator, model_validator
 
+from dolphin_tracker.domain import store_counts
 from dolphin_tracker.domain.addresses import parse_us_formatted_address, state_code
 from dolphin_tracker.domain.base import ApiModel
 from dolphin_tracker.domain.device import DeviceSyncState, ScreenDevice, StoreDevice, split_codes, venue_code_key
-from dolphin_tracker.domain.kpi import Kpi
+from dolphin_tracker.domain.kpi import Kpi, MismatchIgnore
 from dolphin_tracker.domain.statuses import (  # re-exported: callers import statuses from models
     LEGACY_STATUSES,
     ScreenStatus,
@@ -32,6 +33,7 @@ from dolphin_tracker.domain.statuses import (
 from dolphin_tracker.domain.statuses import (
     normalize_screen_status as normalize_screen_status,
 )
+from dolphin_tracker.domain.tags import DEFAULT_TAG_OPTIONS
 
 T = TypeVar("T")
 
@@ -48,6 +50,23 @@ class ProjectType(StrEnum):
 
 def _new_id() -> str:
     return uuid.uuid4().hex
+
+
+# A screen's pictures are links, like the store's own Pictures (`image_url`): nothing is uploaded to the app.
+MAX_SCREEN_PICTURES = 20
+PictureLink = Annotated[str, Field(min_length=8, max_length=2000, pattern=r"^https?://\S+$")]
+
+
+def clean_picture_links(value: Any) -> Any:
+    """Trimmed, blanks and repeats dropped, order kept (a list is checked by its field after this)."""
+    if not isinstance(value, list):
+        return value
+    seen: list[Any] = []
+    for item in value:
+        item = item.strip() if isinstance(item, str) else item
+        if item != "" and item not in seen:
+            seen.append(item)
+    return seen
 
 
 class Screen(ApiModel):
@@ -73,11 +92,19 @@ class Screen(ApiModel):
     # existed). A screen Completed after the device report's day is not expected in that report yet.
     status_changed_at: str = ""
     device: ScreenDevice | None = None  # the device report's latest day, when this screen's DD code is in it
+    # Picture links of this screen (STORE-MODEL §4.1): kept with the screen, so every later visit and the store
+    # window show them; they go when the screen is deleted.
+    pictures: list[PictureLink] = Field(default_factory=list, max_length=MAX_SCREEN_PICTURES)
 
     @field_validator("status", mode="before")
     @classmethod
     def _legacy_status(cls, value: Any) -> Any:
         return LEGACY_STATUSES.get(value, value) if isinstance(value, str) else value
+
+    @field_validator("pictures", mode="before")
+    @classmethod
+    def _clean_pictures(cls, value: Any) -> Any:
+        return clean_picture_links(value)
 
     @model_validator(mode="after")
     def _dolphin_screen_size(self) -> Self:
@@ -238,6 +265,8 @@ class Project(ApiModel):
     # The column → field mapping the last import confirmed, by normalised header (STORE-MODEL §6); the next
     # sheet of the same shape starts from it.
     import_mappings: dict[str, str] = Field(default_factory=dict)
+    # The tags a store may carry (Settings). A project saved before tags existed reads as the defaults.
+    tag_options: list[str] = Field(default_factory=lambda: list(DEFAULT_TAG_OPTIONS))
     uploads: list[ProjectUpload] = Field(default_factory=list)  # every sheet imported, newest last
     routing_status: RoutingStatus = RoutingStatus.READY
     routing_job_id: str = ""  # the routing job allowed to finish the current build (§3.2 fence); "" when idle
@@ -350,6 +379,11 @@ class Stop(StoreDetails):
     # Servicing visits: stick (screen id) → when its latest visit was logged, and the latest of those.
     screen_visits: dict[str, str] = Field(default_factory=dict)
     last_visit_at: str = ""
+    # The project manager's escalation marker: one of the project's tag options, or "" (none).
+    tag: str = ""
+    # Set by "Ignore mismatch": the committed total and screen rows when the missing screens were ignored. It
+    # stops applying once either number changes (`store_counts.mismatch_ignored`).
+    mismatch_ignore: MismatchIgnore | None = None
     updated_at: str = Field(default_factory=now_iso)
     updated_by: str = ""
 
@@ -387,6 +421,45 @@ class Stop(StoreDetails):
     @property
     def place_state(self) -> str:
         return self._place()[1]
+
+    # Worked out from the screen rows on every read (`domain/store_counts.py`), so the table, the CSV export and the
+    # filters read one number. A typed-over count wins over the worked-out one.
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def effective_mounts_needed(self) -> dict[str, int]:
+        """Per piece: wall_24, wall, ceiling."""
+        return store_counts.mounts_needed(self)
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def effective_mounts_needed_total(self) -> int:
+        return store_counts.mounts_needed_total(self)
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def effective_mounts_used(self) -> int:
+        return store_counts.mounts_used(self)
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def committed_screens_total(self) -> int:
+        return store_counts.committed_screens(self)
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def installed_screens_total(self) -> int:
+        return store_counts.installed_screens(self)
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def screen_mismatch(self) -> bool:
+        """Done with fewer screen rows than committed, whether the mismatch is ignored or not."""
+        return store_counts.screen_mismatch(self)
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def mismatch_ignored(self) -> bool:
+        return store_counts.mismatch_ignored(self)
 
 
 def merge_same_code(screens: list[Screen]) -> list[Screen]:
@@ -427,6 +500,8 @@ def merge_same_code(screens: list[Screen]) -> list[Screen]:
             "status": progressed.status,
             "status_changed_at": progressed.status_changed_at,
             "device": base.device or next((row.device for row in rest if row.device), None),
+            # Every row's pictures, the first row's first (repeats dropped, up to the cap).
+            "pictures": list(dict.fromkeys(link for row in group for link in row.pictures))[:MAX_SCREEN_PICTURES],
         }))
     return merged
 
@@ -435,7 +510,8 @@ def merge_same_code(screens: list[Screen]) -> list[Screen]:
 # Screens carry the per-screen status, so they are progress; `status` is their derived summary.
 ROUTING_FIELDS = frozenset({"installer", "day", "seq"})
 PROGRESS_FIELDS = frozenset(
-    {"screens", "status", "comment", "review_notes", "additional_task", "installer_name", "updated_by"}
+    {"screens", "status", "comment", "review_notes", "additional_task", "installer_name", "updated_by",
+     "mismatch_ignore"}
 )
 # Written only by the route-plan and visit paths, never by detail, progress or routing writes.
 PLAN_FIELDS = frozenset({"route_plan_id", "last_planned_at"})
@@ -461,10 +537,17 @@ class ScreenInput(ApiModel):
     has_ceiling_mount: bool = False
     needs_mount: bool = False
     status: ScreenStatus = ScreenStatus.UPCOMING
+    # None (left out): the screen keeps the pictures it has (a client that does not know them never wipes them).
+    pictures: list[PictureLink] | None = Field(default=None, max_length=MAX_SCREEN_PICTURES)
+
+    @field_validator("pictures", mode="before")
+    @classmethod
+    def _clean_pictures(cls, value: Any) -> Any:
+        return clean_picture_links(value)
 
     def to_screen(self) -> Screen:
-        data = self.model_dump(exclude={"id"})
-        return Screen(**data, **({"id": self.id} if self.id else {}))
+        data = self.model_dump(exclude={"id", "pictures"})
+        return Screen(**data, pictures=self.pictures or [], **({"id": self.id} if self.id else {}))
 
 
 class StopInput(StoreDetails):

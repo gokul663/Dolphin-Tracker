@@ -20,7 +20,7 @@ interface Props {
   className?: string;
 }
 
-const ACTIVE = "#0F5B7C";
+const ACTIVE = "#034EA1";
 const IDLE = "#94a3b8";
 
 /** "Top states" by stores or screens of every status under the active filters (STORE-MODEL §5): click a bar (or its button) to filter to that state,

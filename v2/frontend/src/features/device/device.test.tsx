@@ -12,7 +12,7 @@ import type { DeviceSyncState, ReviewItem } from "@/lib/api/types";
 
 const STATE: DeviceSyncState = {
   pa: "IBC", snapshot_date: "2026-11-09", ingested_at: "2026-11-10T03:02:06+00:00", synced_at: "2026-11-10T12:00:00+00:00",
-  matched_screens: 2, status_changes: 1, review_count: 1, not_reporting: 0,
+  matched_screens: 2, status_changes: 1, review_count: 1, not_reporting: 0, other_pa_count: 0,
 };
 
 const ITEM: ReviewItem = {

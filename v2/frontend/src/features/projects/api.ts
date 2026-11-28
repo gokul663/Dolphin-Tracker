@@ -55,6 +55,18 @@ export function useCreateProject() {
   });
 }
 
+/** Save the project's tag options (Settings). */
+export function useSetTagOptions(projectId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (tagOptions: string[]) => projectsApi.setTagOptions(projectId, tagOptions),
+    onSuccess: (project: Project) => {
+      client.setQueryData<ProjectSummary>(keys.project(projectId), (cached) => (cached ? { ...cached, ...project } : cached));
+      return client.invalidateQueries({ queryKey: keys.projects });
+    },
+  });
+}
+
 export function useUpdateProject(projectId: string) {
   const client = useQueryClient();
   return useMutation({

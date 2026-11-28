@@ -5,13 +5,13 @@ import uuid
 from typing import Any
 
 from dolphin_tracker.domain.cursors import encode_cursor, offset_from_cursor
-from dolphin_tracker.domain.device import ReviewItem
+from dolphin_tracker.domain.device import OtherPaScreen, ReviewItem
 from dolphin_tracker.domain.errors import ConflictError, NotFoundError
 from dolphin_tracker.domain.lists import Category, NameEntry, NameListKind, name_key
 from dolphin_tracker.domain.models import Job, JobStatus, Page, Project, RoutingStatus, Screen, Stop, now_iso
 from dolphin_tracker.domain.route_plans import PlanStatus, PlanStop, RoutePlan
 from dolphin_tracker.domain.venues import VENUES_PROJECT_ID, venues_project
-from dolphin_tracker.domain.visits import Visit
+from dolphin_tracker.domain.visits import StoreComment, Visit
 from dolphin_tracker.repositories.projects import IMMUTABLE_FIELDS
 from dolphin_tracker.repositories.route_plans import PlanStopChange, check_assignment
 from dolphin_tracker.repositories.stores import (
@@ -329,6 +329,7 @@ class InMemoryVisitRepository:
     def __init__(self, stores: InMemoryStoreRepository) -> None:
         self._stores = stores
         self._items: list[Visit] = []
+        self._comments: list[StoreComment] = []
 
     def add(self, visit: Visit) -> Visit:
         stop = self._stores.get(visit.project_id, visit.stop_uid)
@@ -348,6 +349,23 @@ class InMemoryVisitRepository:
         mine = [v for v in self._items if v.project_id == project_id and v.stop_uid == stop_uid]
         mine.sort(key=lambda v: (v.created_at, v.id), reverse=True)
         window, next_cursor = _offset_page([v.model_copy(deep=True) for v in mine], limit, cursor)
+        return Page(items=window, next_cursor=next_cursor)
+
+    def add_store_comment(self, comment: StoreComment) -> StoreComment:
+        stop = self._stores.get(comment.project_id, comment.stop_uid)
+        if stop is None:
+            raise NotFoundError(f"Stop {comment.stop_uid} not found")
+        self._comments.append(comment.model_copy(deep=True))
+        bucket = self._stores._items[comment.project_id]  # the comment only: no screen counts as visited
+        bucket[comment.stop_uid] = stop.model_copy(update={"comment": comment.text, "updated_at": comment.created_at})
+        return comment
+
+    def list_store_comments(
+        self, project_id: str, stop_uid: str, *, limit: int = 50, cursor: str | None = None
+    ) -> Page[StoreComment]:
+        mine = [c for c in self._comments if c.project_id == project_id and c.stop_uid == stop_uid]
+        mine.sort(key=lambda c: (c.created_at, c.id), reverse=True)
+        window, next_cursor = _offset_page([c.model_copy(deep=True) for c in mine], limit, cursor)
         return Page(items=window, next_cursor=next_cursor)
 
 
@@ -422,6 +440,9 @@ class InMemoryRoutePlanRepository:
 class InMemoryDeviceReviewRepository:
     def __init__(self) -> None:
         self._items: dict[str, dict[str, ReviewItem]] = {}
+        # Screens of another PA at a store's address, and the situations marked reviewed (kept for good).
+        self._other_pa: dict[str, dict[str, OtherPaScreen]] = {}
+        self._other_pa_reviewed: dict[str, set[str]] = {}
 
     def list(self, project_id: str) -> list[ReviewItem]:
         bucket = self._items.get(project_id, {})
@@ -447,3 +468,30 @@ class InMemoryDeviceReviewRepository:
 
     def delete_all(self, project_id: str) -> None:
         self._items.pop(project_id, None)
+        self._other_pa.pop(project_id, None)
+        self._other_pa_reviewed.pop(project_id, None)
+
+    def list_other_pa(self, project_id: str) -> list[OtherPaScreen]:
+        bucket = self._other_pa.get(project_id, {})
+        return [bucket[key].model_copy(deep=True) for key in sorted(bucket)]
+
+    def get_other_pa(self, project_id: str, key: str) -> OtherPaScreen | None:
+        item = self._other_pa.get(project_id, {}).get(key)
+        return item.model_copy(deep=True) if item else None
+
+    def replace_other_pa(self, project_id: str, items: list[OtherPaScreen]) -> int:
+        current = self._other_pa.get(project_id, {})
+        changed = sum(1 for item in items if current.get(item.key) != item) + len(
+            set(current) - {item.key for item in items}
+        )
+        self._other_pa[project_id] = {item.key: item.model_copy(deep=True) for item in items}
+        return changed
+
+    def delete_other_pa(self, project_id: str, key: str) -> None:
+        self._other_pa.get(project_id, {}).pop(key, None)
+
+    def reviewed_other_pa(self, project_id: str) -> set[str]:
+        return set(self._other_pa_reviewed.get(project_id, set()))
+
+    def mark_other_pa_reviewed(self, project_id: str, situation: str) -> None:
+        self._other_pa_reviewed.setdefault(project_id, set()).add(situation)

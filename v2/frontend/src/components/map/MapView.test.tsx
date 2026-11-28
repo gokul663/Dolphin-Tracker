@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { screen, within } from "@testing-library/react";
-import { MapView } from "@/components/map/MapView";
+import { circleBounds, MapView } from "@/components/map/MapView";
 import { bucketShade, BUCKET_META } from "@/lib/status";
 import { mockApi, renderWithProviders } from "@/test/render";
 import type { Pin } from "@/lib/api/types";
@@ -33,6 +33,14 @@ describe("MapView", () => {
       const bucket = item.textContent!.replace(/ \d+$/, "");
       expect(within(item).getByLabelText(`${bucket} clusters, light to dark`)).toBeTruthy();
     }
+  });
+
+  it("fits the Nearby circle: a mile is wider in longitude away from the equator", () => {
+    const box = circleBounds({ lat: 60, lng: -100, radiusMiles: 69.05 });
+    expect(box.north).toBeCloseTo(61);
+    expect(box.south).toBeCloseTo(59);
+    expect(box.east).toBeCloseTo(-98); // cos 60° = 0.5: two degrees of longitude
+    expect(box.west).toBeCloseTo(-102);
   });
 
   it("shades each group's bubbles light → dark by count", () => {

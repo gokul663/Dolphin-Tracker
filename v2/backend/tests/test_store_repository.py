@@ -159,8 +159,11 @@ class StoreRepositoryContract:
         after = self.repo.update_screens("p1", "u000", screens, updated_by="tech@x")
         self.assertEqual([(s.id, s.status) for s in after.screens], [(s.id, s.status) for s in screens])
         self.assertEqual((after.status, after.updated_by), (ScreenStatus.DELIVERED, "tech@x"))
-        self.assertEqual(after.model_dump(exclude={"screens", "status", "updated_at", "updated_by"}),
-                         before.model_dump(exclude={"screens", "status", "updated_at", "updated_by"}))
+        # Everything but the screens, what is derived from them and the stamp stays as it was.
+        derived = {"screens", "status", "updated_at", "updated_by", "installed_screens_total", "screen_mismatch",
+                   "mismatch_ignored", "effective_mounts_needed", "effective_mounts_needed_total",
+                   "effective_mounts_used"}
+        self.assertEqual(after.model_dump(exclude=derived), before.model_dump(exclude=derived))
         with self.assertRaises(NotFoundError):
             self.repo.update_screens("p1", "ghost", screens)
 

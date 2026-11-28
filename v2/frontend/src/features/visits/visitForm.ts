@@ -1,4 +1,4 @@
-/** The New Log Entry form (ROUTE-PLANNER §5): one visit for one stick. Pure, so the rules are unit-tested. */
+/** A visit's log entry for one screen (ROUTE-PLANNER §5, §5.1): the rules, pure, so they are unit-tested. */
 import type { Category, NetworkType, Screen, Stop, Visit, VisitInput } from "@/lib/api/types";
 
 /** Subcategories that need the new stick or screen number (mirrors domain/lists.REPLACED_WITH_SUBCATEGORIES). */
@@ -163,4 +163,23 @@ export function screenOutcomes(visits: Pick<Visit, "screen_id" | "route_plan_id"
     if (visit.route_plan_id === planId && visit.outcome && !latest.has(visit.screen_id)) latest.set(visit.screen_id, visit.outcome);
   }
   return latest;
+}
+
+/** Off a plan (the Log Visit page, the store window): what each screen was left as on `date`, from its latest
+ *  log entry dated that day that says Done or Incomplete (`visits` newest first). */
+export function screenOutcomesOn(visits: Pick<Visit, "screen_id" | "visit_date" | "outcome">[], date: string): Map<string, "done" | "incomplete"> {
+  const latest = new Map<string, "done" | "incomplete">();
+  for (const visit of visits) {
+    if (visit.visit_date === date && visit.outcome && !latest.has(visit.screen_id)) latest.set(visit.screen_id, visit.outcome);
+  }
+  return latest;
+}
+
+/** Whether this person may change the store's screen details (screens, their pictures, WiFi, the store comment)
+ *  here. Mirrors the backend's `store_edit_problem` (domain/auth.py, applied by api/routers/stores.py `_may_edit`):
+ *  someone who edits projects always may; someone who only logs visits, only while the store is on a route. A log
+ *  entry itself needs `visits.log` alone. */
+export function canEditStoreDetails(permissions: readonly string[], stop: Pick<Stop, "route_plan_id">): boolean {
+  if (permissions.includes("projects.edit")) return true;
+  return permissions.includes("visits.log") && Boolean(stop.route_plan_id);
 }

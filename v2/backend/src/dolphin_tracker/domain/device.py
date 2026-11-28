@@ -229,6 +229,7 @@ class DeviceSyncState(ApiModel):
     status_changes: int = 0  # screens whose work status the last sync changed
     review_count: int = 0  # records not in the project, not snoozed
     not_reporting: int = 0  # stores flagged "Completed but not in Dolphin data"
+    other_pa_count: int = 0  # screens of another PA (or none) at a store's address, not marked reviewed
 
 
 class ReviewItem(DeviceRecord):
@@ -236,3 +237,18 @@ class ReviewItem(DeviceRecord):
 
     key: str  # venue_code_key(venue_id)
     snoozed_date: str = ""
+
+
+class OtherPaScreen(ApiModel):
+    """A screen of the Dolphin data at the address of one of the project's stores, under another PA or none (an ATM
+    screen at the store, say). Shown for a check only: never added to the project; any fix is made in the CMS."""
+
+    key: str  # "<venue key>:<store uid>", one row per screen and store of ours
+    venue_id: str  # the screen's DD code, as the CMS writes it
+    pa_name: str = ""  # "" = no PA in the CMS
+    venue_name: str = ""  # its name in the CMS
+    status: str = ""  # the report's word: Online, Offline, Not Registered
+    stop_uid: str  # our store at that address
+    store_name: str = ""
+    external_id: str = ""
+    address: str = ""  # our store's address, one line

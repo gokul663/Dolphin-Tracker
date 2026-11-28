@@ -8,7 +8,7 @@ import { keys } from "@/lib/api/keys";
 import type { Me, Permission, Role } from "@/lib/api/types";
 
 const VIEW: Permission[] = ["projects.view", "routes.view"];
-const ALL: Permission[] = [...VIEW, "projects.edit", "stores.delete", "installers.manage", "routes.manage", "routes.arrange", "visits.log"];
+const ALL: Permission[] = [...VIEW, "projects.edit", "stores.delete", "stores.tag", "installers.manage", "routes.manage", "routes.arrange", "visits.log"];
 /** The server's role table, for tests (backend domain/auth.py ROLE_PERMISSIONS). */
 export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
   super_admin: ALL,
@@ -20,10 +20,10 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
 export const makeMe = (role: Role = "super_admin"): Me => ({ id: "u1", name: "Test User", email: "", role, installer_id: "", acting_by: "", permissions: ROLE_PERMISSIONS[role] });
 
 /** Render with a fresh query client (no retries), a router at `path`, and the tooltip provider. The signed-in person
- *  is a Super Admin unless `role` says otherwise. */
-export function renderWithProviders(ui: ReactElement, { path = "/", route = "/", role = "super_admin" }: { path?: string; route?: string; role?: Role } = {}) {
+ *  is a Super Admin unless `role` says otherwise; `me` changes other things about them (their name, say). */
+export function renderWithProviders(ui: ReactElement, { path = "/", route = "/", role = "super_admin", me }: { path?: string; route?: string; role?: Role; me?: Partial<Me> } = {}) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
-  client.setQueryData(keys.me, makeMe(role));
+  client.setQueryData(keys.me, { ...makeMe(role), ...me });
   const wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={client}>
       <TooltipProvider>

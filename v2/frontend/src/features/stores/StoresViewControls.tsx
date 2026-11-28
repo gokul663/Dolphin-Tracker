@@ -33,8 +33,8 @@ export function UnitToggle({ value, onChange }: { value: MapUnit; onChange: (uni
 
 /** The full-page map or chart for this project, in a new tab, with the current search, filters and count unit. */
 export function storesViewHref(projectId: string, view: "map" | "states"): string {
-  const { search, facets, unit, needsAttention } = useStoresUi.getState();
-  const query = viewToParams({ search, facets, unit, needsAttention }).toString();
+  const { search, facets, unit, needsAttention, ranges, near, numbers } = useStoresUi.getState();
+  const query = viewToParams({ search, facets, unit, needsAttention, ranges, near, numbers }).toString();
   return `/projects/${encodeURIComponent(projectId)}/${view}${query ? `?${query}` : ""}`;
 }
 

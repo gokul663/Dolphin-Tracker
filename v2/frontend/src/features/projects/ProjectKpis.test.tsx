@@ -64,4 +64,14 @@ describe("ProjectKpis", () => {
     screen.getByRole("button", { name: "4 screens need review" }).click(); // only missing screens: straight to those stores
     expect(opened).toEqual(["dolphin", "missing"]);
   });
+
+  it("needs review counts the screens of another PA at our addresses, and opens the review list for them", () => {
+    const opened: string[] = [];
+    const props = { onDeviceReview: () => opened.push("dolphin"), onMissingScreens: () => opened.push("missing") };
+    render(<ProjectKpis kpi={makeKpi({ review_screens: 4, review_stores: 3 })} otherPaCount={3} {...props} />);
+    const tile = screen.getByRole("button", { name: "7 screens need review" });
+    expect(tile.textContent).toBe(" 7Needs review4 missing · 3 other PA");
+    tile.click();
+    expect(opened).toEqual(["dolphin"]);
+  });
 });

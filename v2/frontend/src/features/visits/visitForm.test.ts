@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formErrors, LOCKED_GROUPS, lockedPatch, lockedValues, formFor, screenOutcomes, toInput, venueNameOf, visitState } from "@/features/visits/visitForm";
+import { canEditStoreDetails, formErrors, LOCKED_GROUPS, lockedPatch, lockedValues, formFor, screenOutcomes, screenOutcomesOn, toInput, venueNameOf, visitState } from "@/features/visits/visitForm";
 import { makeScreen, makeStop } from "@/test/fixtures";
 import type { Category } from "@/lib/api/types";
 
@@ -61,5 +61,27 @@ describe("screenOutcomes", () => {
       { screen_id: "s3", route_plan_id: "plan", outcome: "" as const },
     ];
     expect([...screenOutcomes(visits, "plan")]).toEqual([["s1", "done"]]);
+  });
+});
+
+describe("visits off a plan", () => {
+  it("counts the screens left Done or Incomplete on the day, from each one's latest entry", () => {
+    const outcomes = screenOutcomesOn(
+      [
+        { screen_id: "s1", visit_date: "2026-11-27", outcome: "done" },
+        { screen_id: "s1", visit_date: "2026-11-27", outcome: "incomplete" },
+        { screen_id: "s2", visit_date: "2026-11-26", outcome: "done" },
+        { screen_id: "s3", visit_date: "2026-11-27", outcome: "" },
+      ],
+      "2026-11-27",
+    );
+    expect([...outcomes]).toEqual([["s1", "done"]]);
+  });
+
+  it("lets an Operator change screen details only on a route, as the server does", () => {
+    expect(canEditStoreDetails(["projects.edit"], { route_plan_id: "" })).toBe(true);
+    expect(canEditStoreDetails(["visits.log"], { route_plan_id: "" })).toBe(false);
+    expect(canEditStoreDetails(["visits.log"], { route_plan_id: "plan1" })).toBe(true);
+    expect(canEditStoreDetails(["projects.view"], { route_plan_id: "plan1" })).toBe(false);
   });
 });

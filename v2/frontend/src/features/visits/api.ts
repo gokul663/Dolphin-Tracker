@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { keys } from "@/lib/api/keys";
-import { storesApi, visitsApi } from "@/lib/api/resources";
-import { ApiError, type VisitInput } from "@/lib/api/types";
+import { storeCommentsApi, storesApi, visitsApi } from "@/lib/api/resources";
+import { ApiError, type StoreCommentInput, type VisitInput } from "@/lib/api/types";
 
 /** The store's servicing history, newest first (one page of 100; a store rarely has more). */
 export function useVisits(projectId: string | null, uid: string | null) {
@@ -25,6 +25,29 @@ export function useCreateVisit(projectId: string, uid: string) {
         client.invalidateQueries({ queryKey: [...keys.stores(projectId), "list"] }),
         client.invalidateQueries({ queryKey: keys.routePlans, exact: false }),
         client.invalidateQueries({ queryKey: ["lists"], exact: false }),
+      ]),
+  });
+}
+
+/** The store's comments as log entries of their own, newest first (one page of 100). */
+export function useStoreComments(projectId: string | null, uid: string | null) {
+  return useQuery({
+    queryKey: keys.storeComments(projectId ?? "", uid ?? ""),
+    queryFn: () => storeCommentsApi.list(projectId ?? "", uid ?? "", { limit: 100 }),
+    enabled: Boolean(projectId && uid),
+  });
+}
+
+/** A store comment is a log entry and the store's latest comment: no screen, plan stop or KPI changes. */
+export function useCreateStoreComment(projectId: string, uid: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: StoreCommentInput) => storeCommentsApi.create(projectId, uid, body),
+    onSuccess: () =>
+      Promise.all([
+        client.invalidateQueries({ queryKey: keys.storeComments(projectId, uid) }),
+        client.invalidateQueries({ queryKey: keys.store(projectId, uid) }),
+        client.invalidateQueries({ queryKey: [...keys.stores(projectId), "list"] }),
       ]),
   });
 }

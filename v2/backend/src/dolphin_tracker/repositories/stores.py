@@ -356,8 +356,9 @@ class DynamoStoreRepository:
             }})
         self._table.meta.client.transact_write_items(TransactItems=items)
         visits = self._iter_items(project_id, Keys.visit_prefix(stop_uid), ProjectionExpression="PK, SK")
+        comments = self._iter_items(project_id, Keys.store_comment_prefix(stop_uid), ProjectionExpression="PK, SK")
         with self._table.batch_writer() as batch:
-            for item in visits:
+            for item in [*visits, *comments]:
                 batch.delete_item(Key={"PK": item["PK"], "SK": item["SK"]})
         return True
 
@@ -369,7 +370,8 @@ class DynamoStoreRepository:
         # Visits live in the same partition (repositories/visits.py) and go with the project.
         stops, markers, visits = keys(Keys.STOP_PREFIX), keys(Keys.EXTERNAL_ID_PREFIX), keys(Keys.VISIT_PREFIX)
         reviews = keys(Keys.DEVICE_REVIEW_PREFIX)  # the device sync's review list (repositories/device_review.py)
+        reviews += keys(Keys.OTHER_PA_PREFIX) + keys(Keys.OTHER_PA_REVIEWED_PREFIX)  # and its other-PA screens
         with self._table.batch_writer() as batch:
-            for key in stops + markers + visits + reviews:
+            for key in stops + markers + visits + reviews + keys(Keys.STORE_COMMENT_PREFIX):  # + store comments
                 batch.delete_item(Key=key)
         return len(stops)

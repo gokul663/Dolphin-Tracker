@@ -15,8 +15,8 @@ import type { StoreFilters } from "@/lib/api/resources";
 import type { Project, Stop } from "@/lib/api/types";
 import { useShallow } from "zustand/react/shallow";
 import { useStoresUi } from "@/stores/ui";
-import { anyFacet, FACET_LABELS, optionLabel } from "@/features/stores/filters";
-import type { Facet } from "@/stores/ui";
+import { anyFacet, anyNumber, anyRange, FACET_LABELS, nearChipLabel, numberChipLabel, optionLabel, rangeChipLabel } from "@/features/stores/filters";
+import { DATE_RANGES, NO_RANGE, NUMBER_FILTERS, numberActive, rangeActive, type Facet } from "@/stores/ui";
 import { cn } from "@/lib/utils";
 
 /** "Only stores in map view", then the ways in and out, for the status line above the search and filters: add one
@@ -86,6 +86,12 @@ export function StoresToolbar({
       setOnlyInView: state.setOnlyInView,
       toggleFacet: state.toggleFacet,
       clearFilters: state.clearFilters,
+      ranges: state.ranges,
+      setRange: state.setRange,
+      numbers: state.numbers,
+      setNumber: state.setNumber,
+      near: state.near,
+      setNear: state.setNear,
     })),
   );
   const [draft, setDraft] = useState(ui.search);
@@ -94,7 +100,7 @@ export function StoresToolbar({
     const timer = window.setTimeout(() => draft !== ui.search && ui.setSearch(draft), 250);
     return () => window.clearTimeout(timer);
   }, [draft]); // only the draft drives the debounce; `ui` is the stable store
-  const active = ui.search || anyFacet(ui.facets) || ui.onlyInView || ui.needsAttention;
+  const active = ui.search || anyFacet(ui.facets) || anyRange(ui.ranges) || anyNumber(ui.numbers) || ui.near || ui.onlyInView || ui.needsAttention;
 
   // Everything narrowing the list, one chip each: the search text, every picked filter value (also the ones
   // without a drop-down, set from a link or a header bubble), and the two switches.
@@ -107,6 +113,17 @@ export function StoresToolbar({
         onRemove: () => ui.toggleFacet(facet, value),
       })),
     ),
+    ...DATE_RANGES.filter((name) => rangeActive(ui.ranges[name])).map((name) => ({
+      key: `range:${name}`,
+      label: rangeChipLabel(name, ui.ranges[name]),
+      onRemove: () => ui.setRange(name, NO_RANGE),
+    })),
+    ...NUMBER_FILTERS.filter((name) => numberActive(ui.numbers[name])).map((name) => ({
+      key: `number:${name}`,
+      label: numberChipLabel(name, ui.numbers[name]),
+      onRemove: () => ui.setNumber(name, { ...ui.numbers[name], value: "" }),
+    })),
+    ...(ui.near ? [{ key: "near", label: nearChipLabel(ui.near), onRemove: () => ui.setNear(null) }] : []),
     ...(ui.onlyInView ? [{ key: "view", label: "Only stores in map view", onRemove: () => ui.setOnlyInView(false) }] : []),
   ];
 

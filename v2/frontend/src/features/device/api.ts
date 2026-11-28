@@ -114,6 +114,27 @@ export function useSnoozeReviewed(projectId: string) {
   return useMutation({ mutationFn: (key: string) => deviceSyncApi.snooze(projectId, key), onSuccess: () => refresh() });
 }
 
+/** Screens of another PA (or none) at one of the project's addresses, a page at a time. */
+export function useOtherPaScreens(projectId: string, page: { limit: number; cursor: string | null }, enabled = true) {
+  return useQuery({
+    queryKey: [...keys.deviceOtherPa(projectId), page],
+    queryFn: () => deviceSyncApi.otherPa(projectId, page),
+    placeholderData: keepPreviousData,
+    enabled,
+  });
+}
+
+/** "Reviewed, it's fine" for one or several screens of another PA, one after another. */
+export function useOtherPaReviewed(projectId: string) {
+  const refresh = useRefreshProject(projectId);
+  return useMutation({
+    mutationFn: async (otherKeys: string[]) => {
+      for (const key of otherKeys) await deviceSyncApi.otherPaReviewed(projectId, key);
+    },
+    onSettled: () => refresh(),
+  });
+}
+
 /** Copy report values into the store's own fields: one store (`uid`) or every synced store. */
 export function useOverwriteFromDevice(projectId: string) {
   const refresh = useRefreshProject(projectId);

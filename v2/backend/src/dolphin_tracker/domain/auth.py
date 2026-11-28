@@ -22,6 +22,9 @@ class Permission(StrEnum):
     PROJECTS_VIEW = "projects.view"        # projects, their stores, history, lists
     PROJECTS_EDIT = "projects.edit"        # projects, stores, sheets, settings, device sync
     STORES_DELETE = "stores.delete"        # delete a store for good (admins)
+    # Set a store's tag and edit the project's tag options. Meant for project managers; this app has no such role
+    # yet, so it goes with every role that edits stores (admins and super admins).
+    STORES_TAG = "stores.tag"
     INSTALLERS_MANAGE = "installers.manage"  # the Installers page and the other name lists
     ROUTES_VIEW = "routes.view"            # every route plan
     ROUTES_MANAGE = "routes.manage"        # create, edit, add stores, next day, close, take a store out for good

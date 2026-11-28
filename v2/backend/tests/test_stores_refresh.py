@@ -135,7 +135,7 @@ class NeedsMountTests(unittest.TestCase):
         screen = ScreenInput(needs_mount=True, has_mount=False).to_screen()
         self.assertTrue(screen.needs_mount)
 
-    def test_mounts_needed_are_worked_out_from_upcoming_screens_unless_typed(self):
+    def test_mounts_needed_are_worked_out_from_upcoming_screens_only(self):
         from dolphin_tracker.services.stores import mounts_needed, needs_mount
         screens = [Screen(has_mount=True), Screen(has_mount=True, screen_size="43"),
                    Screen(has_mount=True, has_ceiling_mount=True), Screen(has_mount=True, status="Completed"), Screen()]
@@ -144,9 +144,8 @@ class NeedsMountTests(unittest.TestCase):
         self.assertTrue(needs_mount(store))
         typed = store.model_copy(
             update={"wall_24_mounts_needed": 3, "wall_mounts_needed": 0, "ceiling_mounts_needed": 0})
-        self.assertEqual(mounts_needed(typed), {"wall_24": 3, "wall": 0, "ceiling": 0})  # a typed number wins, 0 too
-        none = store.model_copy(update=dict.fromkeys(("wall_24_mounts_needed", "wall_mounts_needed",
-                                                      "ceiling_mounts_needed"), 0))
+        self.assertEqual(mounts_needed(typed), {"wall_24": 1, "wall": 1, "ceiling": 1})  # a typed number is not used
+        none = store.model_copy(update={"screens": [Screen(), Screen(has_mount=True, status="Completed")]})
         self.assertFalse(needs_mount(none))
 
 
@@ -222,7 +221,7 @@ class MountCountTests(StoresApiTestCase):
         self.assertEqual(self.client.patch("/api/projects/p1/stores/a", json={"tv_mounts_needed": -1}).status_code, 422)
         cleared = self.client.patch("/api/projects/p1/stores/a", json={"tv_mounts_needed": None}).json()
         self.assertIsNone(cleared["tv_mounts_needed"])
-        self.assertEqual(self.uids(mount="Needs mount"), ["a"])  # wall and ceiling mounts are still to bring
+        self.assertEqual(self.uids(mount="Needs mount"), [])  # typed numbers are kept but no longer count
 
 
 # --- One row per DD code -------------------------------------------------------------------------------------------

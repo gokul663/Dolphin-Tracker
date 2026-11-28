@@ -8,11 +8,12 @@ from fastapi import APIRouter, Depends, Query
 
 from dolphin_tracker.api.deps import get_device_sync_service
 from dolphin_tracker.api.schemas import DeviceOverwrite, ReviewAdd
-from dolphin_tracker.domain.device import ReviewItem
+from dolphin_tracker.domain.device import OtherPaScreen, ReviewItem
 from dolphin_tracker.domain.models import Stop
 from dolphin_tracker.services.device_sync import (
     DeviceSyncService,
     LogPage,
+    OtherPaPage,
     OverwriteResult,
     PaList,
     PopulateResult,
@@ -74,6 +75,23 @@ def add_reviewed(project_id: str, key: str, service: ServiceDep, body: ReviewAdd
 def snooze_reviewed(project_id: str, key: str, service: ServiceDep) -> ReviewItem:
     """"Not now": hidden until the next report day."""
     return service.snooze(project_id, key)
+
+
+@router.get("/projects/{project_id}/device-sync/other-pa", response_model=OtherPaPage)
+def list_other_pa(
+    project_id: str,
+    service: ServiceDep,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    cursor: str | None = None,
+) -> OtherPaPage:
+    """Screens of another PA (or none) at the address of one of the project's stores, as of the last sync."""
+    return service.other_pa(project_id, limit=limit, cursor=cursor)
+
+
+@router.post("/projects/{project_id}/device-sync/other-pa/{key}/reviewed", response_model=OtherPaScreen)
+def mark_other_pa_reviewed(project_id: str, key: str, service: ServiceDep) -> OtherPaScreen:
+    """"Reviewed, it's fine": not listed again while its PA and our store stay the same."""
+    return service.mark_other_pa_reviewed(project_id, key)
 
 
 @router.post("/projects/{project_id}/device-sync/overwrite", response_model=OverwriteResult)

@@ -8,10 +8,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { facetDisabled, facetOptions, facetSummary, optionLabel } from "@/features/stores/filters";
+import { DateRangeFilter } from "@/features/stores/DateRangeFilter";
+import { INLINE_FACETS, MoreFilters } from "@/features/stores/MoreFilters";
 import type { ScreenStatus, StoreFilterOptions } from "@/lib/api/types";
 import { STATUS_META } from "@/lib/status";
 import { cn } from "@/lib/utils";
-import type { Facet, FacetSelection } from "@/stores/ui";
+import { DATE_RANGES, type Facet, type FacetSelection } from "@/stores/ui";
 
 interface Props {
   options: StoreFilterOptions | undefined;
@@ -20,16 +22,16 @@ interface Props {
 }
 
 /** Short, fixed lists need no search box; every other filter gets one above its values. */
-const UNSEARCHED: ReadonlySet<Facet> = new Set(["status", "visit", "screen_size", "route", "install_type", "mount", "fulfilled", "review"]);
+const UNSEARCHED: ReadonlySet<Facet> = new Set(["status", "visit", "screen_size", "route", "install_type", "mount", "fulfilled", "review", "committed_over_installed"]);
 /** Shown as chips of their own (`BucketChips`), not as a dropdown. */
 const AS_CHIPS: ReadonlySet<Facet> = new Set(["bucket"]);
 
-/** The filters offered, in order. The others (route, visits, technician, install type, mount, screen size, screens
- *  done) still work from a link but have no dropdown; the status groups are chips of their own. */
-export const SHOWN_FACETS: readonly Facet[] = ["status", "state", "pa", "city", "dma", "venue_type", "dd_code", "review"];
+/** The most-used filters, inline in this order (then the two registration dates); every filter (these too) is in the
+ *  More Filters panel, and the status groups are chips of their own. */
+export const SHOWN_FACETS: readonly Facet[] = INLINE_FACETS;
 
-/** One dropdown per filter; values come with store counts under the other filters. PA is left out while the
- *  project has a single PA (nothing to choose). */
+/** One dropdown per inline filter, then More filters; values come with store counts under the other filters. PA is
+ *  left out while the project has a single PA (nothing to choose). */
 export function FilterBar({ options, facets, onToggle }: Props) {
   const shown = SHOWN_FACETS.filter(
     (facet) => !AS_CHIPS.has(facet) && !(facet === "pa" && (options?.pa?.length ?? 0) <= 1 && facets.pa.length === 0),
@@ -58,6 +60,10 @@ export function FilterBar({ options, facets, onToggle }: Props) {
           </DropdownMenu>
         );
       })}
+      {DATE_RANGES.map((name) => (
+        <DateRangeFilter key={name} name={name} />
+      ))}
+      <MoreFilters options={options} />
     </div>
   );
 }

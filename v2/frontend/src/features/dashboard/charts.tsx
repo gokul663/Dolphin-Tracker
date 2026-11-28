@@ -67,7 +67,7 @@ export function SitesBar({ data }: { data: { name: string; sites: number }[] }) 
         <XAxis dataKey="name" tick={{ fill: "#475569", fontSize: 10 }} interval={0} angle={-20} textAnchor="end" height={50} />
         <YAxis tick={{ fill: "#475569", fontSize: 11 }} allowDecimals={false} />
         <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ fill: "rgba(15,91,124,0.08)" }} />
-        <Bar dataKey="sites" fill="#0F5B7C" radius={[6, 6, 0, 0]} />
+        <Bar dataKey="sites" fill="#034EA1" radius={[6, 6, 0, 0]} />
       </BarChart>
     </ChartCard>
   );

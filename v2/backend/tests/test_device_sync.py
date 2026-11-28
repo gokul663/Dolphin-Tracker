@@ -493,7 +493,7 @@ class ServiceTests(ServiceTestCase):
         self.projects.put(Project(id="p2", name="Q", pa="X", project_type=ProjectType.OFFLINE))
         result = self.service.sync_all()
         self.assertEqual((result["synced"], result["failed"]), (1, []))
-        self.assertIn("venues", result)  # then the planner's all-venues list, from every PA
+        self.assertIn("venues", result)  # first the planner's all-venues list, from every PA
 
 
 class PopulateTests(ServiceTestCase):

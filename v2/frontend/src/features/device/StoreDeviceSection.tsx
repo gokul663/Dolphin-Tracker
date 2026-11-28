@@ -76,9 +76,15 @@ export function StoreDeviceSection({
   // Nothing left to overwrite and no alert: the store window's header says it is synced, so nothing here.
   if (device && !missing && differing.length === 0) return null;
   return (
-    <section aria-label="Dolphin data" className={cn("space-y-2 rounded-lg border p-3", DEVICE_TONE.panel)}>
+    <section aria-label="Dolphin data" className={cn("space-y-2 rounded-xl border p-4 shadow-sm", DEVICE_TONE.panel)}>
       <div className="flex flex-wrap items-center gap-2">
-        <h3 className="font-mono text-[11px] uppercase tracking-wider text-cyan-900">Dolphin data</h3>
+        {/* The explanation is a tooltip: the table's "(shown)" column already says which value the app uses. */}
+        <h3
+          className="font-mono text-[11px] uppercase tracking-wider text-cyan-900"
+          title={`The Dolphin data shows on the map and in the list; the sheet value stays underneath until you overwrite it. Fields: ${OVERWRITE_FIELDS.map(({ label }) => label).join(", ")}.`}
+        >
+          Dolphin data
+        </h3>
         {day && <DeviceBadge date={day} />}
         {open.length > 0 && canEdit && (
           <Button size="xs" variant="outline" className="ml-auto" disabled={overwrite.isPending} onClick={() => run(open)}>
@@ -138,12 +144,6 @@ export function StoreDeviceSection({
             })}
           </tbody>
         </table>
-      )}
-      {device && (
-        <p className="text-xs text-slate-500">
-          The Dolphin data shows on the map and in the list; the sheet value stays underneath until you overwrite it. Fields:{" "}
-          {OVERWRITE_FIELDS.map(({ label }) => label).join(", ")}.
-        </p>
       )}
     </section>
   );

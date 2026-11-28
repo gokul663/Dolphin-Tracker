@@ -1,9 +1,11 @@
-import { useCan } from "@/lib/auth/me";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCan, useMe } from "@/lib/auth/me";
+import { useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Cable, Check, ClipboardCheck, Eye, EyeOff, Loader2, Lock, Package, Pencil, Plus, Send, Signal, Trash2, Wifi } from "lucide-react";
+import { ArrowRightLeft, Cable, CalendarX, Check, ChevronRight, Eye, EyeOff, Loader2, Lock, MapPinOff, Pencil, Pin, Plus, Send, Signal, Store, Trash2, Wifi, X } from "lucide-react";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { shownLocation, StoreLocationMap } from "@/components/map/StoreLocationMap";
+import { WhenVisible } from "@/components/WhenVisible";
 import { NameField } from "@/components/NameField";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -11,23 +13,27 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useCategories } from "@/features/lists/api";
-import { todayIso } from "@/features/planner/planModel";
+import { STOP_STATE_LABEL, STOP_STATES, todayIso, type StopState } from "@/features/planner/planModel";
 import { useStoreFields } from "@/features/places/api";
 import { useStore, useUpdateProgress, useUpdateScreens, useUpdateStoreDetails } from "@/features/stores/api";
-import { INSTALLED_STATUSES } from "@/features/stores/details";
 import { newRow, ScreenFields, toInputs, toRows, type ScreenRow } from "@/features/stores/ScreensEditor";
-import { computedMounts } from "@/features/stores/StoreSummary";
-import { useCreateVisit, useVenue, useVisits } from "@/features/visits/api";
+import { INSTALLED_STATUSES } from "@/features/stores/details";
+import { ImagePreviews, ScreenPictures } from "@/features/stores/Pictures";
+import { urlTokens } from "@/lib/validation/storeFields";
+import { computedMounts, computedMountsUsed, computedMountsUsedByPiece } from "@/features/stores/StoreSummary";
+import { useCreateStoreComment, useCreateVisit, useStoreComments, useVenue, useVisits } from "@/features/visits/api";
 import {
+  canEditStoreDetails,
   LOCKED_GROUPS,
   lockedPatch,
   lockedValues,
   formErrors,
-  formFor,
   NETWORK_TYPES,
   REPLACED_WITH,
   screenOutcomes,
+  screenOutcomesOn,
   toInput,
   venueNameOf,
   type LockedKey,
@@ -36,9 +42,10 @@ import {
 } from "@/features/visits/visitForm";
 import { keys } from "@/lib/api/keys";
 import { projectsApi } from "@/lib/api/resources";
-import { STOP_STATUSES, type NetworkType, type Project, type ScreenStatus, type Stop, type StoreFieldSpec, type Visit } from "@/lib/api/types";
+import { STOP_STATUSES, type Me, type NetworkType, type Project, type ScreenStatus, type Stop, type StoreComment, type StoreFieldSpec, type Visit } from "@/lib/api/types";
 import { bucketOf, STATUS_META } from "@/lib/status";
-import { cn } from "@/lib/utils";
+import { cn, SURFACE } from "@/lib/utils";
+import { VISIT_TONE, type VisitToneName } from "@/features/visits/visitTone";
 
 const MANAGER_KEY = "dolphin-tracker.last-manager";
 const NETWORK_ICONS: Record<NetworkType, typeof Wifi> = { WiFi: Wifi, Ethernet: Cable, LTE: Signal };
@@ -50,29 +57,50 @@ interface Props {
   planId?: string;
   installer?: string;
   visitDate?: string | null;
-  /** Opened from a route plan: the store with its screens as lines, each logged on its own (network, software,
-   *  issue, comment, Done or Incomplete); the store's name, WiFi and all its servicing history on the right. */
+  /** Opened from a route plan: its state chip and plan actions by the store's name. Without it (the Log Visit page,
+   *  the store window) the same store window shows, without them. */
   plan?: PlanVisit;
   onClose: () => void;
 }
 
 export interface PlanVisit {
   /** Where the stop stands in the plan now (worked out from its screens' log entries, or marked on the plan). */
-  state: "done" | "incomplete" | "route";
+  state: StopState;
+  /** The stop's plan actions, as its day card offers them (the planner passes its own handlers). Each shows only
+   *  when its handler is given and the signed-in person has the permission the day card asks for. */
+  actions?: PlanStopActions;
 }
 
-function Section({ title, accent, children, action }: { title: string; accent: string; children: ReactNode; action?: ReactNode }) {
-  return (
-    <section className="space-y-4 rounded-xl border bg-white p-5 shadow-sm" aria-label={title}>
-      <div className="flex items-center justify-between gap-2">
-        <h3 className="border-l-4 pl-3 text-lg font-semibold" style={{ borderColor: accent }}>
-          {title}
-        </h3>
-        {action}
-      </div>
-      {children}
-    </section>
-  );
+export interface PlanStopActions {
+  /** Every screen has a log entry in the plan: Done by its visits, so it is not marked by hand. */
+  byVisits: boolean;
+  /** Some screen was logged in the plan: it stays on its day and in the plan (Move can still change the day). */
+  hasVisit: boolean;
+  /** Put on its day by hand: recalculations leave it there. */
+  pinned: boolean;
+  /** Taken off its day, still held by the plan. */
+  removed: boolean;
+  /** Another day or installer (Put back, for a removed stop). */
+  onMove?: () => void;
+  onMark?: (state: StopState) => void;
+  onUnpin?: () => void;
+  /** Off its day, kept with the plan as removed. */
+  onSetAside?: () => void;
+  /** Out of the plan for good (the planner asks first). */
+  onRemove?: () => void;
+}
+
+/** The Dolphin manager a new log entry starts with: the signed-in person's name. Never a role or an email (the
+ *  account menu shows the email only when there is no name), and not the local stand-in when sign-in is off. */
+export function signedInName(me: Pick<Me, "id" | "name"> | undefined): string {
+  const name = me && me.id !== "local" ? me.name.trim() : "";
+  return name.includes("@") ? "" : name;
+}
+
+/** The signed-in person's name, else the one remembered from the last entry logged here, else empty. */
+function useManagerDefault(): string {
+  const me = useMe().data;
+  return signedInName(me) || window.localStorage.getItem(MANAGER_KEY) || "";
 }
 
 function Field({ label, required, error, children, htmlFor }: { label: string; required?: boolean; error?: string; children: ReactNode; htmlFor?: string }) {
@@ -108,8 +136,34 @@ function YesNo({ label, value, onChange, error }: { label: string; value: boolea
   );
 }
 
-/** New Log Entry for one stick, beside a read-only panel of everything else the store has, and its history. From
- *  a route plan (`plan`) the store's own page comes first: what to bring, who it is, its screens. */
+/** A section's icon in a small chip of its hue (decoration: the title beside it names the section). */
+function VisitChip({ name }: { name: VisitToneName }) {
+  const { icon: Icon, chip } = VISIT_TONE[name];
+  return (
+    <span aria-hidden className={cn("inline-flex size-6 shrink-0 items-center justify-center rounded-md", chip)}>
+      <Icon size={13} strokeWidth={2.25} />
+    </span>
+  );
+}
+
+const TONE_TITLE = "font-mono text-[11px] font-medium uppercase tracking-wider";
+
+/** A section's header strip, as the store window draws its sections: a light tint of the section's hue, its icon
+ *  chip and a mono title, with whatever belongs on the right (a summary, Edit, a link). */
+function ToneStrip({ name, title, heading: Heading = "h4", className, children }: { name: VisitToneName; title?: ReactNode; heading?: "h3" | "h4" | "h5"; className?: string; children?: ReactNode }) {
+  const tone = VISIT_TONE[name];
+  return (
+    <div className={cn("flex min-h-10 flex-wrap items-center gap-x-2 gap-y-1 border-b px-3 py-1.5", tone.strip, tone.line, className)}>
+      <VisitChip name={name} />
+      <Heading className={cn(TONE_TITLE, "min-w-0", tone.title)}>{title ?? name}</Heading>
+      {children}
+    </div>
+  );
+}
+
+/** The store as a visit logs it: what to bring, who is logging, its screens (each logged on its own: network,
+ *  software, issue, comment, Done or Incomplete), and on the right who the store is and every log entry. The same
+ *  window from a route plan (`plan`: its chips and actions too) and from anywhere else. */
 export function VisitPanel({ projectId, stopUid, planId = "", installer = "", visitDate, plan, onClose }: Props) {
   const open = Boolean(projectId && stopUid);
   const store = useStore(projectId ?? "", open ? stopUid : null);
@@ -121,268 +175,23 @@ export function VisitPanel({ projectId, stopUid, planId = "", installer = "", vi
   const stop = store.data;
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
-      <DialogContent className="flex max-h-[94vh] flex-col gap-0 p-0 sm:max-w-[min(1300px,96vw)]">
-        <DialogHeader className="border-b px-6 pt-5 pb-3 pr-12">
-          <DialogTitle className="text-xl">{plan ? (stop ? stop.device?.store_name || stop.store_name : "Store") : "New Log Entry"}</DialogTitle>
-          <DialogDescription>
-            {stop
-              ? plan
-                ? [stop.external_id || stop.display_id, project.data?.name].filter(Boolean).join(" · ")
-                : `${stop.store_name}${stop.external_id ? ` · ${stop.external_id}` : ""} · one entry per stick`
-              : "Loading the store…"}
-          </DialogDescription>
-        </DialogHeader>
+      {/* Glass over the dimmed page, as the store window: the header a near-white glass bar, every section a solid
+          card on the pane (index.css, .glass-pane / .glass-bar). */}
+      <DialogContent className="glass-pane flex max-h-[94vh] w-[90vw] max-w-[90vw] flex-col gap-0 overflow-hidden rounded-[22px] p-0 sm:max-w-[90vw]">
+        {/* The store draws its own header once loaded: its name, chips and (from a plan) the plan actions. */}
+        {!(stop && project.data) && (
+          <DialogHeader className="glass-bar border-b border-(--glass-bar-line) px-6 pt-5 pb-3 pr-12">
+            <DialogTitle className="text-xl">Store</DialogTitle>
+            <DialogDescription>Loading the store…</DialogDescription>
+          </DialogHeader>
+        )}
         {stop && project.data ? (
-          plan ? (
-            <PlanStore key={stop.uid} stop={stop} project={project.data} planId={planId} installer={installer} visitDate={visitDate ?? todayIso()} plan={plan} />
-          ) : (
-            <VisitBody key={stop.uid} stop={stop} project={project.data} planId={planId} installer={installer} visitDate={visitDate ?? todayIso()} />
-          )
+          <StoreVisit key={stop.uid} stop={stop} project={project.data} planId={planId} installer={installer} visitDate={visitDate ?? todayIso()} plan={plan} />
         ) : (
-          <div className="p-10 text-center font-mono text-sm text-slate-500">{store.isError ? `Could not load the store: ${store.error.message}` : "Loading…"}</div>
+          <div className={cn(SURFACE, "m-4 p-10 text-center font-mono text-sm text-slate-600")}>{store.isError ? `Could not load the store: ${store.error.message}` : "Loading…"}</div>
         )}
       </DialogContent>
     </Dialog>
-  );
-}
-
-function VisitBody({ stop, project, planId, installer, visitDate }: { stop: Stop; project: Project; planId: string; installer: string; visitDate: string }) {
-  const categories = useCategories();
-  const create = useCreateVisit(project.id, stop.uid);
-  const [manager, setManager] = useState(() => window.localStorage.getItem(MANAGER_KEY) ?? "");
-  const firstOpen = stop.screens.find((screen) => !stop.screen_visits[screen.id] || stop.screen_visits[screen.id]! < stop.last_planned_at) ?? stop.screens[0]!;
-  const [screenId, setScreenId] = useState(firstOpen.id);
-  const screen = stop.screens.find((s) => s.id === screenId) ?? stop.screens[0]!;
-  const [form, setForm] = useState<VisitForm>(() => formFor(stop, screen, { installer, manager, date: visitDate }));
-  const [touched, setTouched] = useState(false);
-
-  useEffect(() => {
-    setForm((current) => ({ ...formFor(stop, screen, { installer, manager: current.dolphin_manager || manager, date: current.visit_date || visitDate }) }));
-    setTouched(false);
-    // A new stick starts a fresh entry; the manager and date carry over. Only a stick change resets the form.
-  }, [screenId]);
-
-  const venue = useVenue(form.dd_code);
-  const cmsName = venue.data?.screens[0]?.cms_name ?? "";
-  useEffect(() => {
-    // The CMS's venue name for the DD code, while the box is still empty (what is typed is never replaced).
-    if (cmsName) setForm((current) => (current.venue_name.trim() ? current : { ...current, venue_name: cmsName }));
-  }, [cmsName]);
-
-  const tree = categories.data ?? [];
-  const errors = formErrors(form, tree);
-  const subcategories = tree.find((entry) => entry.name === form.category)?.subcategories ?? [];
-  const set = (patch: Partial<VisitForm>) => setForm((current) => ({ ...current, ...patch }));
-  const shown = (key: string) => (touched ? errors[key] : undefined);
-
-  const submit = async () => {
-    setTouched(true);
-    if (Object.keys(errors).length) {
-      toast.error("Fill in the required fields");
-      return;
-    }
-    try {
-      await create.mutateAsync(toInput(form, planId));
-      window.localStorage.setItem(MANAGER_KEY, form.dolphin_manager.trim());
-      setManager(form.dolphin_manager.trim());
-      toast.success(`Logged ${form.stick_number || "the stick"} at ${stop.store_name}`);
-      const next = stop.screens.find((s) => s.id !== screenId && (!stop.screen_visits[s.id] || stop.screen_visits[s.id]! < stop.last_planned_at));
-      if (next) setScreenId(next.id);
-      else setForm(formFor(stop, screen, { installer: form.installer, manager: form.dolphin_manager, date: form.visit_date }));
-      setTouched(false);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not save the visit");
-    }
-  };
-
-  return (
-    <>
-    {/* Always in reach, above the form that scrolls. */}
-    <div className="flex flex-wrap items-center gap-3 border-b bg-white px-5 py-2.5" role="toolbar" aria-label="Log entry actions">
-      <p className="min-w-0 flex-1 truncate font-mono text-[11px] text-slate-500">
-        Logging a visit never changes the stick's status ({STATUS_META[screen.status].label}). Change status in the store.
-      </p>
-      <Button size="lg" className="h-11 px-6 text-base" onClick={() => void submit()} disabled={create.isPending}>
-        {create.isPending ? <Loader2 className="animate-spin" /> : <Send />} Submit Log Entry
-      </Button>
-    </div>
-    <div className="grid min-h-0 flex-1 overflow-y-auto lg:grid-cols-[minmax(0,1fr)_380px] lg:overflow-hidden">
-      <div className="space-y-5 bg-slate-50 p-5 lg:overflow-y-auto">
-        {stop.screens.length > 1 && (
-          <div role="tablist" aria-label="Sticks" className="flex flex-wrap gap-1.5">
-            {stop.screens.map((s, index) => {
-              const logged = Boolean(stop.screen_visits[s.id]) && stop.screen_visits[s.id]! >= stop.last_planned_at;
-              return (
-                <button
-                  key={s.id}
-                  role="tab"
-                  aria-selected={s.id === screenId}
-                  onClick={() => setScreenId(s.id)}
-                  className={cn("flex items-center gap-1.5 rounded-lg border-2 bg-white px-3 py-1.5 text-xs", s.id === screenId ? "border-brand" : "border-slate-200")}
-                >
-                  {logged && <Check className="size-3.5 text-emerald-600" aria-label="visited" />}
-                  Stick {index + 1}
-                  <span className="font-mono text-[10px] text-slate-500">{[s.stick_number, s.venue_id].filter(Boolean).join(" · ") || "no number"}</span>
-                </button>
-              );
-            })}
-          </div>
-        )}
-
-        <Section title="Location Details" accent="#0F5B7C">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Date" required error={shown("visit_date")} htmlFor="visit-date">
-              <Input id="visit-date" type="date" value={form.visit_date} onChange={(e) => set({ visit_date: e.target.value })} />
-            </Field>
-            <Field label="DD_Code" required error={shown("dd_code")} htmlFor="visit-dd">
-              <Input id="visit-dd" placeholder="e.g., DD_H39CLM" value={form.dd_code} onChange={(e) => set({ dd_code: e.target.value })} />
-            </Field>
-            <Field label="Venue Name" required error={shown("venue_name")} htmlFor="visit-venue">
-              <Input id="visit-venue" placeholder="e.g., D_005_00746_KIOSK" value={form.venue_name} onChange={(e) => set({ venue_name: e.target.value })} />
-            </Field>
-            <Field label="Store name">
-              <Input value={stop.store_name} readOnly className="bg-slate-50" aria-label="Store name" />
-            </Field>
-            <div className="sm:col-span-2">
-              <Field label="Address">
-                <Input value={[stop.addr, stop.city, stop.state, stop.zip].filter(Boolean).join(", ")} readOnly className="bg-slate-50" aria-label="Address" />
-              </Field>
-            </div>
-          </div>
-        </Section>
-
-        <Section title="Personnel & Equipment" accent="#0ea5e9">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="PA">
-              <Input value={stop.pa || project.pa} readOnly className="bg-slate-50" aria-label="PA" />
-            </Field>
-            <Field label="FA">
-              <Input value={project.field_agent} readOnly className="bg-slate-50" aria-label="FA" placeholder="No field agent" />
-            </Field>
-            <Field label="Technician" required error={shown("installer")}>
-              <NameField kind="installers" aria-label="Technician" placeholder="Select or type technician name" value={form.installer} onChange={(value) => set({ installer: value })} />
-            </Field>
-            <Field label="Stick number" required error={shown("stick_number")} htmlFor="visit-stick">
-              <Input id="visit-stick" placeholder="Stick number" value={form.stick_number} onChange={(e) => set({ stick_number: e.target.value })} />
-            </Field>
-            <Field label="Dolphin Manager" required error={shown("dolphin_manager")}>
-              <NameField kind="managers" aria-label="Dolphin Manager" placeholder="Select or type manager name" value={form.dolphin_manager} onChange={(value) => set({ dolphin_manager: value })} />
-            </Field>
-          </div>
-        </Section>
-
-        <Section title="Network Details" accent="#8b5cf6">
-          <Field label="Network Type" required error={shown("network_type")}>
-            <div role="radiogroup" aria-label="Network Type" className="grid grid-cols-3 gap-3">
-              {NETWORK_TYPES.map((type) => {
-                const Icon = NETWORK_ICONS[type];
-                return (
-                  <button
-                    key={type}
-                    type="button"
-                    role="radio"
-                    aria-checked={form.network_type === type}
-                    onClick={() => set({ network_type: type })}
-                    className={cn(
-                      "flex h-20 flex-col items-center justify-center gap-1.5 rounded-lg border-2 text-sm",
-                      form.network_type === type ? "border-brand bg-brand/10 text-brand" : "border-slate-200 text-slate-600",
-                    )}
-                  >
-                    <Icon className="size-5" /> {type}
-                  </button>
-                );
-              })}
-            </div>
-          </Field>
-          <div className="border-t" />
-          <LockedGroup stop={stop} projectId={project.id} title="Store WiFi" fields={LOCKED_GROUPS.wifi} />
-          {form.network_type === "WiFi" && (
-            <div role="group" aria-label="Other WiFi for this stick" className="space-y-3 rounded-lg border border-dashed p-3">
-              <h4 className="text-sm font-semibold text-slate-700">This stick is on another WiFi</h4>
-              <p className="-mt-2 text-xs text-slate-500">Only when it is not the store's WiFi above. Kept with this log entry.</p>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Field label="Other WiFi name (SSID)" htmlFor="visit-wifi-ssid">
-                  <Input id="visit-wifi-ssid" autoComplete="off" value={form.wifi_ssid} onChange={(e) => set({ wifi_ssid: e.target.value })} />
-                </Field>
-                <Field label="Other WiFi password" htmlFor="visit-wifi-password">
-                  <Input id="visit-wifi-password" autoComplete="off" value={form.wifi_password} onChange={(e) => set({ wifi_password: e.target.value })} />
-                </Field>
-              </div>
-            </div>
-          )}
-        </Section>
-
-        <Section title="Software Requirements" accent="#8b5cf6">
-          <div className="grid gap-4 sm:grid-cols-3">
-            <YesNo label="Latest APK" value={form.latest_apk} onChange={(latest_apk) => set({ latest_apk })} error={shown("latest_apk")} />
-            <YesNo label="Set Kiosk Mode" value={form.kiosk_mode} onChange={(kiosk_mode) => set({ kiosk_mode })} error={shown("kiosk_mode")} />
-            <YesNo label="Dagent installed" value={form.dagent_installed} onChange={(dagent_installed) => set({ dagent_installed })} error={shown("dagent_installed")} />
-          </div>
-        </Section>
-
-        <Section title="Issue Details" accent="#10b981">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Category" required error={shown("category")}>
-              <Select value={form.category} onValueChange={(category) => set({ category, subcategory: "", replaced_with: "" })}>
-                <SelectTrigger aria-label="Category" className="w-full">
-                  <SelectValue placeholder="Select category" />
-                </SelectTrigger>
-                <SelectContent>
-                  {tree.map((entry) => (
-                    <SelectItem key={entry.name} value={entry.name}>
-                      {entry.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
-            <Field label="Subcategory" required error={shown("subcategory")}>
-              <Select value={form.subcategory} onValueChange={(subcategory) => set({ subcategory })} disabled={!form.category}>
-                <SelectTrigger aria-label="Subcategory" className="w-full">
-                  <SelectValue placeholder={form.category ? "Select subcategory" : "Pick a category first"} />
-                </SelectTrigger>
-                <SelectContent>
-                  {subcategories.map((sub) => (
-                    <SelectItem key={sub} value={sub}>
-                      {sub}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
-            {REPLACED_WITH.has(form.subcategory) && (
-              <Field label="Replaced with" required error={shown("replaced_with")} htmlFor="visit-replaced">
-                <Input id="visit-replaced" placeholder="New stick or screen number" value={form.replaced_with} onChange={(e) => set({ replaced_with: e.target.value })} />
-              </Field>
-            )}
-          </div>
-          <Field label="Comments for this screen" htmlFor="visit-comments">
-            <Textarea
-              id="visit-comments"
-              rows={4}
-              disabled={!form.subcategory}
-              placeholder={form.subcategory ? "What was found and done" : "Select a category first…"}
-              value={form.comments}
-              onChange={(e) => set({ comments: e.target.value })}
-            />
-          </Field>
-        </Section>
-
-        <Section title="Contact" accent="#64748b">
-          <LockedGroup stop={stop} projectId={project.id} title="Owner" fields={LOCKED_GROUPS.owner} />
-          <div className="border-t" />
-          <LockedGroup stop={stop} projectId={project.id} title="Store Contact" fields={LOCKED_GROUPS.storeContact} />
-        </Section>
-
-      </div>
-      <aside className="space-y-4 border-l bg-white p-5 lg:overflow-y-auto" aria-label="Store details (read only)">
-        {/* What the CMS has for the DD code typed on the left: filled in as soon as the code is known. */}
-        <StoreIdentity stop={stop} project={project} code={form.dd_code} />
-        <StoreSideNotes stop={stop} project={project} />
-        <VisitHistory projectId={project.id} stop={stop} />
-      </aside>
-    </div>
-    </>
   );
 }
 
@@ -407,11 +216,13 @@ function StoreIdentity({ stop, project, code }: { stop: Stop; project: Project; 
     ...(cms ? ([["DMA", cms.dma ?? ""], ["CMS status", STATUS_META[cms.status]?.label ?? cms.status]] as [string, string][]) : []),
   ];
   return (
-    <section aria-label="Store" className="space-y-1.5 border-b pb-4 text-sm">
-      <h3 className="font-mono text-[11px] uppercase tracking-wider text-slate-500">
-        Store · {venue.isFetching ? "looking up the DD code…" : cms ? `from the CMS (${lookup})` : lookup ? `${lookup} is not in the Dolphin data: the project's values` : "the project's values (no DD code yet)"}
-      </h3>
-      <dl className="space-y-1.5">
+    <section aria-label="Store" className={cn(SURFACE, "overflow-hidden text-sm")}>
+      <ToneStrip name="Store" heading="h3">
+        <span className={cn("min-w-0 text-xs", VISIT_TONE.Store.summary)}>
+          {venue.isFetching ? "looking up the DD code…" : cms ? `from the CMS (${lookup})` : lookup ? `${lookup} is not in the Dolphin data: the project's values` : "the project's values (no DD code yet)"}
+        </span>
+      </ToneStrip>
+      <dl className="space-y-1.5 p-4">
         {rows.map(([label, value]) => (
           <div key={label} className="grid grid-cols-[80px_minmax(0,1fr)] gap-2">
             <dt className="text-xs text-slate-500">{label}</dt>
@@ -423,6 +234,11 @@ function StoreIdentity({ stop, project, code }: { stop: Stop; project: Project; 
   );
 }
 
+const MOUNT_PIECES = [["wall_24", 'Wall 24"'], ["wall", "Wall"], ["ceiling", "Ceiling"]] as const;
+const pieces = (counts: Record<(typeof MOUNT_PIECES)[number][0], number>): [string, number][] =>
+  MOUNT_PIECES.map(([key, label]) => [label, counts[key]] as [string, number]).filter(([, count]) => count > 0);
+const plural = (count: number, one: string, many = `${one}s`) => `${count} ${count === 1 ? one : many}`;
+
 /** What to bring for the screens still to be installed (Upcoming): sticks, screens by size and brand, mounts by
  *  kind. Nothing for a store with no Upcoming screen (an Offline visit brings what the log says). */
 export function inventoryNeeded(stop: Stop): { sticks: number; screens: [string, number][]; storeTvs: number; mounts: [string, number][] } | null {
@@ -433,232 +249,116 @@ export function inventoryNeeded(stop: Stop): { sticks: number; screens: [string,
     const label = [screen.screen_size || '24"', screen.screen_type].filter(Boolean).join(" ");
     screens.set(label, (screens.get(label) ?? 0) + 1);
   }
-  const worked = computedMounts(stop.screens);
-  // A number typed on the store goes over the one worked out from its screens.
-  const mounts: [string, number][] = [
-    ['Wall 24"', stop.wall_24_mounts_needed ?? worked.wall_24],
-    ["Wall", stop.wall_mounts_needed ?? worked.wall],
-    ["Ceiling", stop.ceiling_mounts_needed ?? worked.ceiling],
-  ];
-  return { sticks: upcoming.length, screens: [...screens], storeTvs: upcoming.filter((item) => !item.is_dolphin_screen).length, mounts: mounts.filter(([, count]) => count > 0) as [string, number][] };
+  return { sticks: upcoming.length, screens: [...screens], storeTvs: upcoming.filter((item) => !item.is_dolphin_screen).length, mounts: pieces(computedMounts(stop.screens)) };
 }
 
-function InventoryBand({ stop }: { stop: Stop }) {
+/** What the store's installed screens (Completed, Offline, Serviced - Needs More Work) took: our screens, the
+ *  store's own TVs, and the mounts on the wall per piece (StoreSummary's counts, the store window's). */
+export function inventoryUsed(stop: Stop): { screens: number; storeTvs: number; mounts: [string, number][]; mountsTotal: number } {
+  const installed = stop.screens.filter((screen) => INSTALLED_STATUSES.has(screen.status));
+  return {
+    screens: installed.filter((screen) => screen.is_dolphin_screen).length,
+    storeTvs: installed.filter((screen) => !screen.is_dolphin_screen).length,
+    mounts: pieces(computedMountsUsedByPiece(stop.screens)),
+    mountsTotal: computedMountsUsed(stop.screens),
+  };
+}
+
+/** The one line the folded strip shows: "Needed: 1 stick · 1 screen · 0 mounts — Used: 0 screens · 0 mounts". */
+export function inventoryLine(stop: Stop): string {
   const need = inventoryNeeded(stop);
-  if (!need) return null;
-  const tile = "rounded-lg border bg-white px-3 py-2";
-  const head = "font-mono text-[10px] uppercase tracking-wider text-slate-500";
-  const list = (items: [string, number][], none: string) =>
-    items.length ? (
-      <ul className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-sm font-semibold text-slate-900">
-        {items.map(([label, count]) => (
-          <li key={label}>
-            {count} × {label}
-          </li>
-        ))}
-      </ul>
-    ) : (
-      <p className="mt-0.5 text-sm text-slate-400">{none}</p>
-    );
+  const used = inventoryUsed(stop);
+  const total = (items: [string, number][]) => items.reduce((sum, [, count]) => sum + count, 0);
+  const needed = need
+    ? [plural(need.sticks, "stick"), plural(total(need.screens), "screen"), need.storeTvs && plural(need.storeTvs, "store TV"), plural(total(need.mounts), "mount")]
+    : ["nothing to install"];
+  const took = [plural(used.screens, "screen"), used.storeTvs && plural(used.storeTvs, "store TV"), plural(used.mountsTotal, "mount")];
+  return `Needed: ${needed.filter(Boolean).join(" · ")} — Used: ${took.filter(Boolean).join(" · ")}`;
+}
+
+function InventoryBox({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <section aria-label="Inventory needed" className="border-b bg-amber-50/60 px-5 py-3">
-      <h3 className="mb-2 flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-wider text-amber-900">
-        <Package size={13} /> Inventory needed for the screens still to install
-      </h3>
-      <div className="grid gap-2 sm:grid-cols-3">
-        <div className={tile}>
-          <div className={head}>Sticks</div>
-          <p className="mt-0.5 text-sm font-semibold text-slate-900">{need.sticks}</p>
+    <div className="min-w-24 rounded-md border border-slate-200 bg-white px-2.5 py-1.5">
+      <div className="text-[11px] text-slate-600">{label}</div>
+      <div className="text-sm font-semibold tabular-nums text-slate-900">{children}</div>
+    </div>
+  );
+}
+
+function CountList({ items, none }: { items: [string, number][]; none: string }) {
+  if (!items.length) return <span className="font-normal text-slate-400">{none}</span>;
+  return (
+    <ul className="flex flex-wrap gap-x-2.5">
+      {items.map(([label, count]) => (
+        <li key={label}>
+          {count} × {label}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** What to bring and what the store already took, folded to one line. Open by itself when there is something to
+ *  bring; nothing is remembered. */
+function InventoryStrip({ stop }: { stop: Stop }) {
+  const need = inventoryNeeded(stop);
+  const used = inventoryUsed(stop);
+  const [open, setOpen] = useState(need !== null);
+  return (
+    <section aria-label="Inventory" className={cn(SURFACE, "shrink-0 overflow-hidden")}>
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls="inventory-groups"
+        onClick={() => setOpen(!open)}
+        className={cn(
+          "flex min-h-10 w-full min-w-0 items-center gap-2 px-3 py-1.5 text-left text-xs outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset motion-reduce:transition-none",
+          VISIT_TONE.Inventory.strip,
+          VISIT_TONE.Inventory.hover,
+        )}
+      >
+        <ChevronRight className={cn("size-3.5 shrink-0 text-slate-500 transition-transform motion-reduce:transition-none", open && "rotate-90")} />
+        <VisitChip name="Inventory" />
+        <span className={cn(TONE_TITLE, VISIT_TONE.Inventory.title)}>Inventory</span>
+        {!open && <span className={cn("min-w-0 truncate", VISIT_TONE.Inventory.summary)}>{inventoryLine(stop)}</span>}
+      </button>
+      {open && (
+        <div id="inventory-groups" className={cn("flex flex-wrap gap-x-8 gap-y-2 border-t px-4 py-2.5", VISIT_TONE.Inventory.line)}>
+          <div role="group" aria-label="Needed" className="space-y-1">
+            <h4 className="text-xs font-medium text-slate-600">Needed <span className="font-normal text-slate-500">· for screens not installed yet</span></h4>
+            {need ? (
+              <div className="flex flex-wrap gap-1.5">
+                <InventoryBox label="Sticks">{need.sticks}</InventoryBox>
+                <InventoryBox label="Screens">
+                  <CountList items={need.screens} none="None to bring" />
+                </InventoryBox>
+                {need.storeTvs > 0 && <InventoryBox label="Store TVs (stick only)">{need.storeTvs}</InventoryBox>}
+                <InventoryBox label="Mounts">
+                  <CountList items={need.mounts} none="None" />
+                </InventoryBox>
+              </div>
+            ) : (
+              <p className="text-xs text-slate-500">Nothing: every screen is installed.</p>
+            )}
+          </div>
+          <div role="group" aria-label="Used" className="space-y-1">
+            <h4 className="text-xs font-medium text-slate-600">Used <span className="font-normal text-slate-500">· by the installed screens</span></h4>
+            <div className="flex flex-wrap gap-1.5">
+              <InventoryBox label="Screens">{used.screens}</InventoryBox>
+              {used.storeTvs > 0 && <InventoryBox label="Store TVs">{used.storeTvs}</InventoryBox>}
+              <InventoryBox label={`Mounts · ${used.mountsTotal}`}>
+                <CountList items={used.mounts} none="None" />
+              </InventoryBox>
+            </div>
+          </div>
         </div>
-        <div className={tile}>
-          <div className={head}>Screens</div>
-          {list(need.screens, "None to bring")}
-          {need.storeTvs > 0 && <p className="text-xs text-slate-500">+ {need.storeTvs} on the store's own TV (stick only)</p>}
-        </div>
-        <div className={tile}>
-          <div className={head}>Mounts</div>
-          {list(need.mounts, "None on file")}
-        </div>
-      </div>
+      )}
     </section>
   );
 }
 
 const OUTCOME_LABEL = { done: "Done", incomplete: "Incomplete" } as const;
 const OUTCOME_TONE = { done: "border-emerald-300 bg-emerald-50 text-emerald-800", incomplete: "border-amber-300 bg-amber-50 text-amber-800" } as const;
-
-/** Who is logging and when: the same for every screen logged in this sitting. */
-interface Who {
-  visit_date: string;
-  installer: string;
-  dolphin_manager: string;
-}
-
-/** The store as a plan opens it. Left: what to bring, who is logging, the screens as lines (each opens its own log:
- *  what the screen is, network, software, issue, comment, Done or Incomplete; saving writes a log entry), then the
- *  store's comment and what was used. Right: who the store is (read only), its WiFi behind Edit, and
- *  the servicing history of every stick. */
-function PlanStore({ stop, project, planId, installer, visitDate, plan }: { stop: Stop; project: Project; planId: string; installer: string; visitDate: string; plan: PlanVisit }) {
-  const visits = useVisits(project.id, stop.uid).data?.items ?? [];
-  const update = useUpdateScreens(project.id);
-  const canLog = useCan("visits.log"); // without it the store is shown, nothing can be changed
-  const [who, setWho] = useState<Who>(() => ({ visit_date: visitDate, installer: installer || stop.installer_name || "", dolphin_manager: window.localStorage.getItem(MANAGER_KEY) ?? "" }));
-  const [open, setOpen] = useState<string | null>(null); // the key of the line being logged
-  const [adding, setAdding] = useState<ScreenRow | null>(null); // a screen not saved yet
-  const [addedId, setAddedId] = useState<string | null>(null); // …or saved, while its log is still open
-  const [removing, setRemoving] = useState<ScreenRow | null>(null);
-  const saved = toRows(stop);
-  const rows = [...saved.filter((row) => row.id !== addedId), ...(adding ? [adding] : [])];
-  const outcomes = screenOutcomes(visits, planId);
-  const logged = saved.filter((row) => outcomes.has(row.id ?? "")).length;
-  const tone = plan.state === "route" ? "border-sky-300 bg-sky-50 text-sky-800" : OUTCOME_TONE[plan.state];
-  const close = () => {
-    setOpen(null);
-    setAdding(null);
-    setAddedId(null);
-  };
-  const remove = async (row: ScreenRow) => {
-    setRemoving(null);
-    try {
-      await update.mutateAsync({ uid: stop.uid, screens: toInputs(saved.filter((item) => item.id !== row.id)), updatedBy: who.installer.trim() || "Route planner" });
-      toast.success("Screen removed");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not remove the screen");
-    }
-  };
-  return (
-    <>
-      <div className="flex flex-wrap items-center gap-3 border-b bg-white px-5 py-2.5">
-        <span className={cn("inline-flex h-7 items-center rounded-md border px-2.5 text-xs font-medium", tone)} aria-label="Stop in the plan">
-          {plan.state === "route" ? "In route" : OUTCOME_LABEL[plan.state]}
-        </span>
-        <span className={cn("inline-flex h-7 items-center rounded-md border px-2.5 text-xs", STATUS_META[stop.status]?.chip)}>{STATUS_META[stop.status]?.label ?? stop.status}</span>
-        <span className="text-xs text-slate-500">
-          {logged} of {saved.length} {saved.length === 1 ? "screen" : "screens"} logged · the stop is Done when every screen is, Incomplete when any is
-        </span>
-      </div>
-      <InventoryBand stop={stop} />
-      <div className="grid min-h-0 flex-1 overflow-y-auto lg:grid-cols-[minmax(0,1fr)_420px] lg:overflow-hidden">
-        <div className="space-y-5 bg-slate-50 p-5 lg:overflow-y-auto">
-          <section aria-label="This visit" hidden={!canLog} className="grid gap-4 rounded-xl border bg-white p-4 shadow-sm sm:grid-cols-3">
-            <Field label="Date" required htmlFor="visit-date">
-              <Input id="visit-date" type="date" value={who.visit_date} onChange={(e) => setWho({ ...who, visit_date: e.target.value })} />
-            </Field>
-            <Field label="Technician" required>
-              <NameField kind="installers" aria-label="Technician" placeholder="Select or type technician name" value={who.installer} onChange={(value) => setWho({ ...who, installer: value })} />
-            </Field>
-            <Field label="Dolphin Manager" required>
-              <NameField kind="managers" aria-label="Dolphin Manager" placeholder="Select or type manager name" value={who.dolphin_manager} onChange={(value) => setWho({ ...who, dolphin_manager: value })} />
-            </Field>
-          </section>
-
-          <Section
-            title="Screens"
-            accent="#0ea5e9"
-            action={
-              <Button
-                size="sm"
-                variant="outline"
-                hidden={!canLog}
-                disabled={adding !== null}
-                onClick={() => {
-                  const row = newRow();
-                  setAdding(row);
-                  setAddedId(null);
-                  setOpen(row.key);
-                }}
-              >
-                <Plus /> Add screen
-              </Button>
-            }
-          >
-            <ul className="divide-y divide-slate-100 border-t border-slate-100" aria-label="Screens of this store">
-              {rows.map((row, index) =>
-                open === row.key ? (
-                  <li key={row.key} className="py-3" aria-label={`Screen ${index + 1}`}>
-                    <ScreenLog
-                      stop={stop}
-                      project={project}
-                      row={row}
-                      number={index + 1}
-                      planId={planId}
-                      who={who}
-                      onCreated={setAddedId}
-                      onDone={close}
-                    />
-                  </li>
-                ) : (
-                  <li key={row.key} className="flex flex-wrap items-center gap-x-3 gap-y-1.5 py-2.5 text-sm" aria-label={`Screen ${index + 1}`}>
-                    <span className="font-mono text-[10px] uppercase tracking-wider text-slate-500">#{index + 1}</span>
-                    <span className={cn("rounded border px-1.5 py-0.5 text-xs font-medium", STATUS_META[row.status].chip)}>{STATUS_META[row.status].label}</span>
-                    <span className="min-w-0 flex-1 text-slate-700">
-                      <span className="font-mono text-xs">{[row.stick_number && `Stick ${row.stick_number}`, row.venue_id].filter(Boolean).join(" · ") || "No stick or DD code yet"}</span>
-                      <span className="ml-2 text-xs text-slate-500">
-                        {[
-                          [row.screen_size, row.screen_type].filter(Boolean).join(" ") || "no size",
-                          row.is_dolphin_screen ? "Dolphin screen" : "store TV",
-                          row.has_mount ? (row.has_ceiling_mount ? "ceiling mount" : "wall mount") : "no mount",
-                        ].join(" · ")}
-                      </span>
-                    </span>
-                    {outcomes.has(row.id ?? "") ? (
-                      <span className={cn("rounded border px-1.5 py-0.5 text-xs font-medium", OUTCOME_TONE[outcomes.get(row.id!)!])}>{OUTCOME_LABEL[outcomes.get(row.id!)!]}</span>
-                    ) : (
-                      <span className="text-xs text-slate-400">Not logged</span>
-                    )}
-                    <Button
-                      hidden={!canLog}
-                      onClick={() => {
-                        setAdding(null);
-                        setAddedId(null);
-                        setOpen(row.key);
-                      }}
-                      aria-label={`Log visit for screen ${index + 1}`}
-                    >
-                      <ClipboardCheck /> Log visit
-                    </Button>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="size-8"
-                      hidden={!canLog}
-                      aria-label={`Delete screen ${index + 1}`}
-                      disabled={saved.length === 1 || update.isPending}
-                      title={saved.length === 1 ? "A store needs at least one screen" : undefined}
-                      onClick={() => setRemoving(row)}
-                    >
-                      <Trash2 />
-                    </Button>
-                  </li>
-                ),
-              )}
-            </ul>
-          </Section>
-
-          <Section title="Store" accent="#0F5B7C">
-            {/* View only without the permission: every box and button inside is off. */}
-            <fieldset disabled={!canLog} className="min-w-0 space-y-4">
-              <StoreComment stop={stop} projectId={project.id} />
-              <div className="border-t" />
-              <UsedCounts stop={stop} projectId={project.id} />
-            </fieldset>
-          </Section>
-        </div>
-        <aside className="space-y-4 border-l bg-white p-5 lg:overflow-y-auto" aria-label="Store details">
-          <StoreIdentity stop={stop} project={project} />
-          <LockedGroup stop={stop} projectId={project.id} title="Store WiFi" fields={LOCKED_GROUPS.wifi} stacked />
-          <VisitHistory projectId={project.id} stop={stop} />
-          <div className="border-t pt-4">
-            <StoreSideNotes stop={stop} project={project} />
-          </div>
-        </aside>
-      </div>
-      <ConfirmDialog open={removing !== null} title="Delete this screen?" confirmLabel="Delete screen" onConfirm={() => removing && void remove(removing)} onCancel={() => setRemoving(null)}>
-        {removing ? `Screen ${removing.stick_number || removing.venue_id || "without an id"} is removed from the store now. Its log entries stay in the history.` : ""}
-      </ConfirmDialog>
-    </>
-  );
-}
 
 interface LogDraft {
   network_type: NetworkType | "";
@@ -683,9 +383,416 @@ const EMPTY_LOG: LogDraft = {
 
 const sameScreen = (a: ScreenRow, b: ScreenRow) => JSON.stringify(toInputs([{ ...a, key: "" }])) === JSON.stringify(toInputs([{ ...b, key: "" }]));
 
-/** One screen's log, opened from its line: what the screen is (DD code, stick, size, whose, brand, mount), then
- *  what this visit found (network, software, issue, comment) and what it left the screen as (Done or Incomplete).
- *  Save writes the screen's changes to the store and a log entry for it. */
+/** Who is logging and when: the same for every screen logged in this sitting. */
+interface Who {
+  visit_date: string;
+  installer: string;
+  dolphin_manager: string;
+}
+
+/** One screen's unsaved input while the dialog is open (kept when another screen is picked): its details, once
+ *  changed, and this visit's log. */
+interface ScreenDraft {
+  row?: ScreenRow;
+  log: LogDraft;
+  touched: boolean;
+}
+
+const NO_DRAFT: ScreenDraft = { log: EMPTY_LOG, touched: false };
+
+const hasInput = (draft: ScreenDraft | undefined, base: ScreenRow) =>
+  Boolean(draft) && ((draft!.row !== undefined && !sameScreen(base, draft!.row)) || JSON.stringify(draft!.log) !== JSON.stringify(EMPTY_LOG));
+
+const screenCodes = (row: Pick<ScreenRow, "stick_number" | "venue_id">) => [row.stick_number && `Stick ${row.stick_number}`, row.venue_id].filter(Boolean).join(" · ");
+
+/** The store as a visit opens it. On top: its name with its chips (and, from a plan, the stop's and its plan
+ *  actions), then what to bring and who is logging. Left: its screens (pick one to log it), with Add screen and the
+ *  store's comment. Middle: the picked screen's log (what the screen is, its pictures, network, software, issue,
+ *  comment, Done or Incomplete), and the store on a small map. Right, as wide as the middle: Details (who the store
+ *  is, its WiFi and contacts behind Edit, the sheet's notes) or Logs (every entry). Without a plan a screen counts as
+ *  logged when it has an entry dated the visit's day. */
+function StoreVisit({ stop, project, planId, installer, visitDate, plan }: { stop: Stop; project: Project; planId: string; installer: string; visitDate: string; plan?: PlanVisit }) {
+  const history = useVisits(project.id, stop.uid);
+  const visits = history.data?.items ?? [];
+  const storeComments = useStoreComments(project.id, stop.uid);
+  const update = useUpdateScreens(project.id);
+  const canLog = useCan("visits.log"); // without it the store is shown, nothing can be changed
+  // Someone who only logs visits changes the screens, WiFi and comment only while the store is on a route.
+  const canEditDetails = canEditStoreDetails(useMe().data?.permissions ?? [], stop);
+  const updatedBy = (name: string) => name.trim() || (plan ? "Route planner" : "Log visit");
+  const managerDefault = useManagerDefault();
+  const [who, setWho] = useState<Who>(() => ({ visit_date: visitDate, installer: installer || stop.installer_name || "", dolphin_manager: managerDefault }));
+  const [picked, setPicked] = useState<string | null>(null); // the key of the screen picked in the bar
+  const [drafts, setDrafts] = useState<Record<string, ScreenDraft>>({});
+  const [adding, setAdding] = useState<ScreenRow | null>(null); // a screen not saved yet
+  const [addedId, setAddedId] = useState<string | null>(null); // …or saved, while its log is still open
+  const [removing, setRemoving] = useState<ScreenRow | null>(null);
+  const [side, setSide] = useState<"details" | "logs">("details");
+  const saved = toRows(stop);
+  const rows = [...saved.filter((row) => row.id !== addedId), ...(adding ? [adding] : [])];
+  const outcomes = plan ? screenOutcomes(visits, planId) : screenOutcomesOn(visits, who.visit_date);
+  const logged = saved.filter((row) => outcomes.has(row.id ?? "")).length;
+  const entryCount = visits.length + (storeComments.data?.items.length ?? 0);
+  const moreEntries = Boolean(history.data?.next_cursor || storeComments.data?.next_cursor);
+  // Until one is picked: the first screen not logged in this plan yet.
+  const selectedKey = rows.some((row) => row.key === picked) ? picked! : (rows.find((row) => !outcomes.has(row.id ?? "")) ?? rows[0])?.key;
+  const selectedIndex = rows.findIndex((row) => row.key === selectedKey);
+  const selected = rows[selectedIndex];
+
+  const dropDraft = (key: string) =>
+    setDrafts(({ [key]: _gone, ...rest }) => rest);
+  const changeDraft = (key: string, change: (draft: ScreenDraft) => ScreenDraft) => {
+    setPicked(key); // typing into a screen keeps it picked, even once the history says another is first
+    setDrafts((current) => ({ ...current, [key]: change(current[key] ?? NO_DRAFT) }));
+  };
+  const startAdding = () => {
+    const row = newRow();
+    setAdding(row);
+    setAddedId(null);
+    setPicked(row.key);
+  };
+  const stopAdding = () => {
+    if (adding) dropDraft(adding.key);
+    setAdding(null);
+    setAddedId(null);
+    setPicked(null);
+  };
+  const afterSave = (key: string, screenId: string, withLog: boolean) => {
+    if (!withLog) {
+      // The details are on the store now; what is typed for the log stays.
+      setDrafts((current) => (current[key] ? { ...current, [key]: { ...current[key]!, row: undefined } } : current));
+      return;
+    }
+    dropDraft(key);
+    if (adding?.key === key) {
+      setAdding(null);
+      setAddedId(null);
+    }
+    const next = rows.find((row) => row.key !== key && row.id !== screenId && row.id && !outcomes.has(row.id));
+    setPicked(next?.key ?? screenId);
+  };
+  const remove = async (row: ScreenRow) => {
+    setRemoving(null);
+    try {
+      await update.mutateAsync({ uid: stop.uid, screens: toInputs(saved.filter((item) => item.id !== row.id)), updatedBy: updatedBy(who.installer) });
+      dropDraft(row.key);
+      if (picked === row.key) setPicked(null);
+      toast.success("Screen removed");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not remove the screen");
+    }
+  };
+  const moveFocus = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
+    const to = { ArrowDown: index + 1, ArrowUp: index - 1, Home: 0, End: rows.length - 1 }[event.key];
+    if (to === undefined) return;
+    event.preventDefault();
+    const row = rows[(to + rows.length) % rows.length]!;
+    setPicked(row.key);
+    document.getElementById(`screen-tab-${row.key}`)?.focus();
+  };
+
+  return (
+    <>
+      <StoreHeader stop={stop} project={project} plan={plan} logged={logged} screens={saved.length} visitDate={who.visit_date} />
+      {/* The pane under the header: every block a solid card on the glass, the three columns scrolling on their own. */}
+      <div className="flex min-h-0 flex-1 flex-col gap-3 px-4 pt-3 pb-4">
+        <InventoryStrip stop={stop} />
+        <section aria-label="This visit" hidden={!canLog} className={cn(SURFACE, "shrink-0 px-4 py-3")}>
+          <div className="grid items-end gap-3 sm:grid-cols-3 xl:grid-cols-[repeat(3,minmax(0,16rem))_minmax(0,1fr)]">
+            <Field label="Date" required htmlFor="visit-date">
+              <Input id="visit-date" type="date" value={who.visit_date} onChange={(e) => setWho({ ...who, visit_date: e.target.value })} />
+            </Field>
+            <Field label="Technician" required>
+              <NameField kind="installers" aria-label="Technician" placeholder="Select or type technician name" value={who.installer} onChange={(value) => setWho({ ...who, installer: value })} />
+            </Field>
+            <Field label="Dolphin Manager" required>
+              <NameField kind="managers" aria-label="Dolphin Manager" placeholder="Select or type manager name" value={who.dolphin_manager} onChange={(value) => setWho({ ...who, dolphin_manager: value })} />
+            </Field>
+            <p className="hidden pb-2.5 text-xs text-slate-600 xl:block">Used for every screen logged now.</p>
+          </div>
+        </section>
+        {/* The form and the store's side share what the bar leaves, half each. Whatever scrolls pads by a hair (the grid
+            takes it back with a negative margin) so the cards' rings and shadows are not clipped by the scroll. */}
+        <div className="-m-1 grid min-h-0 flex-1 gap-3 overflow-y-auto p-1 lg:gap-1 lg:p-0 lg:grid-cols-[210px_minmax(0,1fr)_minmax(0,1fr)] lg:overflow-hidden xl:grid-cols-[240px_minmax(0,1fr)_minmax(0,1fr)] 2xl:grid-cols-[260px_minmax(0,1fr)_minmax(0,1fr)]">
+          <nav aria-label="Screens" className="flex min-w-0 flex-col gap-3 lg:overflow-y-auto lg:p-1">
+            <div className={cn(SURFACE, "overflow-hidden")}>
+              <ToneStrip name="Screens" heading="h3" title={`Screens · ${saved.length}`}>
+                <Button size="sm" variant="outline" className="ml-auto h-7" hidden={!canEditDetails} disabled={adding !== null} onClick={startAdding}>
+                  <Plus /> Add screen
+                </Button>
+              </ToneStrip>
+              <div role="tablist" aria-orientation="vertical" aria-label="Screens of this store" className="space-y-1 p-2">
+                {rows.map((row, index) => {
+                  const isSelected = row.key === selectedKey;
+                  const outcome = outcomes.get(row.id ?? "");
+                  return (
+                    <button
+                      key={row.key}
+                      id={`screen-tab-${row.key}`}
+                      type="button"
+                      role="tab"
+                      aria-selected={isSelected}
+                      aria-controls="screen-panel"
+                      tabIndex={isSelected ? 0 : -1}
+                      onClick={() => setPicked(row.key)}
+                      onKeyDown={(event) => moveFocus(event, index)}
+                      className={cn(
+                        "w-full space-y-1 rounded-lg border px-3 py-2 text-left transition-colors motion-reduce:transition-none",
+                        // The picked screen in the brand colour, plainly: a brand outline, a brand tint and a brand title.
+                        isSelected ? "border-brand bg-brand/[0.07] shadow-sm ring-1 ring-brand" : "border-transparent hover:border-slate-200 hover:bg-slate-50",
+                      )}
+                    >
+                      <span className="flex items-center justify-between gap-2">
+                        <span className={cn("text-sm font-semibold", isSelected ? "text-brand-strong" : "text-slate-900")}>Screen {index + 1}</span>
+                        <span className={cn("rounded border px-1.5 py-0.5 text-[11px] font-medium", STATUS_META[row.status].chip)}>{STATUS_META[row.status].label}</span>
+                      </span>
+                      <span className="block truncate font-mono text-xs text-slate-600">{screenCodes(row) || "No stick or DD code yet"}</span>
+                      <span className="flex items-center gap-2 text-xs">
+                        {!row.id ? (
+                          <span className="text-brand">New, not saved</span>
+                        ) : outcome ? (
+                          <span className={cn("rounded border px-1.5 py-px text-[11px] font-medium", OUTCOME_TONE[outcome])}>{OUTCOME_LABEL[outcome]}</span>
+                        ) : (
+                          <span className="text-slate-500">Not logged</span>
+                        )}
+                        {row.id && hasInput(drafts[row.key], row) && <span className="text-brand">· Unsaved input</span>}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="lg:mt-auto">
+              <StoreComment stop={stop} projectId={project.id} planId={planId} who={who} readOnly={!canEditDetails} />
+            </div>
+          </nav>
+
+          <div role="tabpanel" id="screen-panel" aria-labelledby={selected ? `screen-tab-${selected.key}` : undefined} className="@container min-w-0 space-y-3 lg:overflow-y-auto lg:p-1">
+            {selected ? (
+              <ScreenLog
+                key={selected.key}
+                stop={stop}
+                project={project}
+                row={selected}
+                number={selectedIndex + 1}
+                planId={planId}
+                who={who}
+                readOnly={!canLog}
+                canEditDetails={canEditDetails}
+                updatedBy={updatedBy(who.installer)}
+                value={drafts[selected.key] ?? NO_DRAFT}
+                dirty={hasInput(drafts[selected.key], selected)}
+                onChange={(change) => changeDraft(selected.key, change)}
+                onCreated={setAddedId}
+                onSaved={(screenId, withLog) => afterSave(selected.key, screenId, withLog)}
+                onDiscard={() => (selected.id && selected.id !== addedId ? dropDraft(selected.key) : stopAdding())}
+                onDelete={canEditDetails && selected.id && selected.id !== addedId && saved.length > 1 && !update.isPending ? () => setRemoving(selected) : undefined}
+              />
+            ) : (
+              <p className={cn(SURFACE, "p-10 text-center text-sm text-slate-600")}>This store has no screens yet.</p>
+            )}
+            {/* The store's place, the same for every screen: drawn once under the form, not again per screen. */}
+            <StoreMap stop={stop} />
+          </div>
+
+          <aside className="@container flex min-w-0 flex-col gap-3 lg:gap-2 lg:overflow-hidden" aria-label="Store details">
+            {/* The column shows the store's details or every log entry; the form beside it stays as it is. The switch is
+                the store window's (its Other details / Logs pill). */}
+            <div className="shrink-0 lg:px-1 lg:pt-1">
+              <div role="tablist" aria-label="Store side" className="inline-flex rounded-xl bg-white/60 p-1 text-sm font-medium shadow-sm ring-1 ring-slate-900/5">
+                {(["details", "logs"] as const).map((view) => (
+                  <button
+                    key={view}
+                    id={`side-tab-${view}`}
+                    type="button"
+                    role="tab"
+                    aria-selected={side === view}
+                    aria-controls={`side-panel-${view}`}
+                    onClick={() => setSide(view)}
+                    className={cn("flex h-8 items-center gap-1.5 rounded-lg px-4 transition-colors motion-reduce:transition-none", side === view ? "bg-white text-slate-900 shadow-sm ring-1 ring-slate-900/5" : "text-slate-600 hover:text-slate-900")}
+                  >
+                    {view === "details" ? "Details" : "Logs"}
+                    {view === "logs" && (
+                      <span className="rounded-full bg-slate-200/80 px-1.5 text-[11px] font-semibold tabular-nums text-slate-700">
+                        {history.isPending ? "…" : `${entryCount}${moreEntries ? "+" : ""}`}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="min-h-0 flex-1 lg:overflow-y-auto lg:p-1">
+              {/* Hidden, not unmounted: a WiFi edit or a picked filter keeps its place across the switch. */}
+              <div id="side-panel-details" role="tabpanel" aria-labelledby="side-tab-details" hidden={side !== "details"} className="space-y-3">
+                <StoreIdentity stop={stop} project={project} />
+                <LockedGroup stop={stop} projectId={project.id} title="Store WiFi" fields={LOCKED_GROUPS.wifi} canEdit={canEditDetails} stacked />
+                <LockedGroup stop={stop} projectId={project.id} title="Owner" fields={LOCKED_GROUPS.owner} canEdit={canEditDetails} stacked />
+                <LockedGroup stop={stop} projectId={project.id} title="Store Contact" fields={LOCKED_GROUPS.storeContact} canEdit={canEditDetails} stacked />
+                <StoreSideNotes stop={stop} project={project} />
+              </div>
+              <div id="side-panel-logs" role="tabpanel" aria-labelledby="side-tab-logs" hidden={side !== "logs"} className={cn(SURFACE, "p-4")}>
+                <LogEntries projectId={project.id} stop={stop} />
+              </div>
+            </div>
+          </aside>
+        </div>
+      </div>
+      <ConfirmDialog open={removing !== null} title="Delete this screen?" confirmLabel="Delete screen" onConfirm={() => removing && void remove(removing)} onCancel={() => setRemoving(null)}>
+        {removing ? `Screen ${removing.stick_number || removing.venue_id || "without an id"} is removed from the store now. Its log entries stay in the history.` : ""}
+      </ConfirmDialog>
+    </>
+  );
+}
+
+const STATE_TONE: Record<StopState, string> = { ...OUTCOME_TONE, route: "border-sky-300 bg-sky-50 text-sky-800" };
+const CHIP = "inline-flex h-7 items-center gap-1 rounded-md border px-2.5 text-xs";
+
+/** The store's name with where it stands (from a plan: the stop's state there; the store's status; how many
+ *  screens are logged), and on the right, from a plan, the stop's plan actions the day card offers, for whoever may
+ *  use them. */
+function StoreHeader({ stop, project, plan, logged, screens, visitDate }: { stop: Stop; project: Project; plan?: PlanVisit; logged: number; screens: number; visitDate: string }) {
+  const canArrange = useCan("routes.arrange");
+  const canManage = useCan("routes.manage");
+  const actions = plan?.actions;
+  const state = plan?.state ?? "route";
+  const tone = STATE_TONE[state];
+  const canMark = Boolean(actions?.onMark) && canArrange && !actions!.byVisits && !actions!.removed;
+  const canMove = Boolean(actions?.onMove) && (actions!.removed ? canManage : canArrange && state !== "done");
+  const canSetAside = Boolean(actions?.onSetAside) && canArrange && !actions!.removed && state !== "done";
+  const canRemove = Boolean(actions?.onRemove) && canManage && (actions!.removed || state !== "done");
+  const canUnpin = Boolean(actions?.onUnpin) && canArrange && actions!.pinned && state !== "done";
+  return (
+    <DialogHeader className="glass-bar flex-row flex-wrap items-center gap-x-4 gap-y-2 border-b border-(--glass-bar-line) px-6 py-3.5 pr-14 text-left">
+      <div className="min-w-0 flex-1 space-y-0.5">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
+          <DialogTitle className="mr-1 text-xl">{stop.device?.store_name || stop.store_name}</DialogTitle>
+          {!plan ? null : canMark ? (
+            <Select value={state} onValueChange={(next) => next !== state && actions!.onMark!(next as StopState)}>
+              <SelectTrigger size="sm" aria-label="Stop in the plan" className={cn("h-7 text-xs font-medium", tone)}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {STOP_STATES.map((option) => (
+                  <SelectItem key={option} value={option}>
+                    {STOP_STATE_LABEL[option]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : (
+            <span className={cn(CHIP, "font-medium", tone)} aria-label="Stop in the plan">
+              {state === "done" && <Check className="size-3" />} {actions?.removed ? "Removed from its day" : STOP_STATE_LABEL[state]}
+            </span>
+          )}
+          <span className={cn(CHIP, STATUS_META[stop.status]?.chip)} aria-label="Store status">
+            {STATUS_META[stop.status]?.label ?? stop.status}
+          </span>
+          {actions?.pinned && state !== "done" && (
+            <span className={cn(CHIP, "border-slate-300 bg-slate-50 pr-1 text-slate-700")} title="Put on this day by hand: recalculations leave it here">
+              <Pin className="size-3" /> Kept on this day
+              {canUnpin && (
+                <button type="button" aria-label="Let it be recalculated again" className="rounded p-0.5 hover:bg-slate-200" onClick={actions.onUnpin}>
+                  <X className="size-3" />
+                </button>
+              )}
+            </span>
+          )}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span tabIndex={0} className="cursor-default rounded text-xs tabular-nums text-slate-600 underline decoration-dotted decoration-slate-300 underline-offset-4">
+                {logged} of {plural(screens, "screen")} logged
+              </span>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              {plan ? "The stop is Done when every screen is, Incomplete when any is." : `Screens with a log entry dated ${visitDate || "the visit's day"}.`}
+            </TooltipContent>
+          </Tooltip>
+        </div>
+        <DialogDescription className="font-mono text-xs">{[stop.external_id || stop.display_id, stop.pa || project.pa, project.name].filter(Boolean).join(" · ")}</DialogDescription>
+      </div>
+      {(canMove || canSetAside || canRemove) && (
+        <div role="group" aria-label="Plan actions" className="flex flex-wrap items-center gap-1.5">
+          {canMove && (
+            <Button size="sm" variant="outline" onClick={actions!.onMove}>
+              <ArrowRightLeft /> {actions!.removed ? "Put back" : "Move"}
+            </Button>
+          )}
+          {canSetAside && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="text-amber-800"
+              disabled={actions!.hasVisit}
+              title={actions!.hasVisit ? "A store with a visit logged stays where it was visited" : "Off its day, kept with the plan as removed: an Admin puts it back or takes it out"}
+              onClick={actions!.onSetAside}
+            >
+              <CalendarX /> Remove from day
+            </Button>
+          )}
+          {canRemove && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="text-rose-700"
+              disabled={actions!.hasVisit}
+              title={actions!.hasVisit ? "A store with a visit logged stays in the plan's history" : "Out of the plan for good: it can join another plan"}
+              onClick={actions!.onRemove}
+            >
+              <Trash2 /> Remove from plan
+            </Button>
+          )}
+        </div>
+      )}
+    </DialogHeader>
+  );
+}
+
+/** "12 log entries · last 2026-11-20": the line over the store's log entries. */
+function logSummary(pending: boolean, failed: boolean, dates: string[], more: boolean): string {
+  if (pending) return "Loading…";
+  if (failed) return "Could not load the log entries.";
+  if (!dates.length) return "No log entries yet";
+  const last = dates.reduce((latest, date) => (date > latest ? date : latest), "");
+  return `${dates.length}${more ? "+" : ""} log ${dates.length === 1 && !more ? "entry" : "entries"} · last ${last}`;
+}
+
+const ALL_SCREENS = "all";
+
+/** Every log entry of the store, newest first: each screen's, and the store's own comments (labelled Store). One
+ *  screen, or the store's own, can be picked; entries of screens since deleted show under All screens. */
+function LogEntries({ projectId, stop }: { projectId: string; stop: Stop }) {
+  const [filter, setFilter] = useState(ALL_SCREENS);
+  const visits = useVisits(projectId, stop.uid);
+  const comments = useStoreComments(projectId, stop.uid);
+  const dates = [...(visits.data?.items ?? []).map((visit) => visit.visit_date), ...(comments.data?.items ?? []).map((comment) => comment.visit_date)];
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+        <p className="text-sm text-slate-700">{logSummary(visits.isPending, visits.isError, dates, Boolean(visits.data?.next_cursor || comments.data?.next_cursor))}</p>
+        <Select value={filter} onValueChange={setFilter}>
+          <SelectTrigger size="sm" aria-label="Filter by screen" className="min-w-48">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL_SCREENS}>All screens</SelectItem>
+            <SelectItem value={STORE_ENTRIES}>Store</SelectItem>
+            {stop.screens.map((screen, index) => (
+              <SelectItem key={screen.id} value={screen.id}>
+                {screenCodes(screen) || `Screen ${index + 1}`}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <VisitHistory projectId={projectId} stop={stop} bare screenId={filter === ALL_SCREENS ? undefined : filter} />
+    </div>
+  );
+}
+
+/** One screen's log, picked in the screens bar: what the screen is (DD code, stick, size, whose, brand, mount) and
+ *  its pictures, then what this visit found (network, software, issue, comment) and what it left the screen as
+ *  (Done or Incomplete). What is typed lives in the store's page (`value`), so it survives picking another screen.
+ *  Save writes the screen's changes (pictures too) to the store and a log entry for it. */
 function ScreenLog({
   stop,
   project,
@@ -693,8 +800,16 @@ function ScreenLog({
   number,
   planId,
   who,
+  readOnly,
+  canEditDetails,
+  updatedBy,
+  value,
+  dirty,
+  onChange,
   onCreated,
-  onDone,
+  onSaved,
+  onDiscard,
+  onDelete,
 }: {
   stop: Stop;
   project: Project;
@@ -702,22 +817,36 @@ function ScreenLog({
   number: number;
   planId: string;
   who: Who;
+  /** Without `visits.log`: shown, nothing can be changed. */
+  readOnly: boolean;
+  /** The screen's details and pictures may be changed (`canEditStoreDetails`); else only the log is filled. */
+  canEditDetails: boolean;
+  /** Who the store records as changing the screens. */
+  updatedBy: string;
+  value: ScreenDraft;
+  dirty: boolean;
+  onChange: (change: (draft: ScreenDraft) => ScreenDraft) => void;
   /** A new screen got its id (it is on the store now, its log still open). */
   onCreated: (id: string) => void;
-  onDone: () => void;
+  onSaved: (screenId: string, withLog: boolean) => void;
+  /** Drop what is typed (a new screen not saved yet goes away). */
+  onDiscard: () => void;
+  /** Absent when the screen cannot be deleted here (the last one, or not saved yet). */
+  onDelete?: () => void;
 }) {
   const categories = useCategories();
   const update = useUpdateScreens(project.id);
   const create = useCreateVisit(project.id, stop.uid);
-  const [draft, setDraft] = useState<ScreenRow>(row);
-  const [log, setLog] = useState<LogDraft>(EMPTY_LOG);
-  const [touched, setTouched] = useState(false);
+  const draft = value.row ?? row;
+  const { log, touched } = value;
+  const setDraft = (change: (current: ScreenRow) => ScreenRow) => onChange((current) => ({ ...current, row: change(current.row ?? row) }));
+  const setTouched = (next: boolean) => onChange((current) => ({ ...current, touched: next }));
   const venue = useVenue(draft.venue_id);
   const original = toRows(stop).find((item) => item.id !== undefined && item.id === draft.id);
   const detailsChanged = !original || !sameScreen(original, draft);
   const tree = categories.data ?? [];
   const subcategories = tree.find((entry) => entry.name === log.category)?.subcategories ?? [];
-  const patch = (change: Partial<LogDraft>) => setLog((current) => ({ ...current, ...change }));
+  const patch = (change: Partial<LogDraft>) => onChange((current) => ({ ...current, log: { ...current.log, ...change } }));
 
   const form = (screenId: string): VisitForm => ({
     screen_id: screenId,
@@ -753,11 +882,12 @@ function ScreenLog({
     }
     try {
       let screenId = draft.id;
-      if (detailsChanged) {
+      // Someone who may not change the screen sends no screens update (nothing could be changed anyway).
+      if (detailsChanged && canEditDetails) {
         const all = toRows(stop);
         const index = all.findIndex((item) => item.id !== undefined && item.id === draft.id);
         const next = index >= 0 ? all.map((item, i) => (i === index ? draft : item)) : [...all, draft];
-        const savedStop = await update.mutateAsync({ uid: stop.uid, screens: toInputs(next), updatedBy: who.installer.trim() || "Route planner" });
+        const savedStop = await update.mutateAsync({ uid: stop.uid, screens: toInputs(next), updatedBy });
         screenId = savedStop.screens[index >= 0 ? index : next.length - 1]?.id;
         if (!screenId) throw new Error("The screen was not saved");
         if (!draft.id) onCreated(screenId);
@@ -770,20 +900,27 @@ function ScreenLog({
       } else {
         toast.success(`Screen ${number} saved`);
       }
-      onDone();
+      onSaved(screenId!, withLog);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not save");
     }
   };
 
   return (
-    <div role="group" aria-label={`Log visit for screen ${number}`} className="space-y-4 rounded-xl border-2 border-brand/40 bg-white">
-      {/* Stays on top while the form scrolls: what the visit left the screen as, and Save. */}
-      <div className="sticky top-0 z-10 flex flex-wrap items-center gap-2 rounded-t-xl border-b bg-white px-4 py-2.5">
-        <h4 className="mr-auto text-sm font-semibold text-slate-900">
-          Screen {number} <span className="font-mono text-xs font-normal text-slate-500">{[draft.stick_number, draft.venue_id].filter(Boolean).join(" · ")}</span>
+    <>
+    {/* One card for the screen: its Save bar on top, then each part under its own tinted strip (visitTone.ts). */}
+    <div role="group" aria-label={`Log visit for screen ${number}`} className={SURFACE}>
+      {/* Stays on top while the form scrolls: what the visit left the screen as, and Save. Its line is a shadow, so it
+          sits on the first strip's top line rather than doubling it. */}
+      <div className="sticky top-0 z-10 flex flex-wrap items-center gap-2 rounded-t-xl bg-white px-4 py-2.5 shadow-[0_1px_0_0_rgb(15_23_42/0.08)]">
+        <h4 className="mr-auto flex min-w-0 items-center gap-2 text-sm font-semibold text-slate-900">
+          <VisitChip name="The screen" />
+          <span>
+            Screen {number} <span className="font-mono text-xs font-normal text-slate-600">{[draft.stick_number, draft.venue_id].filter(Boolean).join(" · ")}</span>
+            {readOnly && <span className="ml-2 text-xs font-normal text-slate-600">View only</span>}
+          </span>
         </h4>
-        <div role="radiogroup" aria-label={`This visit leaves screen ${number}`} className={cn("flex overflow-hidden rounded-lg border", shown("outcome") && "border-rose-400")}>
+        <div role="radiogroup" aria-label={`This visit leaves screen ${number}`} hidden={readOnly} className={cn("flex overflow-hidden rounded-lg border", shown("outcome") && "border-rose-400")}>
           {(["done", "incomplete"] as const).map((option) => (
             <button
               key={option}
@@ -801,219 +938,295 @@ function ScreenLog({
             </button>
           ))}
         </div>
-        <Button className="h-10 px-5" onClick={() => void save(true)} disabled={busy}>
-          {busy ? <Loader2 className="animate-spin" /> : <Send />} Save log entry
-        </Button>
-        <Button variant="ghost" onClick={onDone} disabled={busy}>
-          Cancel
-        </Button>
-      </div>
-      <div className="space-y-5 px-4 pb-4">
-        {touched && Object.keys(errors).length > 0 && (
-          <p role="alert" className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800">
-            Still needed: {Object.values(errors).join(" · ")}
-          </p>
-        )}
-
-        <div role="group" aria-label="The screen" className="space-y-2">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <h5 className="text-sm font-semibold text-slate-700">The screen</h5>
-            <div className="flex items-center gap-2">
-              <span className="text-[11px] text-slate-500">Status</span>
-              <Select value={draft.status} onValueChange={(status) => setDraft((current) => ({ ...current, status: status as ScreenStatus }))}>
-                <SelectTrigger size="sm" aria-label={`Status of screen ${number}`} className={cn("h-7 border", STATUS_META[draft.status].chip)}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {STOP_STATUSES.map((status) => (
-                    <SelectItem key={status} value={status}>
-                      {STATUS_META[status].label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <ScreenFields row={draft} number={number} costs={project.hardware_costs} device={stop.screens.find((screen) => screen.id === draft.id)?.device} onPatch={(change) => setDraft((current) => ({ ...current, ...change }))} venueType={false} />
-          {original && detailsChanged && (
-            <Button size="sm" variant="outline" onClick={() => void save(false)} disabled={busy}>
-              Save these details only (no log entry)
+        {!readOnly && (
+          <>
+            <Button className="h-10 px-5" onClick={() => void save(true)} disabled={busy}>
+              {busy ? <Loader2 className="animate-spin" /> : <Send />} Save log entry
             </Button>
-          )}
-        </div>
-
-        <div role="group" aria-label="Network" className="space-y-2 border-t pt-4">
-          <Field label="Network" required error={shown("network_type")}>
-            <div role="radiogroup" aria-label="Network Type" className="grid grid-cols-3 gap-3">
-              {NETWORK_TYPES.map((type) => {
-                const Icon = NETWORK_ICONS[type];
-                return (
-                  <button
-                    key={type}
-                    type="button"
-                    role="radio"
-                    aria-checked={log.network_type === type}
-                    onClick={() => patch({ network_type: type })}
-                    className={cn("flex h-14 items-center justify-center gap-2 rounded-lg border-2 text-sm", log.network_type === type ? "border-brand bg-brand/10 text-brand" : "border-slate-200 text-slate-600")}
-                  >
-                    <Icon className="size-5" /> {type}
-                  </button>
-                );
-              })}
-            </div>
-          </Field>
-          {log.network_type === "WiFi" && (
-            <div className="space-y-3">
-              <label className="flex items-center gap-2 text-sm text-slate-700">
-                <input type="checkbox" className="size-4 accent-[var(--color-brand,#0F5B7C)]" checked={log.otherWifi} onChange={(e) => patch({ otherWifi: e.target.checked })} />
-                This screen is on a different WiFi
-              </label>
-              {log.otherWifi ? (
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <Field label="WiFi name (SSID) for this screen" error={shown("wifi_ssid")} htmlFor={`wifi-ssid-${row.key}`}>
-                    <Input id={`wifi-ssid-${row.key}`} autoComplete="off" value={log.wifi_ssid} onChange={(e) => patch({ wifi_ssid: e.target.value })} />
-                  </Field>
-                  <Field label="WiFi password for this screen" htmlFor={`wifi-password-${row.key}`}>
-                    <Input id={`wifi-password-${row.key}`} autoComplete="off" value={log.wifi_password} onChange={(e) => patch({ wifi_password: e.target.value })} />
-                  </Field>
-                </div>
-              ) : (
-                <p className="text-xs text-slate-500">
-                  {stop.store_ssid ? `On the store's WiFi: ${stop.store_ssid}.` : "On the store's WiFi. None is on file yet: add it under Store WiFi on the right."}
-                </p>
-              )}
-            </div>
-          )}
-        </div>
-
-        <div role="group" aria-label="Software" className="grid gap-4 border-t pt-4 sm:grid-cols-3">
-          <YesNo label="Latest APK" value={log.latest_apk} onChange={(latest_apk) => patch({ latest_apk })} error={shown("latest_apk")} />
-          <YesNo label="Set Kiosk Mode" value={log.kiosk_mode} onChange={(kiosk_mode) => patch({ kiosk_mode })} error={shown("kiosk_mode")} />
-          <YesNo label="Dagent installed" value={log.dagent_installed} onChange={(dagent_installed) => patch({ dagent_installed })} error={shown("dagent_installed")} />
-        </div>
-
-        <div role="group" aria-label="Issue" className="space-y-4 border-t pt-4">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Category" required error={shown("category")}>
-              <Select value={log.category} onValueChange={(category) => patch({ category, subcategory: "", replaced_with: "" })}>
-                <SelectTrigger aria-label="Category" className="w-full">
-                  <SelectValue placeholder="Select category" />
-                </SelectTrigger>
-                <SelectContent>
-                  {tree.map((entry) => (
-                    <SelectItem key={entry.name} value={entry.name}>
-                      {entry.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
-            <Field label="Subcategory" required error={shown("subcategory")}>
-              <Select value={log.subcategory} onValueChange={(subcategory) => patch({ subcategory })} disabled={!log.category}>
-                <SelectTrigger aria-label="Subcategory" className="w-full">
-                  <SelectValue placeholder={log.category ? "Select subcategory" : "Pick a category first"} />
-                </SelectTrigger>
-                <SelectContent>
-                  {subcategories.map((sub) => (
-                    <SelectItem key={sub} value={sub}>
-                      {sub}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
-            {REPLACED_WITH.has(log.subcategory) && (
-              <Field label="Replaced with" required error={shown("replaced_with")} htmlFor={`replaced-${row.key}`}>
-                <Input id={`replaced-${row.key}`} placeholder="New stick or screen number" value={log.replaced_with} onChange={(e) => patch({ replaced_with: e.target.value })} />
-              </Field>
+            {row.id ? (
+              <Button variant="ghost" onClick={onDiscard} disabled={busy || !dirty}>
+                Discard changes
+              </Button>
+            ) : (
+              <Button variant="ghost" onClick={onDiscard} disabled={busy}>
+                Cancel
+              </Button>
+            )}
+            {row.id && canEditDetails && (
+              <Button
+                size="icon"
+                variant="ghost"
+                className="size-9"
+                aria-label={`Delete screen ${number}`}
+                disabled={!onDelete || busy}
+                title={onDelete ? undefined : "A store needs at least one screen"}
+                onClick={onDelete}
+              >
+                <Trash2 />
+              </Button>
+            )}
+          </>
+        )}
+      </div>
+      <div className="min-w-0">
+        {((touched && Object.keys(errors).length > 0) || (!readOnly && !canEditDetails)) && (
+          <div className="space-y-2 border-t border-slate-100 px-4 py-3">
+            {touched && Object.keys(errors).length > 0 && (
+              <p role="alert" className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800">
+                Still needed: {Object.values(errors).join(" · ")}
+              </p>
+            )}
+            {!readOnly && !canEditDetails && (
+              <p className="flex items-start gap-1.5 text-xs text-slate-600">
+                <Lock className="mt-px size-3.5 shrink-0 text-slate-500" aria-hidden />
+                This store is not on a route: you can log the visit, and an admin can change its screen details.
+              </p>
             )}
           </div>
-          <Field label="Comments for this screen" htmlFor={`comments-${row.key}`}>
-            <Textarea id={`comments-${row.key}`} rows={3} placeholder="What was found and done" value={log.comments} onChange={(e) => patch({ comments: e.target.value })} />
-          </Field>
-        </div>
+        )}
+
+        <fieldset disabled={!canEditDetails} className="min-w-0">
+          <div role="group" aria-label="The screen">
+            <ToneStrip name="The screen" heading="h5" className="border-t">
+              <div className="ml-auto flex items-center gap-2">
+                <span className="text-[11px] text-sky-800">Status</span>
+                <Select value={draft.status} onValueChange={(status) => setDraft((current) => ({ ...current, status: status as ScreenStatus }))}>
+                  <SelectTrigger size="sm" aria-label={`Status of screen ${number}`} className={cn("h-7 border", STATUS_META[draft.status].chip)}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {STOP_STATUSES.map((status) => (
+                      <SelectItem key={status} value={status}>
+                        {STATUS_META[status].label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </ToneStrip>
+            <div className="space-y-3 p-4">
+              <ScreenFields row={draft} number={number} costs={project.hardware_costs} device={stop.screens.find((screen) => screen.id === draft.id)?.device} onPatch={(change) => setDraft((current) => ({ ...current, ...change }))} venueType={false} />
+              {original && detailsChanged && canEditDetails && (
+                <Button size="sm" variant="outline" onClick={() => void save(false)} disabled={busy}>
+                  Save these details only (no log entry)
+                </Button>
+              )}
+            </div>
+          </div>
+        </fieldset>
+
+        <fieldset disabled={readOnly} className="min-w-0">
+          <div role="group" aria-label="Network">
+            <ToneStrip name="Network" heading="h5" className="border-t" />
+            <div className="space-y-2 p-4">
+              <Field label="Network" required error={shown("network_type")}>
+                <div role="radiogroup" aria-label="Network Type" className="grid grid-cols-3 gap-3">
+                  {NETWORK_TYPES.map((type) => {
+                    const Icon = NETWORK_ICONS[type];
+                    return (
+                      <button
+                        key={type}
+                        type="button"
+                        role="radio"
+                        aria-checked={log.network_type === type}
+                        onClick={() => patch({ network_type: type })}
+                        className={cn("flex h-14 items-center justify-center gap-2 rounded-lg border-2 text-sm", log.network_type === type ? "border-brand bg-brand/10 text-brand" : "border-slate-200 text-slate-600")}
+                      >
+                        <Icon className="size-5" /> {type}
+                      </button>
+                    );
+                  })}
+                </div>
+              </Field>
+              {log.network_type === "WiFi" && (
+                <div className="space-y-3">
+                  <label className="flex items-center gap-2 text-sm text-slate-700">
+                    <input type="checkbox" className="size-4 accent-[var(--color-brand,#0F5B7C)]" checked={log.otherWifi} onChange={(e) => patch({ otherWifi: e.target.checked })} />
+                    This screen is on a different WiFi
+                  </label>
+                  {log.otherWifi ? (
+                    <div className="grid gap-4 @md:grid-cols-2">
+                      <Field label="WiFi name (SSID) for this screen" error={shown("wifi_ssid")} htmlFor={`wifi-ssid-${row.key}`}>
+                        <Input id={`wifi-ssid-${row.key}`} autoComplete="off" value={log.wifi_ssid} onChange={(e) => patch({ wifi_ssid: e.target.value })} />
+                      </Field>
+                      <Field label="WiFi password for this screen" htmlFor={`wifi-password-${row.key}`}>
+                        <Input id={`wifi-password-${row.key}`} autoComplete="off" value={log.wifi_password} onChange={(e) => patch({ wifi_password: e.target.value })} />
+                      </Field>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-slate-500">
+                      {stop.store_ssid ? `On the store's WiFi: ${stop.store_ssid}.` : "On the store's WiFi. None is on file yet: add it under Store WiFi on the right."}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div role="group" aria-label="Software">
+            <ToneStrip name="Software" heading="h5" className="border-t" />
+            <div className="grid items-end gap-4 p-4 @sm:grid-cols-3">
+              <YesNo label="Latest APK" value={log.latest_apk} onChange={(latest_apk) => patch({ latest_apk })} error={shown("latest_apk")} />
+              <YesNo label="Set Kiosk Mode" value={log.kiosk_mode} onChange={(kiosk_mode) => patch({ kiosk_mode })} error={shown("kiosk_mode")} />
+              <YesNo label="Dagent installed" value={log.dagent_installed} onChange={(dagent_installed) => patch({ dagent_installed })} error={shown("dagent_installed")} />
+            </div>
+          </div>
+
+          <div role="group" aria-label="Issue">
+            <ToneStrip name="Issue" heading="h5" className="border-t" />
+            <div className="space-y-4 p-4">
+              <div className="grid gap-4 @sm:grid-cols-2">
+                <Field label="Category" required error={shown("category")}>
+                  <Select value={log.category} onValueChange={(category) => patch({ category, subcategory: "", replaced_with: "" })}>
+                    <SelectTrigger aria-label="Category" className="w-full">
+                      <SelectValue placeholder="Select category" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {tree.map((entry) => (
+                        <SelectItem key={entry.name} value={entry.name}>
+                          {entry.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+                <Field label="Subcategory" required error={shown("subcategory")}>
+                  <Select value={log.subcategory} onValueChange={(subcategory) => patch({ subcategory })} disabled={!log.category}>
+                    <SelectTrigger aria-label="Subcategory" className="w-full">
+                      <SelectValue placeholder={log.category ? "Select subcategory" : "Pick a category first"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {subcategories.map((sub) => (
+                        <SelectItem key={sub} value={sub}>
+                          {sub}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+                {REPLACED_WITH.has(log.subcategory) && (
+                  <Field label="Replaced with" required error={shown("replaced_with")} htmlFor={`replaced-${row.key}`}>
+                    <Input id={`replaced-${row.key}`} placeholder="New stick or screen number" value={log.replaced_with} onChange={(e) => patch({ replaced_with: e.target.value })} />
+                  </Field>
+                )}
+              </div>
+              <Field label="Comments for this screen" htmlFor={`comments-${row.key}`}>
+                <Textarea id={`comments-${row.key}`} rows={3} placeholder="What was found and done" value={log.comments} onChange={(e) => patch({ comments: e.target.value })} />
+              </Field>
+            </div>
+          </div>
+        </fieldset>
       </div>
     </div>
-  );
-}
-
-/** Screens and mounts used at the store: worked out from its installed screens, with a typed number over it. */
-function UsedCounts({ stop, projectId }: { stop: Stop; projectId: string }) {
-  const update = useUpdateStoreDetails(projectId);
-  const installed = stop.screens.filter((screen) => INSTALLED_STATUSES.has(screen.status));
-  const worked = { screens_used: installed.filter((screen) => screen.is_dolphin_screen).length, mounts_used: installed.filter((screen) => screen.has_mount).length };
-  const [text, setText] = useState({ screens_used: stop.screens_used?.toString() ?? "", mounts_used: stop.mounts_used?.toString() ?? "" });
-  const save = async (key: "screens_used" | "mounts_used") => {
-    const typed = text[key].trim();
-    if (typed !== "" && !/^\d+$/.test(typed)) return void toast.error("Type a whole number, or leave it blank for the worked-out one");
-    const value = typed === "" ? null : Number(typed);
-    if (value === (stop[key] ?? null)) return;
-    try {
-      await update.mutateAsync({ uid: stop.uid, body: { [key]: value } });
-      toast.success(value === null ? "Back to the worked-out number" : "Saved");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not save");
-    }
-  };
-  const box = (key: "screens_used" | "mounts_used", label: string, hint: string) => (
-    <div className="space-y-1.5">
-      <Label htmlFor={`used-${key}`} className="text-sm">
-        {label}
-      </Label>
-      <div className="flex items-center gap-2">
-        <span className="flex h-9 min-w-12 items-center justify-center rounded-md border bg-slate-50 px-3 text-sm font-semibold" aria-label={`${label}, worked out`}>
-          {worked[key]}
-        </span>
-        <Input
-          id={`used-${key}`}
-          inputMode="numeric"
-          placeholder="Override"
-          aria-label={`${label} override`}
-          className="w-28"
-          value={text[key]}
-          onChange={(e) => setText((current) => ({ ...current, [key]: e.target.value }))}
-          onBlur={() => void save(key)}
+    {/* The screen's pictures, a card of their own between the form and the map. The screen's own, not this visit's:
+        they stay for later visits and show in the store window. Saved with the screen (the Save bar above). */}
+    <section role="group" aria-label={`Pictures of screen ${number}`} className={cn(SURFACE, "overflow-hidden")}>
+      <ToneStrip name="Pictures" heading="h4" title={`Pictures · screen ${number}`}>
+        {draft.pictures.length > 0 && <span className={cn("text-xs tabular-nums", VISIT_TONE.Pictures.summary)}>{draft.pictures.length}</span>}
+      </ToneStrip>
+      <div className="p-4">
+        <ScreenPictures
+          pictures={draft.pictures}
+          screen={number}
+          onChange={canEditDetails ? (pictures) => setDraft((current) => ({ ...current, pictures })) : undefined}
         />
       </div>
-      <p className="text-xs text-slate-500">{hint}</p>
-    </div>
-  );
-  return (
-    <div role="group" aria-label="Used at this store" className="space-y-3">
-      <h4 className="text-sm font-semibold text-slate-700">Used at this store</h4>
-      <div className="grid gap-4 sm:grid-cols-2">
-        {box("screens_used", "Screens used", "Worked out: the installed screens that are Dolphin's. Type a number to go over it.")}
-        {box("mounts_used", "Mounts used", "Worked out: the installed screens with a mount picked. Type a number to go over it.")}
-      </div>
-    </div>
+    </section>
+    </>
   );
 }
 
-/** A comment on the store as a whole (each screen's own goes on its log entry). */
-function StoreComment({ stop, projectId }: { stop: Stop; projectId: string }) {
-  const update = useUpdateProgress(projectId);
+/** The store on a small map under the screen's form, with a link to Google Maps. The map (a billed load) is drawn
+ *  only once it scrolls into view, so opening the dialog loads none. */
+function StoreMap({ stop }: { stop: Stop }) {
+  const at = shownLocation(stop);
+  return (
+    <section aria-label="Store location" className={cn(SURFACE, "overflow-hidden")}>
+      <ToneStrip name="Location" className="flex-nowrap">
+        <span className={cn("min-w-0 truncate text-xs", VISIT_TONE.Location.summary)}>{[stop.addr, stop.city, stop.state].filter(Boolean).join(", ")}</span>
+        {at && (
+          <a
+            href={`https://www.google.com/maps/search/?api=1&query=${at.lat},${at.lng}`}
+            target="_blank"
+            rel="noreferrer"
+            className="ml-auto shrink-0 rounded text-xs text-brand hover:underline"
+          >
+            Open in Google Maps
+          </a>
+        )}
+      </ToneStrip>
+      <div className="p-3">
+        {at ? (
+          <WhenVisible placeholder={<div className="h-[220px] rounded-lg bg-slate-50" aria-hidden />}>
+            <StoreLocationMap stop={stop} bare mapHeight="h-[220px]" />
+          </WhenVisible>
+        ) : (
+          <p className="flex items-center gap-1.5 text-xs text-slate-600">
+            <MapPinOff className="size-3.5" aria-hidden /> No map location
+          </p>
+        )}
+      </div>
+    </section>
+  );
+}
+
+/** A comment on the store as a whole (each screen's own goes on its log entry). Folded away by default: it is
+ *  rarely needed while logging screens. Each save is a log entry of its own (who, when, from which plan, under
+ *  Logs as Store) and the store's comment, which the rest of the app reads. Emptying the box only clears that. */
+function StoreComment({ stop, projectId, planId, who, readOnly }: { stop: Stop; projectId: string; planId: string; who: Who; readOnly: boolean }) {
+  const clear = useUpdateProgress(projectId);
+  const log = useCreateStoreComment(projectId, stop.uid);
+  const [open, setOpen] = useState(false);
   const [text, setText] = useState(stop.comment ?? "");
   const changed = text.trim() !== (stop.comment ?? "").trim();
+  const busy = clear.isPending || log.isPending;
   const save = async () => {
     try {
-      await update.mutateAsync({ uid: stop.uid, body: { comment: text.trim() } });
-      toast.success("Store comment saved");
+      if (text.trim()) {
+        await log.mutateAsync({ text: text.trim(), visit_date: who.visit_date || todayIso(), installer: who.installer.trim(), dolphin_manager: who.dolphin_manager.trim(), route_plan_id: planId });
+        toast.success("Store comment logged");
+      } else {
+        await clear.mutateAsync({ uid: stop.uid, body: { comment: "" } });
+        toast.success("Store comment cleared");
+      }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not save the comment");
     }
   };
   return (
-    <div role="group" aria-label="Comment on the store" className="space-y-2">
-      <Label htmlFor="store-comment" className="text-sm font-semibold text-slate-700">
-        Store comment
-      </Label>
-      <Textarea id="store-comment" rows={2} placeholder="Anything about the store as a whole" value={text} onChange={(e) => setText(e.target.value)} />
-      <div className="flex items-center gap-2">
-        <Button size="sm" onClick={() => void save()} disabled={!changed || update.isPending}>
-          {update.isPending && <Loader2 className="animate-spin" />} Save comment
-        </Button>
-        <span className="text-xs text-slate-500">A screen's own comment goes on its log entry.</span>
-      </div>
+    <div role="group" aria-label="Comment on the store" className={cn(SURFACE, "overflow-hidden")}>
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls="store-comment-box"
+        onClick={() => setOpen(!open)}
+        className={cn(
+          "flex min-h-10 w-full min-w-0 items-center gap-2 px-3 py-1.5 text-left text-xs outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset motion-reduce:transition-none",
+          VISIT_TONE["Store comment"].strip,
+          VISIT_TONE["Store comment"].hover,
+        )}
+      >
+        <ChevronRight className={cn("size-3.5 shrink-0 text-slate-500 transition-transform motion-reduce:transition-none", open && "rotate-90")} />
+        <VisitChip name="Store comment" />
+        <span className={cn(TONE_TITLE, "shrink-0", VISIT_TONE["Store comment"].title)}>Store comment</span>
+        {!open && <span className={cn("min-w-0 truncate", VISIT_TONE["Store comment"].summary)}>{stop.comment ? `· ${stop.comment}` : "· none"}</span>}
+      </button>
+      {open && (
+        <div id="store-comment-box" className={cn("space-y-2 border-t p-3", VISIT_TONE["Store comment"].line)}>
+          <Label htmlFor="store-comment" className="sr-only">
+            Store comment
+          </Label>
+          <Textarea id="store-comment" rows={3} disabled={readOnly} placeholder="Anything about the store as a whole" value={text} onChange={(e) => setText(e.target.value)} className="text-sm" />
+          {!readOnly && (
+            <div className="space-y-1.5">
+              <Button size="sm" onClick={() => void save()} disabled={!changed || busy}>
+                {busy && <Loader2 className="animate-spin" />} Save comment
+              </Button>
+              <p className="text-[11px] text-slate-600">Kept under Logs as a Store entry, with who and when.</p>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -1026,13 +1239,12 @@ interface LockedField {
 
 /** A few store fields shown locked; its own Edit button unlocks them, so a change is always deliberate. Saving
  *  updates the store. */
-function LockedGroup({ stop, projectId, title, fields, stacked = false }: { stop: Stop; projectId: string; title: string; fields: readonly LockedField[]; /** One field per line (the narrow side panel). */ stacked?: boolean }) {
+function LockedGroup({ stop, projectId, title, fields, canEdit, stacked = false }: { stop: Stop; projectId: string; /** Also picks its hue. */ title: Extract<VisitToneName, "Store WiFi" | "Owner" | "Store Contact">; fields: readonly LockedField[]; /** `canEditStoreDetails`: else no Edit. */ canEdit: boolean; /** One field per line (the narrow side panel). */ stacked?: boolean }) {
   const keys = fields.map((field) => field.key);
   const [editing, setEditing] = useState(false);
   const [reveal, setReveal] = useState(false);
   const [form, setForm] = useState<LockedValues>(() => lockedValues(stop, keys));
   const update = useUpdateStoreDetails(projectId);
-  const canEdit = useCan("visits.log");
   useEffect(() => {
     if (!editing) setForm(lockedValues(stop, keys)); // `keys` comes from a static field list
   }, [stop, editing]);
@@ -1053,28 +1265,52 @@ function LockedGroup({ stop, projectId, title, fields, stacked = false }: { stop
   };
 
   return (
-    <div role="group" aria-label={title} className="space-y-3">
-      <div className="flex items-center justify-between gap-2">
-        <h4 className="flex items-center gap-1.5 text-sm font-semibold text-slate-700">
-          {!editing && <Lock className="size-3.5 text-slate-400" aria-label="locked" />} {title}
-        </h4>
+    <div role="group" aria-label={title} className={cn(SURFACE, "overflow-hidden")}>
+      <ToneStrip name={title} title={<span className="flex items-center gap-1.5">{title} {!editing && <Lock className="size-3 text-slate-500" aria-label="locked" />}</span>}>
         {editing ? (
-          <div className="flex gap-1.5">
-            <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>
+          <div className="ml-auto flex gap-1.5">
+            <Button size="sm" variant="ghost" className="h-7" onClick={() => setEditing(false)}>
               Cancel
             </Button>
-            <Button size="sm" onClick={() => void save()} disabled={update.isPending} aria-label={`Save ${title}`}>
+            <Button size="sm" className="h-7" onClick={() => void save()} disabled={update.isPending} aria-label={`Save ${title}`}>
               {update.isPending && <Loader2 className="animate-spin" />} Save
             </Button>
           </div>
         ) : !canEdit ? null : (
-          <Button size="sm" variant="outline" onClick={() => setEditing(true)} aria-label={`Edit ${title}`}>
+          <Button size="sm" variant="outline" className="ml-auto h-7" onClick={() => setEditing(true)} aria-label={`Edit ${title}`}>
             <Pencil /> Edit
           </Button>
         )}
-      </div>
-      <div className={cn("grid", stacked ? "gap-3" : "gap-4 sm:grid-cols-3")}>
-        {fields.map(({ key, label, secret }) => (
+      </ToneStrip>
+      {!editing && (
+        // Read as text, like the Store card above: nothing looks typeable until Edit.
+        <dl className="space-y-1.5 p-4">
+          {fields.map(({ key, label, secret }) => {
+            const value = form[key] ?? "";
+            return (
+              <div key={key} className="grid grid-cols-[minmax(0,140px)_minmax(0,1fr)] gap-2">
+                <dt className="text-xs text-slate-500">{label}</dt>
+                <dd aria-label={label} className="flex min-w-0 items-center gap-1.5 text-sm font-medium break-words text-slate-900">
+                  {!value ? (
+                    <span className="font-normal text-slate-300">—</span>
+                  ) : secret ? (
+                    <>
+                      <span className="font-mono">{reveal ? value : "••••••••"}</span>
+                      <button type="button" className="relative text-slate-500 after:absolute after:-inset-2 hover:text-slate-800" aria-label={reveal ? `Hide ${label}` : `Show ${label}`} onClick={() => setReveal(!reveal)}>
+                        {reveal ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
+                      </button>
+                    </>
+                  ) : (
+                    value
+                  )}
+                </dd>
+              </div>
+            );
+          })}
+        </dl>
+      )}
+      <div hidden={!editing} className={cn("grid p-4", stacked ? "gap-3 @md:grid-cols-2" : "gap-4 sm:grid-cols-3")}>
+        {editing && fields.map(({ key, label, secret }) => (
           <Field key={key} label={label} htmlFor={`locked-${key}`}>
             <div className="relative">
               <Input
@@ -1104,7 +1340,7 @@ function LockedGroup({ stop, projectId, title, fields, stacked = false }: { stop
   );
 }
 
-const SIDE_GROUPS: StoreFieldSpec["group"][] = ["Site notes", "Site checklist", "Installation", "Identity & address", "Pictures"];
+const SIDE_GROUPS = ["Site notes", "Site checklist", "Installation", "Identity & address", "Pictures"] as const satisfies readonly StoreFieldSpec["group"][];
 const ON_FORM = new Set(["store_name", "addr", "city", "state", "zip", "pa", "owner_name", "owner_phone", "owner_email", "onsite_contact_name", "onsite_contact_phone", "store_ssid", "store_ssid_password"]);
 
 function display(spec: StoreFieldSpec, value: unknown): string {
@@ -1130,16 +1366,23 @@ function StoreSideNotes({ stop, project }: { stop: Stop; project: Project }) {
   const extra = Object.entries(stop.fields ?? {}).filter(([, value]) => value !== null && value !== "");
 
   return (
-    <div className="space-y-4 text-sm">
-      <h3 className="font-mono text-[11px] uppercase tracking-wider text-slate-500">From the sheet (read only)</h3>
-      {groups.length === 0 && extra.length === 0 && <p className="text-xs text-slate-500">Nothing else on file for this store.</p>}
+    <div className="space-y-3 text-sm">
+      {/* A label between the cards, on the pane: each group below is its own card in the store window's hue. */}
+      <h3 className="px-1 pt-1 font-mono text-[11px] uppercase tracking-wider text-slate-600">From the sheet (read only)</h3>
+      {groups.length === 0 && extra.length === 0 && <p className={cn(SURFACE, "px-4 py-3 text-xs text-slate-600")}>Nothing else on file for this store.</p>}
       {groups.map(({ group, rows }) => (
-        <section key={group} aria-label={group} className="space-y-1.5">
-          <h4 className="text-xs font-semibold text-slate-700">{group}</h4>
-          <dl className="space-y-1">
+        <section key={group} aria-label={group} className={cn(SURFACE, "overflow-hidden")}>
+          <ToneStrip name={group} />
+          {group === "Pictures" ? (
+            // The store's pictures themselves (click one to enlarge), not their links.
+            <div className="p-4">
+              <ImagePreviews label="Store pictures" urls={rows.flatMap((row) => urlTokens(row.value))} />
+            </div>
+          ) : (
+          <dl className="space-y-1 p-4">
             {rows.map(({ spec, value }) => (
               <div key={spec.name} className="grid grid-cols-[120px_minmax(0,1fr)] gap-2">
-                <dt className="text-xs text-slate-500">{spec.label}</dt>
+                <dt className="text-xs text-slate-600">{spec.label}</dt>
                 <dd className="break-words text-xs">
                   {spec.kind === "url" ? (
                     value.split(/\s+/).filter((token) => token.startsWith("http")).map((url) => (
@@ -1154,15 +1397,16 @@ function StoreSideNotes({ stop, project }: { stop: Stop; project: Project }) {
               </div>
             ))}
           </dl>
+          )}
         </section>
       ))}
       {extra.length > 0 && (
-        <section aria-label="Other imported data" className="space-y-1.5">
-          <h4 className="text-xs font-semibold text-slate-700">Other imported data</h4>
-          <dl className="space-y-1">
+        <section aria-label="Other imported data" className={cn(SURFACE, "overflow-hidden")}>
+          <ToneStrip name="Other imported data" />
+          <dl className="space-y-1 p-4">
             {extra.map(([key, value]) => (
               <div key={key} className="grid grid-cols-[120px_minmax(0,1fr)] gap-2">
-                <dt className="text-xs text-slate-500">{labels.get(key) ?? key}</dt>
+                <dt className="text-xs text-slate-600">{labels.get(key) ?? key}</dt>
                 <dd className="break-words text-xs whitespace-pre-wrap">{String(value)}</dd>
               </div>
             ))}
@@ -1173,9 +1417,31 @@ function StoreSideNotes({ stop, project }: { stop: Stop; project: Project }) {
   );
 }
 
-/** The store's servicing history: every visit, newest first, with its stick. */
-export function VisitHistory({ projectId, stop, bare = false }: { projectId: string; stop: Stop; bare?: boolean }) {
+/** `screenId` for the store's own entries (its comments) only. */
+export const STORE_ENTRIES = "store";
+
+export type LogEntry = { kind: "visit"; at: string; visit: Visit } | { kind: "store"; at: string; comment: StoreComment };
+
+/** The screens' visits and the store's own entries as one list, newest logged first. `filter`: a screen's id (its
+ *  visits only), `STORE_ENTRIES` (the store's only), or nothing for every entry. */
+export function logEntries(visits: Visit[], comments: StoreComment[], filter?: string): LogEntry[] {
+  const entries: LogEntry[] = [
+    ...(filter === STORE_ENTRIES ? [] : visits.filter((visit) => !filter || visit.screen_id === filter).map((visit) => ({ kind: "visit" as const, at: visit.created_at, visit }))),
+    ...(filter && filter !== STORE_ENTRIES ? [] : comments.map((comment) => ({ kind: "store" as const, at: comment.created_at, comment }))),
+  ];
+  return entries.sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
+}
+
+/** Who logged a store entry: the technician and manager as the visit row had them, else whoever was signed in. */
+const commentBy = (comment: StoreComment) =>
+  [comment.installer, comment.dolphin_manager && `managed by ${comment.dolphin_manager}`].filter(Boolean).join(" · ") || (comment.created_by ? `by ${comment.created_by}` : "");
+
+/** The store's servicing history, newest first: every visit with its stick, and the store's own comments
+ *  (labelled Store). */
+export function VisitHistory({ projectId, stop, bare = false, screenId }: { projectId: string; stop: Stop; bare?: boolean; /** Only this screen's entries (`STORE_ENTRIES`: the store's own). */ screenId?: string }) {
   const visits = useVisits(projectId, stop.uid);
+  const comments = useStoreComments(projectId, stop.uid);
+  const items = logEntries(visits.data?.items ?? [], comments.data?.items ?? [], screenId);
   const stickLabel = (visit: Visit) => {
     const index = stop.screens.findIndex((screen) => screen.id === visit.screen_id);
     return index >= 0 ? `Stick ${index + 1}` : "Removed stick";
@@ -1184,38 +1450,64 @@ export function VisitHistory({ projectId, stop, bare = false }: { projectId: str
   return (
     <Wrapper aria-label={bare ? undefined : "Servicing history"} className={cn("space-y-2", !bare && "border-t pt-4")}>
       {!bare && <h3 className="font-mono text-[11px] uppercase tracking-wider text-slate-500">Servicing history</h3>}
-      {visits.isPending ? (
+      {visits.isPending || comments.isPending ? (
         <p className="text-xs text-slate-500">Loading…</p>
       ) : visits.isError ? (
         <p className="text-xs text-rose-700">Could not load the history.</p>
-      ) : visits.data.items.length === 0 ? (
-        <p className="text-xs text-slate-500">No visits logged yet.</p>
       ) : (
-        <ol className="space-y-2">
-          {visits.data.items.map((visit) => (
-            <li key={visit.id} className="rounded-lg border p-2.5 text-xs">
-              <div className="flex flex-wrap items-baseline justify-between gap-1">
-                <span className="font-semibold">
-                  {visit.visit_date}
-                  {visit.outcome && <span className={cn("ml-1.5 rounded border px-1 py-px text-[10px] font-medium", OUTCOME_TONE[visit.outcome])}>{OUTCOME_LABEL[visit.outcome]}</span>}
-                </span>
-                <span className="font-mono text-[10px] text-slate-500">
-                  {stickLabel(visit)} · {visit.stick_number} · {visit.dd_code}
-                </span>
-              </div>
-              <div className="mt-1">
-                {visit.category} › {visit.subcategory}
-                {visit.replaced_with ? ` → ${visit.replaced_with}` : ""}
-              </div>
-              <div className="mt-0.5 text-slate-500">
-                {visit.installer} · managed by {visit.dolphin_manager} · {visit.network_type} · APK {visit.latest_apk ? "yes" : "no"} · Kiosk{" "}
-                {visit.kiosk_mode ? "yes" : "no"} · Dagent {visit.dagent_installed ? "yes" : "no"}
-                {visit.wifi_ssid ? ` · on WiFi "${visit.wifi_ssid}"` : ""}
-              </div>
-              {visit.comments && <p className="mt-1 whitespace-pre-wrap text-slate-700">{visit.comments}</p>}
-            </li>
-          ))}
-        </ol>
+        <>
+          {comments.isError && <p className="text-xs text-rose-700">Could not load the store's own entries.</p>}
+          {items.length === 0 ? (
+            <p className="text-xs text-slate-500">{screenId === STORE_ENTRIES ? "No store comments logged yet." : screenId ? "No log entries for this screen yet." : "No visits logged yet."}</p>
+          ) : (
+            <ol className="space-y-2">
+              {items.map((entry) =>
+                entry.kind === "store" ? (
+                  <li key={`store-${entry.comment.id}`} className="rounded-lg border border-slate-200 bg-slate-50 p-2.5 text-xs">
+                    <div className="flex flex-wrap items-baseline justify-between gap-1">
+                      <span className="flex items-center gap-1.5 font-semibold">
+                        {entry.comment.visit_date}
+                        <span className="inline-flex items-center gap-1 rounded border border-slate-300 bg-white px-1 py-px text-[10px] font-medium text-slate-700">
+                          <Store className="size-2.5" /> Store
+                        </span>
+                      </span>
+                      {entry.comment.plan_name && (
+                        <span className="font-mono text-[10px] text-slate-500">
+                          {entry.comment.plan_name}
+                          {entry.comment.plan_day ? ` · day ${entry.comment.plan_day}` : ""}
+                        </span>
+                      )}
+                    </div>
+                    <p className="mt-1 whitespace-pre-wrap text-slate-800">{entry.comment.text}</p>
+                    {commentBy(entry.comment) && <div className="mt-0.5 text-slate-500">{commentBy(entry.comment)}</div>}
+                  </li>
+                ) : (
+                  <li key={entry.visit.id} className="rounded-lg border p-2.5 text-xs">
+                    <div className="flex flex-wrap items-baseline justify-between gap-1">
+                      <span className="font-semibold">
+                        {entry.visit.visit_date}
+                        {entry.visit.outcome && <span className={cn("ml-1.5 rounded border px-1 py-px text-[10px] font-medium", OUTCOME_TONE[entry.visit.outcome])}>{OUTCOME_LABEL[entry.visit.outcome]}</span>}
+                      </span>
+                      <span className="font-mono text-[10px] text-slate-500">
+                        {stickLabel(entry.visit)} · {entry.visit.stick_number} · {entry.visit.dd_code}
+                      </span>
+                    </div>
+                    <div className="mt-1">
+                      {entry.visit.category} › {entry.visit.subcategory}
+                      {entry.visit.replaced_with ? ` → ${entry.visit.replaced_with}` : ""}
+                    </div>
+                    <div className="mt-0.5 text-slate-500">
+                      {entry.visit.installer} · managed by {entry.visit.dolphin_manager} · {entry.visit.network_type} · APK {entry.visit.latest_apk ? "yes" : "no"} · Kiosk{" "}
+                      {entry.visit.kiosk_mode ? "yes" : "no"} · Dagent {entry.visit.dagent_installed ? "yes" : "no"}
+                      {entry.visit.wifi_ssid ? ` · on WiFi "${entry.visit.wifi_ssid}"` : ""}
+                    </div>
+                    {entry.visit.comments && <p className="mt-1 whitespace-pre-wrap text-slate-700">{entry.visit.comments}</p>}
+                  </li>
+                ),
+              )}
+            </ol>
+          )}
+        </>
       )}
     </Wrapper>
   );

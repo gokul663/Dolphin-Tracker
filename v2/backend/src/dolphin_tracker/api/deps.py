@@ -36,6 +36,7 @@ from dolphin_tracker.services.store_search import StoreSearchService
 from dolphin_tracker.services.stores import StoreService
 from dolphin_tracker.services.technician import TechnicianService
 from dolphin_tracker.services.uploads import UploadService
+from dolphin_tracker.services.visit_search import VisitSearchService
 from dolphin_tracker.services.visits import VisitService
 
 SettingsDep = Annotated[Settings, Depends(get_settings)]
@@ -200,6 +201,13 @@ def get_store_search_service(
     stores: Annotated[StoreRepository, Depends(get_store_repository)],
 ) -> StoreSearchService:
     return StoreSearchService(projects, stores)
+
+
+def get_visit_search_service(
+    projects: Annotated[ProjectRepository, Depends(get_project_repository)],
+    stores: Annotated[StoreRepository, Depends(get_store_repository)],
+) -> VisitSearchService:
+    return VisitSearchService(projects, stores)
 
 
 def get_visit_repository(table: Annotated[object, Depends(get_table)]) -> VisitRepository:

@@ -215,6 +215,28 @@ export function useSetExternalId(projectId: string) {
   });
 }
 
+/** Set a store's tag (PUT …/tag). Not optimistic: the server checks the tag is one of the project's options. */
+export function useSetStoreTag(projectId: string) {
+  const store = useStoreStopInCaches(projectId);
+  return useMutation({
+    mutationFn: ({ uid, tag }: { uid: string; tag: string }) => storesApi.setTag(projectId, uid, tag),
+    onSuccess: (stop) => store(stop),
+  });
+}
+
+/** "Ignore mismatch" / "Undo" on a done store short of screen rows. Refreshes the project, whose Needs review tile
+ *  counts it. */
+export function useIgnoreMismatch(projectId: string) {
+  const client = useQueryClient();
+  const store = useStoreStopInCaches(projectId);
+  return useMutation({
+    mutationFn: ({ uid, ignore }: { uid: string; ignore: boolean }) =>
+      storesApi.updateProgress(projectId, uid, { ignore_mismatch: ignore }),
+    onSuccess: (stop) => store(stop),
+    onSettled: () => client.invalidateQueries({ queryKey: keys.project(projectId) }),
+  });
+}
+
 export function useUpdateProgress(projectId: string) {
   const client = useQueryClient();
   const store = useStoreStopInCaches(projectId);

@@ -5,7 +5,7 @@ from __future__ import annotations
 from dolphin_tracker.domain.errors import NotFoundError, ValidationFailed
 from dolphin_tracker.domain.lists import REPLACED_WITH_SUBCATEGORIES, NameListKind
 from dolphin_tracker.domain.models import Page, Project, Stop
-from dolphin_tracker.domain.visits import Visit, VisitInput, store_outcome
+from dolphin_tracker.domain.visits import StoreComment, StoreCommentInput, Visit, VisitInput, store_outcome
 from dolphin_tracker.repositories.projects import ProjectRepository
 from dolphin_tracker.repositories.stores import StoreRepository
 from dolphin_tracker.repositories.visits import VisitRepository
@@ -85,3 +85,34 @@ class VisitService:
         self._lists.remember(NameListKind.INSTALLERS, visit.installer)
         self._lists.remember(NameListKind.MANAGERS, visit.dolphin_manager)
         return visit
+
+    # ---- store comments: store-level log entries, no screen ------------------------------------------------
+
+    def on_route(self, project_id: str, stop_uid: str) -> bool:
+        """Whether the store is on a route plan now (someone who only logs visits may comment on it then)."""
+        return bool(self._load(project_id, stop_uid)[1].route_plan_id)
+
+    def list_comments(
+        self, project_id: str, stop_uid: str, *, limit: int = 50, cursor: str | None = None
+    ) -> Page[StoreComment]:
+        self._load(project_id, stop_uid)
+        return self._visits.list_store_comments(project_id, stop_uid, limit=limit, cursor=cursor)
+
+    def add_comment(
+        self, project_id: str, stop_uid: str, body: StoreCommentInput, *, created_by: str = ""
+    ) -> StoreComment:
+        """Record the comment as a log entry and make it the store's comment. Unlike a visit it marks no screen
+        visited and leaves the plan's stop as it is."""
+        project, stop = self._load(project_id, stop_uid)
+        plan_id = body.route_plan_id or stop.route_plan_id
+        plan_day = self._plans.stop_day(plan_id, project.id, stop.uid) if plan_id and self._plans else None
+        in_plan = plan_day is not None
+        return self._visits.add_store_comment(StoreComment(
+            **body.model_dump(exclude={"route_plan_id"}),
+            route_plan_id=plan_id if in_plan else "",
+            plan_name=self._plans.plan_name(plan_id) if in_plan and self._plans else "",
+            plan_day=plan_day,
+            project_id=project.id,
+            stop_uid=stop.uid,
+            created_by=created_by,
+        ))

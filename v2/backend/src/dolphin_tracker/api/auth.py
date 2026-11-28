@@ -48,6 +48,7 @@ POLICY: dict[tuple[str, str], Permission | str] = {
     ("POST", _PROJECT + "/routing/recluster"): P.PROJECTS_EDIT,
     ("POST", _PROJECT + "/stops/{stop_uid}/reassign"): P.PROJECTS_EDIT,
     ("POST", _PROJECT + "/screen-sheet"): P.PROJECTS_EDIT,
+    ("PUT", _PROJECT + "/tag-options"): P.STORES_TAG,
     # Stores
     ("GET", _PROJECT + "/stores"): P.PROJECTS_VIEW,
     ("POST", _PROJECT + "/stores"): P.PROJECTS_EDIT,
@@ -63,6 +64,7 @@ POLICY: dict[tuple[str, str], Permission | str] = {
     ("GET", _STORE): P.PROJECTS_VIEW,
     ("DELETE", _STORE): P.STORES_DELETE,
     ("PUT", _STORE + "/external-id"): P.PROJECTS_EDIT,
+    ("PUT", _STORE + "/tag"): P.STORES_TAG,
     # Open to whoever logs visits; the handler then holds them to a store on a route and to a few fields
     # (domain.auth.store_edit_problem).
     ("PATCH", _STORE): P.VISITS_LOG,
@@ -70,6 +72,11 @@ POLICY: dict[tuple[str, str], Permission | str] = {
     ("PATCH", _STORE + "/progress"): P.VISITS_LOG,
     ("GET", _STORE + "/visits"): P.PROJECTS_VIEW,
     ("POST", _STORE + "/visits"): P.VISITS_LOG,
+    # Log Visit: find a store in any project to log a visit to (without a project or a route open).
+    ("GET", "/api/visit-search"): P.VISITS_LOG,
+    # Store comments as log entries of their own (no screen); posting one also sets the store's comment.
+    ("GET", _STORE + "/comments"): P.PROJECTS_VIEW,
+    ("POST", _STORE + "/comments"): P.VISITS_LOG,
     # Sheets
     ("POST", "/api/jobs/imports"): P.PROJECTS_EDIT,
     ("PUT", "/api/jobs/{job_id}/upload"): P.PROJECTS_EDIT,
@@ -119,6 +126,9 @@ POLICY: dict[tuple[str, str], Permission | str] = {
     ("GET", _PROJECT + "/device-sync/review"): P.PROJECTS_VIEW,
     ("POST", _PROJECT + "/device-sync/review/{key}/add"): P.PROJECTS_EDIT,
     ("POST", _PROJECT + "/device-sync/review/{key}/snooze"): P.PROJECTS_EDIT,
+    # Screens of another PA at a store's address: seen like the review list, marked reviewed like "Not now".
+    ("GET", _PROJECT + "/device-sync/other-pa"): P.PROJECTS_VIEW,
+    ("POST", _PROJECT + "/device-sync/other-pa/{key}/reviewed"): P.PROJECTS_EDIT,
     ("POST", _PROJECT + "/device-sync/overwrite"): P.PROJECTS_EDIT,
     ("POST", _STORE + "/device-overwrite"): P.PROJECTS_EDIT,
     ("GET", _STORE + "/device-logs"): P.PROJECTS_VIEW,

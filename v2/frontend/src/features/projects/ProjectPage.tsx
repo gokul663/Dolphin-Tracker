@@ -90,6 +90,13 @@ export function ProjectPage() {
     setReviewing(false);
     navigate("stores");
   };
+  // A store named in Needs review (a screen of another PA at its address): its drawer on the Stores tab.
+  const openStore = (uid: string) => {
+    useStoresUi.getState().enterProject(project.id);
+    useStoresUi.getState().select(uid, true);
+    setReviewing(false);
+    navigate("stores");
+  };
   return (
     <section className="space-y-4">
       {/* One row, as in v1: back + name, the KPI strip, then the sections. */}
@@ -115,6 +122,7 @@ export function ProjectPage() {
           <ProjectKpis
             kpi={project.kpi}
             reviewCount={project.device_sync?.review_count ?? 0}
+            otherPaCount={project.device_sync?.other_pa_count ?? 0}
             onDeviceReview={() => openReview()}
             onMissingScreens={showMissingScreens}
             activeBuckets={activeBuckets}
@@ -168,7 +176,7 @@ export function ProjectPage() {
         </div>
       </div>
       <Outlet context={{ project, openReview }} />
-      {project.device_sync && <ReviewDialog project={project} open={reviewing} search={reviewSearch} onClose={() => setReviewing(false)} onMissingScreens={showMissingScreens} />}
+      {project.device_sync && <ReviewDialog project={project} open={reviewing} search={reviewSearch} onClose={() => setReviewing(false)} onMissingScreens={showMissingScreens} onOpenStore={openStore} />}
     </section>
   );
 }

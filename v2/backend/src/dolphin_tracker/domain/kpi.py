@@ -35,7 +35,7 @@ FINISHED = frozenset({ScreenStatus.ARCHIVED, ScreenStatus.CANCELLED})
 KPI_ATTRIBUTES = (
     "uid", "status", "screens", "installer", "installer_name", "fields", "dma", "venue_type",
     "committed_dolphin_screens", "committed_store_tvs", "addr", "city", "state", "zip", "install_type",
-    "screen_visits", "last_planned_at", "needs_attention",
+    "screen_visits", "last_planned_at", "needs_attention", "mismatch_ignore",
 )
 # A store whose screen rows are all on the wall: nothing more is planned there.
 DONE_STORE = frozenset({ScreenStatus.COMPLETED, ScreenStatus.OFFLINE})
@@ -45,6 +45,31 @@ def missing_screens(status: ScreenStatus, committed: int, rows: int) -> int:
     """Committed screens with no screen row at a store that reads as done (Completed or Offline): the sheet promised
     more than was put in, so someone has to look ("needs review"). 0 for any other store."""
     return max(0, committed - rows) if status in DONE_STORE else 0
+
+
+class MismatchIgnore(ApiModel):
+    """Someone looked at a done store's missing screens and chose to ignore them: the committed total and the
+    number of screen rows at that moment. The ignore holds only while both numbers stay the same."""
+
+    committed: int = Field(ge=0)
+    rows: int = Field(ge=0)
+
+
+def ignore_holds(ignore: MismatchIgnore | Mapping[str, Any] | None, committed: int, rows: int) -> bool:
+    """The stored ignore still applies: it was set for exactly these numbers. `ignore` is the stop's model value
+    or, in a KPI projection, its stored map."""
+    if not ignore:
+        return False
+    data = ignore if isinstance(ignore, Mapping) else ignore.model_dump()
+    return data.get("committed") == committed and data.get("rows") == rows
+
+
+def review_missing(
+    status: ScreenStatus, committed: int, rows: int, ignore: MismatchIgnore | Mapping[str, Any] | None
+) -> int:
+    """`missing_screens`, except 0 while a matching ignore is stored: what the Needs review tile counts."""
+    missing = missing_screens(status, committed, rows)
+    return 0 if missing and ignore_holds(ignore, committed, rows) else missing
 
 
 def _zeroes() -> dict[str, int]:
@@ -97,6 +122,7 @@ class Kpi(ApiModel):
     # stick each) and the project's prices, the hardware cost.
     installed_dolphin_by_model: dict[str, int] = Field(default_factory=dict)
     # Done stores (Completed or Offline) with fewer screen rows than the sheet committed, and how many are missing.
+    # A store whose mismatch was ignored (for its current numbers) is left out.
     review_stores: int = 0
     review_screens: int = 0
     actual_dolphin_screens: int = 0  # screen rows with is_dolphin_screen
@@ -186,7 +212,7 @@ def kpi_summary(rows: Iterable[Mapping[str, Any]]) -> Kpi:
             else:
                 kpi.actual_store_tvs += 1
         committed = (row.get("committed_dolphin_screens") or 0) + (row.get("committed_store_tvs") or 0)
-        missing = missing_screens(status, committed, len(screens))
+        missing = review_missing(status, committed, len(screens), row.get("mismatch_ignore"))
         kpi.review_screens += missing
         kpi.review_stores += bool(missing)
         kpi.committed_dolphin_screens += row.get("committed_dolphin_screens") or 0

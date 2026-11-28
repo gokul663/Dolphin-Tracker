@@ -140,7 +140,7 @@ export function markerSvg(
   const ink = fill ? "#0f172a" : bucketInk(bucketOf(status));
   const label = text ?? (count > 1 ? (count > 99 ? "99+" : String(count)) : "");
   const wide = label.length > 2;
-  const ring = emphasis === "selected" ? "#0f172a" : emphasis === "hover" ? "#0891b2" : "#ffffff";
+  const ring = emphasis === "selected" ? "#0f172a" : emphasis === "hover" ? "#009dda" : "#ffffff";
   const svg =
     `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="50" viewBox="0 0 40 50">` +
     `<path fill="${color}" stroke="${ring}" stroke-width="3" d="M20 3C11.2 3 4 10.2 4 19c0 11.8 16 28 16 28s16-16.2 16-28C36 10.2 28.8 3 20 3z"/>` +

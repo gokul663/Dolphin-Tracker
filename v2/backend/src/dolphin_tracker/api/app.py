@@ -18,6 +18,7 @@ from dolphin_tracker.api.routers import (
     screen_sheet,
     stores,
     technician,
+    visit_search,
     visits,
 )
 from dolphin_tracker.config import Settings, get_settings
@@ -63,6 +64,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     api.include_router(jobs.router)
     api.include_router(lists.router)
     api.include_router(visits.router)
+    api.include_router(visits.comments_router)
+    api.include_router(visit_search.router)
     api.include_router(route_plans.router)
     api.include_router(device_sync.router)
     api.include_router(screen_sheet.router)

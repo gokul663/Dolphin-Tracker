@@ -8,7 +8,9 @@ export function makeProject(overrides: Partial<Project> = {}): Project {
     field_agent: "Fay", partner_account: "Acme", pa_percentage: 40, dolphin_percentage: 60, store_percentage: null,
     fa_percentage: null, hardware_costs: { stick: null, screens: [], mounts: [], hidden: false }, uploads: [], stops_per_day: 8, field_schema: DEFAULT_SCHEMA_FOR_TESTS, import_mappings: {},
     routing_status: "ready", routing_job_id: "", stop_count: 3, version: 1, created_at: "2026-10-01T00:00:00+00:00",
-    updated_at: "2026-10-01T00:00:00+00:00", ...overrides,
+    updated_at: "2026-10-01T00:00:00+00:00",
+    tag_options: ["To Do", "In progress", "Done"],
+    ...overrides,
   };
 }
 
@@ -42,7 +44,7 @@ export function makeSummary(overrides: Partial<ProjectSummary> = {}): ProjectSum
 export function makeScreen(overrides: Partial<Screen> = {}): Screen {
   return {
     id: "sc1", stick_number: "", venue_id: "", screen_size: "", is_dolphin_screen: true, screen_type: "", cms_name: "", venue_type: "", has_mount: false,
-    has_ceiling_mount: false, needs_mount: false, status: "Upcoming", status_changed_at: "", device: null, ...overrides,
+    has_ceiling_mount: false, needs_mount: false, status: "Upcoming", status_changed_at: "", device: null, pictures: [], ...overrides,
   };
 }
 
@@ -66,7 +68,12 @@ export function makeStop(overrides: Partial<Stop> = {}): Stop {
     status, comment: "", review_notes: "", additional_task: false, installer_name: "", route_stale: false, route_plan_id: "",
     last_planned_at: "", screen_visits: {}, last_visit_at: "",
     updated_at: "2026-10-01T00:00:00+00:00", updated_by: "", needs_attention: [], device: null,
-    device_alert_ignored: "", ...overrides,
+    device_alert_ignored: "",
+    // Tag, mismatch ignore and the numbers the server works out from the screens (pass them when a test needs them).
+    tag: "", mismatch_ignore: null,
+    effective_mounts_needed: { wall_24: 0, wall: 0, ceiling: 0 }, effective_mounts_needed_total: 0, effective_mounts_used: 0,
+    committed_screens_total: 0, installed_screens_total: 0, screen_mismatch: false, mismatch_ignored: false,
+    ...overrides,
   };
 }
 

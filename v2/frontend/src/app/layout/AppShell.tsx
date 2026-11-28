@@ -7,14 +7,16 @@ import { ROLE_LABEL, ROLES, useMe } from "@/lib/auth/me";
 import { useQuery } from "@tanstack/react-query";
 import { TechnicianHome } from "@/features/technician/TechnicianHome";
 import { api } from "@/lib/api/client";
-import type { NameEntry, Page } from "@/lib/api/types";
+import type { NameEntry, Page, Permission } from "@/lib/api/types";
 import { getDevInstaller, profilePicture, setDevInstaller, setDevRole, signOut } from "@/lib/auth/token";
 import { cn } from "@/lib/utils";
 
-const NAV = [
+const NAV: { to: string; label: string; match: (path: string) => boolean; permission?: Permission }[] = [
   { to: "/", label: "Projects", match: (path: string) => path === "/" || path.startsWith("/projects") },
   { to: "/planner", label: "Route Planner", match: (path: string) => path.startsWith("/planner") },
   { to: "/installers", label: "Installers", match: (path: string) => path.startsWith("/installers") },
+  // Shown only to those who may log a visit (the page offers nothing else).
+  { to: "/log-visit", label: "Log Visit", match: (path: string) => path.startsWith("/log-visit"), permission: "visits.log" },
 ];
 
 /** The signed-in person's Google photo, or their initials on the brand colour when there is none. */
@@ -130,10 +132,10 @@ export function AppShell() {
       <header className="sticky top-0 z-30 flex flex-wrap items-center justify-between gap-3 border-b bg-white/95 px-6 py-3 shadow-sm backdrop-blur">
         <div className="flex flex-wrap items-center gap-6">
           <Link to="/" className="font-display text-3xl leading-none tracking-[4px]">
-            <span className="text-brand">DOLPHIN</span> <span>TRACKER</span>
+            <span className="text-brand">DOLPHIN</span> <span className="text-brand-magenta">TRACKER</span>
           </Link>
           <nav aria-label="Main" className="flex gap-1">
-            {(me?.role === "technician" ? [] : NAV).map((item) => (
+            {(me?.role === "technician" ? [] : NAV.filter((item) => !item.permission || me?.permissions.includes(item.permission))).map((item) => (
               <Link
                 key={item.to}
                 to={item.to}

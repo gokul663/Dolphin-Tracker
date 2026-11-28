@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router";
 import { ArrowLeft, CalendarPlus, Download, Lock, Pencil, Plus, X } from "lucide-react";
 import { toast } from "sonner";
@@ -52,6 +52,14 @@ export function PlanPage() {
     return tab === ALL ? bundle.stops : bundle.stops.filter((stop) => stop.installer === tab);
   }, [bundle, tab, pickedDay]);
   const pins = useMemo(() => (bundle ? planPins(bundle, mapStops) : []), [bundle, mapStops]);
+  // The opened store as the plan has it now (it may have been marked or moved since the window opened).
+  const openedNow = opened && bundle ? [...bundle.stops, ...bundle.removed].find((stop) => planStopKey(stop) === planStopKey(opened)) : undefined;
+  const openedGone = Boolean(opened && bundle) && (!openedNow || openedNow.installer !== opened!.installer || openedNow.day !== opened!.day || Boolean(openedNow.removed) !== Boolean(opened!.removed));
+  useEffect(() => {
+    // Moved to another day or installer, set aside, or out of the plan: its window (and the day it logs for) is
+    // no longer right, so it closes.
+    if (openedGone) setOpened(null);
+  }, [openedGone]);
 
   if (query.isPending) return <Card className="p-8 text-center font-mono text-slate-500">Loading plan…</Card>;
   if (query.isError || !bundle) {
@@ -91,6 +99,25 @@ export function PlanPage() {
       toast.error(error instanceof Error ? error.message : fallback);
     }
   };
+  // A stop's own actions, from its day card, the Move dialog, or its store window.
+  const markStop = (stop: PlanStop, state: StopState) =>
+    void run(
+      () => mutations.mark.mutateAsync({ projectId: stop.project_id, uid: stop.stop_uid, body: { outcome: state === "route" ? "" : state } }),
+      `${stop.store_name}: ${STOP_STATE_LABEL[state]}`,
+      "Could not change it",
+    );
+  const unpinStop = (stop: PlanStop) =>
+    void run(
+      () => mutations.mark.mutateAsync({ projectId: stop.project_id, uid: stop.stop_uid, body: { pinned: false } }),
+      `${stop.store_name} can be recalculated again`,
+      "Could not change it",
+    );
+  const setAside = (stop: PlanStop) =>
+    void run(
+      () => mutations.setAside.mutateAsync({ projectId: stop.project_id, uid: stop.stop_uid }),
+      `${stop.store_name} is off ${stop.installer}'s day ${stop.day}, kept with the plan as removed`,
+      "Could not remove it from the day",
+    );
 
   return (
     <div className="space-y-4">
@@ -261,20 +288,8 @@ export function PlanPage() {
                         active={active}
                         onOpen={setOpened}
                         onMove={setMoving}
-                        onMark={(stop, state) =>
-                          void run(
-                            () => mutations.mark.mutateAsync({ projectId: stop.project_id, uid: stop.stop_uid, body: { outcome: state === "route" ? "" : state } }),
-                            `${stop.store_name}: ${STOP_STATE_LABEL[state]}`,
-                            "Could not change it",
-                          )
-                        }
-                        onUnpin={(stop) =>
-                          void run(
-                            () => mutations.mark.mutateAsync({ projectId: stop.project_id, uid: stop.stop_uid, body: { pinned: false } }),
-                            `${stop.store_name} can be recalculated again`,
-                            "Could not change it",
-                          )
-                        }
+                        onMark={markStop}
+                        onUnpin={unpinStop}
                         onUnlock={() =>
                           void run(
                             () => mutations.setDayLock.mutateAsync({ installer: installer.name, day: day.number, locked: false, version: plan.version }),
@@ -341,8 +356,19 @@ export function PlanPage() {
         plan={
           opened && active
             ? {
-                // The stop as the plan has it now (it may have been marked since the window opened).
-                state: stopState([...bundle.stops, ...bundle.removed].find((stop) => planStopKey(stop) === planStopKey(opened)) ?? opened),
+                state: stopState(openedNow ?? opened),
+                // The day card's actions for this stop, through the same dialogs and calls.
+                actions: openedNow && {
+                  byVisits: openedNow.screen_ids.length > 0 && openedNow.screen_ids.every((id) => openedNow.visited_screens.includes(id)),
+                  hasVisit: openedNow.visited_screens.length > 0,
+                  pinned: openedNow.pinned,
+                  removed: Boolean(openedNow.removed),
+                  onMove: () => setMoving(openedNow),
+                  onMark: (state) => markStop(openedNow, state),
+                  onUnpin: () => unpinStop(openedNow),
+                  onSetAside: () => setAside(openedNow),
+                  onRemove: () => setRemoving(openedNow),
+                },
               }
             : undefined
         }
@@ -363,13 +389,7 @@ export function PlanPage() {
         stop={moving}
         onClose={() => setMoving(null)}
         onRemove={setRemoving}
-        onSetAside={(stop) =>
-          void run(
-            () => mutations.setAside.mutateAsync({ projectId: stop.project_id, uid: stop.stop_uid }),
-            `${stop.store_name} is off ${stop.installer}'s day ${stop.day}, kept with the plan as removed`,
-            "Could not remove it from the day",
-          )
-        }
+        onSetAside={setAside}
       />
       <ConfirmDialog
         open={removing !== null}

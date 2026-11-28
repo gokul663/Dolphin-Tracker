@@ -68,6 +68,8 @@ What is stored where (all under `PK = PROJECT#<id>`):
 | `STOP#` · `device_alert_ignored` | ignore | the report day the alert was ignored for |
 | `STOP#` · `dma`, `venue_type` | sync | only when blank |
 | `DEVREVIEW#<venue key>` | sync (replace), snooze, add (delete) | one item per unknown venue |
+| `DEVOTHERPA#<venue key>:<store uid>` | sync (replace), reviewed (delete) | screens of another PA at our addresses (2.8) |
+| `DEVPAOK#<venue key>:<store uid>:<PA>` | "Reviewed, it's fine" | bare marker, kept for good |
 
 ## 2. Decision flows
 
@@ -183,6 +185,40 @@ flowchart TD
   Q4 --> Q5["Store at the report's lat/lng (no Google check)<br/>a value the store rules refuse is left blank<br/>flags: address (no location), external_id, store_name"]
   Q5 --> Q6["StoreService.append"] --> Q7["the sync of 2.2 on the same snapshot"]
 ```
+
+### 2.8 Screens from another PA at our addresses
+
+Added 2026-11-27. Some stores have a second screen registered in the CMS under another PA, or under none: an ATM
+screen at the store, say. Each sync lists them in Needs review, in their own section, for a check only. They are never
+added to the project and nothing in the stores changes; any fix is made in the CMS.
+
+```mermaid
+flowchart TD
+  V["every venue of the all-venues list<br/>(domain/venues.py)"] --> V1{"its PA (name_key) is the<br/>project's device PA?"}
+  V1 -- yes --> NO["Not here: a record of our PA<br/>is in the new-records list (2.5)"]
+  V1 -- "no, or blank" --> V2{"Archived, or its DD code<br/>already in a store of ours?"}
+  V2 -- yes --> NO2["Skip"]
+  V2 -- no --> V3{"same normalised address as a store<br/>(sheet or Dolphin data address)?"}
+  V3 -- no --> NO2
+  V3 -- yes --> V4{"(DD code, store, PA) marked<br/>Reviewed, it's fine?"}
+  V4 -- yes --> NO2
+  V4 -- no --> L["Listed: one row per screen and store<br/>counted as other_pa_count"]
+```
+
+- Address alone matches here on purpose: it only raises an alert, it never merges (the store rule stays ExtID, or
+  PA + address). A store with no street matches nothing. A project without a device PA has no such list.
+- "Reviewed, it's fine" is permanent, unlike Not now: it is kept for the situation (DD code, our store, the PA it had,
+  normalised; blank is a value). Another PA, or another store of ours at that address, lists it again. A situation
+  reviewed once stays reviewed, so a screen that goes PA1 → PA2 → PA1 is hidden again under PA1 once PA1 was reviewed.
+  A screen whose PA becomes the project's is no longer here and shows in the new-records list, where Add works as
+  always (the marker is never read there).
+- Routes: `GET /projects/{id}/device-sync/other-pa` (paginated, `projects.view`) and
+  `POST /projects/{id}/device-sync/other-pa/{key}/reviewed` (`projects.edit`, like Not now).
+- How fresh: the all-venues list takes the project's own PA at every sync, and every PA (and the venues with no PA,
+  `snapshot("")`) once a day in the 12:00 UTC run, which now refreshes it before it syncs the projects. So the other
+  PAs are as of the last daily run: the same report day for the daily sync, up to a day behind for a sync on open or
+  "Sync now" made after the CMS loaded a new day. A venue the report stops listing is never removed from the list
+  (it keeps its last values), so a screen deleted from the CMS stays listed until it is reviewed.
 
 ## 3. Findings
 

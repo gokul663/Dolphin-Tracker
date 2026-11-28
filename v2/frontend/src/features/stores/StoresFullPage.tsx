@@ -8,6 +8,8 @@ import { useProject } from "@/features/projects/api";
 import { useStoresOverview } from "@/features/stores/api";
 import { BucketChips } from "@/features/stores/BucketChips";
 import { FilterBar } from "@/features/stores/FilterBar";
+import { NearbyControl, useNearbyPinActions } from "@/features/stores/NearbyControl";
+import { StoreDrawer } from "@/features/stores/StoreDrawer";
 import { toStoreFilters } from "@/features/stores/filters";
 import { StoresToolbar } from "@/features/stores/StoresToolbar";
 import { UnitToggle } from "@/features/stores/StoresViewControls";
@@ -33,19 +35,31 @@ export function StoresFullPage({ view }: { view: "map" | "states" }) {
       toggleFacet: state.toggleFacet,
       toggleState: state.toggleState,
       setUnit: state.setUnit,
+      selectedId: state.selectedId,
+      drawerOpen: state.drawerOpen,
+      select: state.select,
+      closeDrawer: state.closeDrawer,
     })),
   );
+  const pinActions = useNearbyPinActions();
 
   const needsAttention = useStoresUi((state) => state.needsAttention);
+  const ranges = useStoresUi((state) => state.ranges);
+  const near = useStoresUi((state) => state.near);
+  const numbers = useStoresUi((state) => state.numbers);
   // The link's filters, once, when the page opens.
   useEffect(() => ui.loadView(projectId, viewFromParams(params)), [projectId]); // eslint-disable-line react-hooks/exhaustive-deps
   const ready = ui.projectId === projectId;
   // Every change goes back into the address bar.
   useEffect(() => {
-    if (ready) setParams(viewToParams({ search: ui.search, facets: ui.facets, unit: ui.unit, needsAttention }), { replace: true });
-  }, [ready, ui.search, ui.facets, ui.unit, needsAttention, setParams]);
+    if (ready) setParams(viewToParams({ search: ui.search, facets: ui.facets, unit: ui.unit, needsAttention, ranges, near, numbers }), { replace: true });
+  }, [ready, ui.search, ui.facets, ui.unit, needsAttention, ranges, near, numbers, setParams]);
 
-  const selection = useMemo(() => toStoreFilters(ui.facets, ui.search, needsAttention), [ui.facets, ui.search, needsAttention]);
+  const selection = useMemo(
+    () => toStoreFilters(ui.facets, ui.search, needsAttention, { ranges, near, numbers }),
+    [ui.facets, ui.search, needsAttention, ranges, near, numbers],
+  );
+  const circle = useMemo(() => (near ? { lat: near.lat, lng: near.lng, radiusMiles: near.radius, label: near.address } : null), [near]);
   const filters: StoreFilters = useMemo(() => ({ ...selection, sort: "store_name", dir: "asc" }), [selection]);
   const overview = useStoresOverview(projectId, selection, ui.unit === "screens" ? "screens" : "stores"); // one request
   const pins = { data: overview.data?.pins };
@@ -76,7 +90,19 @@ export function StoresFullPage({ view }: { view: "map" | "states" }) {
         <FilterBar options={options.data} facets={ui.facets} onToggle={ui.toggleFacet} />
       </StoresToolbar>
       {view === "map" ? (
-        <MapView className="min-h-0 flex-1" pins={pins.data ?? []} unit={ui.unit} />
+        <MapView
+          className="min-h-0 flex-1"
+          pins={pins.data ?? []}
+          unit={ui.unit}
+          popup
+          // A double click, the pop-up's Open store or an entry of a several-stores pop-up opens the store window.
+          onOpen={(uid) => ui.select(uid, true)}
+          onPinClick={pinActions.onPinClick}
+          onNearby={pinActions.onNearby}
+          selectedId={ui.selectedId}
+          controls={<NearbyControl />}
+          circle={circle}
+        />
       ) : (
         <div className="min-h-0 flex-1 overflow-y-auto">
           <Suspense fallback={<Card className="h-56 animate-pulse bg-slate-50" aria-label="Top states (loading)" />}>
@@ -84,6 +110,7 @@ export function StoresFullPage({ view }: { view: "map" | "states" }) {
           </Suspense>
         </div>
       )}
+      <StoreDrawer project={project.data} stopId={ui.selectedId} open={ui.drawerOpen} onClose={ui.closeDrawer} />
     </section>
   );
 }

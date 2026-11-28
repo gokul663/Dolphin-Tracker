@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { PlanPage } from "@/features/planner/PlanPage";
 import { mockApi, renderWithProviders } from "@/test/render";
 import { makeBundle, makePlanStop, makeRoutePlan } from "@/test/planFixtures";
+import { makeKpi, makeProject, makeScreen, makeStop } from "@/test/fixtures";
 import type { Role } from "@/lib/api/types";
 
 function renderPlan(bundle = makeBundle(), extra: Parameters<typeof mockApi>[0] = {}, role: Role = "super_admin") {
@@ -121,6 +122,41 @@ describe("PlanPage", () => {
     await userEvent.click(within(dialog).getByRole("button", { name: "Move" }));
     await waitFor(() => expect(api.calls.some((call) => call.url.pathname.endsWith("/b/move"))).toBe(true));
     expect(api.calls.find((call) => call.url.pathname.endsWith("/b/move"))!.body).toEqual({ installer: "East", day: 2, to_plan_id: null, version: 3 });
+  });
+
+  it("the store window's Move uses the planner's Move dialog; once the stop is on another day the window closes", async () => {
+    let current = makeBundle();
+    const store = makeStop({ uid: "b", store_name: "Store b", screens: [makeScreen({ id: "b-s1" })] });
+    const api = renderPlan(current, {
+      "GET /api/route-plans/plan1": () => current,
+      "GET /api/route-plans": () => ({ items: [makeRoutePlan()], next_cursor: null }),
+      "GET /api/projects/p1": () => ({ kpi: makeKpi(), ...makeProject() }),
+      "GET /api/projects/p1/stores/b": () => store,
+      "GET /api/projects/p1/stores/b/visits": () => ({ items: [], next_cursor: null }),
+      "GET /api/projects/p1/stores/b/comments": () => ({ items: [], next_cursor: null }),
+      "GET /api/config/store-fields": () => [],
+      "GET /api/lists/categories": () => [],
+      "GET /api/lists/installers": () => ({ items: [], next_cursor: null }),
+      "GET /api/lists/managers": () => ({ items: [], next_cursor: null }),
+      "POST /api/route-plans/plan1/stops/p1/b/move": () => {
+        current = makeBundle();
+        current.stops = current.stops.map((stop) => (stop.stop_uid === "b" ? { ...stop, installer: "East", day: 2, pinned: true } : stop));
+        return current;
+      },
+    });
+    const today = await screen.findByRole("region", { name: "West, day 1" });
+    await userEvent.click(within(today).getByRole("button", { name: "Open Store b" }));
+    const window = await screen.findByRole("dialog", { name: "Store b" });
+    await userEvent.click(within(within(window).getByRole("group", { name: "Plan actions" })).getByRole("button", { name: /Move/ }));
+    const move = await screen.findByRole("dialog", { name: "Move Store b" });
+    await userEvent.click(within(move).getByRole("combobox", { name: "Move to installer" }));
+    await userEvent.click(await screen.findByRole("option", { name: "East" }));
+    await userEvent.clear(within(move).getByLabelText("Day"));
+    await userEvent.type(within(move).getByLabelText("Day"), "2");
+    await userEvent.click(within(move).getByRole("button", { name: "Move" }));
+    await waitFor(() => expect(api.calls.some((call) => call.url.pathname.endsWith("/b/move"))).toBe(true));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Store b" })).toBeNull());
+    expect(screen.queryByRole("dialog", { name: "Move Store b" })).toBeNull();
   });
 
   it("clicking a day shows only that day on the map, as a chip that clears; the same day again clears too", async () => {

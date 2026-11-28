@@ -5,6 +5,7 @@ import { DeviceSettings } from "@/features/device/DeviceSettings";
 import { HardwareCostsSection } from "@/features/settings/HardwareCostsSection";
 import { ScreenSheetSection } from "@/features/settings/ScreenSheetSection";
 import { SchemaEditor } from "@/features/settings/SchemaEditor";
+import { TagOptionsSection } from "@/features/settings/TagOptionsSection";
 import { UploadsSection } from "@/features/settings/UploadsSection";
 
 /** Project settings: metadata, hardware prices, the uploaded sheets and the store field schema. Installers and routing live in route plans. */
@@ -24,6 +25,7 @@ export function SettingsTab() {
       </div>
       <div className="min-w-0 space-y-4">
         <HardwareCostsSection project={project} />
+        <TagOptionsSection project={project} />
         <SchemaEditor project={project} />
       </div>
     </div>

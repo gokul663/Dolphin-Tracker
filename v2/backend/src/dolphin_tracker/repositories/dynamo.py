@@ -20,7 +20,11 @@ class Keys:
     STOP_PREFIX = "STOP#"
     EXTERNAL_ID_PREFIX = "EXT#"
     VISIT_PREFIX = "VISIT#"
+    STORE_COMMENT_PREFIX = "STORECOMMENT#"
     DEVICE_REVIEW_PREFIX = "DEVREVIEW#"
+    # Screens of another PA at a store's address (repositories/device_review.py), and the ones marked reviewed.
+    OTHER_PA_PREFIX = "DEVOTHERPA#"
+    OTHER_PA_REVIEWED_PREFIX = "DEVPAOK#"
 
     @staticmethod
     def project(project_id: str) -> dict[str, str]:
@@ -39,6 +43,15 @@ class Keys:
     def device_review(project_id: str, key: str) -> dict[str, str]:
         """A device-report record not in the project yet, by its venue_code_key."""
         return {"PK": f"PROJECT#{project_id}", "SK": f"{Keys.DEVICE_REVIEW_PREFIX}{key}"}
+
+    @staticmethod
+    def other_pa(project_id: str, key: str) -> dict[str, str]:
+        return {"PK": f"PROJECT#{project_id}", "SK": f"{Keys.OTHER_PA_PREFIX}{key}"}
+
+    @staticmethod
+    def other_pa_reviewed(project_id: str, situation: str) -> dict[str, str]:
+        """A marker only: the situation (screen, store, PA) is the whole of it."""
+        return {"PK": f"PROJECT#{project_id}", "SK": f"{Keys.OTHER_PA_REVIEWED_PREFIX}{situation}"}
 
     @staticmethod
     def job(job_id: str) -> dict[str, str]:
@@ -65,6 +78,15 @@ class Keys:
     def visit(project_id: str, stop_uid: str, created_at: str, visit_id: str) -> dict[str, str]:
         """Under the project, after the store's uid, so one store's visits are one range, oldest first."""
         return {"PK": f"PROJECT#{project_id}", "SK": f"{Keys.visit_prefix(stop_uid)}{created_at}#{visit_id}"}
+
+    @staticmethod
+    def store_comment_prefix(stop_uid: str) -> str:
+        return f"{Keys.STORE_COMMENT_PREFIX}{stop_uid}#"
+
+    @staticmethod
+    def store_comment(project_id: str, stop_uid: str, created_at: str, comment_id: str) -> dict[str, str]:
+        """A store-level log entry (repositories/visits.py), laid out like a visit beside it."""
+        return {"PK": f"PROJECT#{project_id}", "SK": f"{Keys.store_comment_prefix(stop_uid)}{created_at}#{comment_id}"}
 
     @staticmethod
     def name_list(kind: str) -> str:

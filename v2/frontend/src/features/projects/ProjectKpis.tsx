@@ -15,6 +15,7 @@ const HEADER_BUCKETS: StatusBucket[] = ["Completed", "Offline", "Not Registered"
 export function ProjectKpis({
   kpi,
   reviewCount = 0,
+  otherPaCount = 0,
   onDeviceReview,
   onMissingScreens,
   onNeedsAttention,
@@ -24,6 +25,8 @@ export function ProjectKpis({
   kpi: Kpi;
   /** Screens the Dolphin data reports for this PA that are in no store here. */
   reviewCount?: number;
+  /** Screens of another PA (or none) at one of the stores' addresses, not marked reviewed. */
+  otherPaCount?: number;
   onDeviceReview?: () => void;
   /** Show the done stores with fewer screens than committed. */
   onMissingScreens?: () => void;
@@ -36,8 +39,12 @@ export function ProjectKpis({
   const visits = kpi.by_visit ?? { none: 0, partly: 0, visited: 0 };
   const share = (count: number) => (kpi.screens_total ? `${Math.round((count / kpi.screens_total) * 1000) / 10}%` : "");
   const missing = kpi.review_screens ?? 0;
-  const review = reviewCount + missing;
-  const reviewParts = [reviewCount > 0 && `${reviewCount.toLocaleString()} new`, missing > 0 && `${missing.toLocaleString()} missing`].filter(Boolean);
+  const review = reviewCount + missing + otherPaCount;
+  const reviewParts = [
+    reviewCount > 0 && `${reviewCount.toLocaleString()} new`,
+    missing > 0 && `${missing.toLocaleString()} missing`,
+    otherPaCount > 0 && `${otherPaCount.toLocaleString()} other PA`,
+  ].filter(Boolean);
   const statusBubble = (bucket: StatusBucket) => {
     const count = kpi.screens_by_bucket?.[bucket] ?? 0;
     // The stores under a screen group: for Not Registered screens, the stores that read In Progress.
@@ -70,7 +77,7 @@ export function ProjectKpis({
           value={(screens.committedDolphin + screens.committedTvs).toLocaleString()}
           sub={`${(kpi.committed_stores ?? 0).toLocaleString()} stores`}
           note={`From the sheet: ${screens.committedDolphin} Dolphin screens · ${screens.committedTvs} store TVs`}
-          color="#0F5B7C"
+          color="#034EA1"
         />
         <Bubble
           label="Completed"
@@ -88,8 +95,8 @@ export function ProjectKpis({
           icon={<Inbox className="size-5" />}
           tone="cyan"
           ariaLabel={`${review} screens need review`}
-          title="Screens the Dolphin data reports for this PA that are in no store here, and committed screens missing at stores that read as done (Completed or Offline with fewer screen rows than the sheet committed)"
-          onClick={reviewCount > 0 ? onDeviceReview : onMissingScreens}
+          title="Screens the Dolphin data reports for this PA that are in no store here, committed screens missing at stores that read as done (Completed or Offline with fewer screen rows than the sheet committed), and screens of another PA at our stores' addresses"
+          onClick={reviewCount > 0 || otherPaCount > 0 ? onDeviceReview : onMissingScreens}
         />
         <AlertBubble
           label="Need attention"

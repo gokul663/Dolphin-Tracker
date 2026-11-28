@@ -20,7 +20,7 @@ export const STATUS_META: Record<ScreenStatus, { label: string; color: string; c
   Cancelled: { label: "Cancelled", color: "#3f3f46", chip: "bg-zinc-100 text-zinc-700 border-zinc-300" },
 };
 
-export const INSTALLER_COLORS = ["#0F5B7C", "#0891b2", "#7c3aed", "#dc2626", "#16a34a", "#ea580c", "#ca8a04"];
+export const INSTALLER_COLORS = ["#034EA1", "#009dda", "#7c3aed", "#dc2626", "#16a34a", "#ea580c", "#ca8a04"];
 
 export const PROJECT_TYPE_LABELS: Record<string, string> = {
   new_installation: "New Installation",

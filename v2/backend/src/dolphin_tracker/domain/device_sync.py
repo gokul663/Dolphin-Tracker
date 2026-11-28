@@ -14,6 +14,8 @@
 - Report records whose DD code no screen has are listed for review (Archived ones are not).
 - A project can also start from the report alone: every record no store has becomes a store of its own (records
   sharing an ExtID, else an address, are one store with a screen each), placed at the report's location.
+- A screen of another PA (or none) at the address of one of the stores is listed for a check, never added: an ATM
+  screen at the store, say. "Reviewed, it's fine" hides it for good, until its PA or the store it sits at changes.
 """
 from __future__ import annotations
 
@@ -23,6 +25,7 @@ from typing import Any
 from dolphin_tracker.domain.device import (
     DeviceRecord,
     DeviceSnapshot,
+    OtherPaScreen,
     ReviewItem,
     ScreenDevice,
     StoreDevice,
@@ -30,6 +33,7 @@ from dolphin_tracker.domain.device import (
     venue_code_key,
 )
 from dolphin_tracker.domain.import_mapping import dedupe_key_address
+from dolphin_tracker.domain.lists import name_key
 from dolphin_tracker.domain.models import (
     NeedsAttention,
     Screen,
@@ -40,6 +44,8 @@ from dolphin_tracker.domain.models import (
     derive_store_status,
 )
 from dolphin_tracker.domain.validation import normalize_external_id, validate_store_values
+from dolphin_tracker.domain.venues import CLOSED as VENUE_CLOSED
+from dolphin_tracker.domain.venues import REPORT_STATUS
 
 # Closed in the tracker: the report only says which of the two it is (did the device ever register).
 KEEP_STATUSES = frozenset({ScreenStatus.CANCELLED, ScreenStatus.ARCHIVED})
@@ -229,15 +235,17 @@ def store_for_record(record: DeviceRecord, stops: Iterable[Stop]) -> Stop | None
     wanted = dedupe_key_address({"addr": record.addr, "city": record.city, "state": record.state, "zip": record.zip})
     if not wanted:
         return None
-    for stop in stops:
-        keys = {dedupe_key_address({"addr": stop.addr, "city": stop.city, "state": stop.state, "zip": stop.zip})}
-        if stop.device:
-            device = stop.device
-            keys.add(dedupe_key_address({"addr": device.addr, "city": device.city, "state": device.state,
-                                         "zip": device.zip}))
-        if wanted in keys:
-            return stop
-    return None
+    return next((stop for stop in stops if wanted in stop_address_keys(stop)), None)
+
+
+def stop_address_keys(stop: Stop) -> set[str]:
+    """The store's normalised addresses: its sheet's and its Dolphin data's (none without a street)."""
+    keys = {dedupe_key_address({"addr": stop.addr, "city": stop.city, "state": stop.state, "zip": stop.zip})}
+    if stop.device:
+        device = stop.device
+        keys.add(dedupe_key_address({"addr": device.addr, "city": device.city, "state": device.state,
+                                     "zip": device.zip}))
+    return keys - {""}
 
 
 def placeholder_screen(screens: Iterable[Screen], record: DeviceRecord) -> Screen | None:
@@ -335,3 +343,56 @@ def stores_from_records(records: Iterable[DeviceRecord], stops: Iterable[Stop]) 
     groups.sort(key=lambda group: ((group[0].store_name or group[0].venue_name).lower() or "~",
                                    venue_code_key(group[0].venue_id)))
     return [store_input_from_records(group) for group in groups]
+
+
+# The all-venues list keeps a venue's status as a work status; shown here in the report's own word.
+_REPORT_WORD = {status: word.title() for word, status in REPORT_STATUS.items()}
+
+
+def _one_line(stop: Stop) -> str:
+    region = " ".join(filter(None, (stop.state, stop.zip)))
+    return ", ".join(part for part in (stop.addr, stop.city, region) if part)
+
+
+def other_pa_situation(item: OtherPaScreen) -> str:
+    """What "Reviewed, it's fine" is remembered for: this screen, at this store of ours, under this PA (normalised;
+    no PA is a value too). Another PA, or another store of ours, is a new situation and shows again."""
+    return f"{item.key}:{name_key(item.pa_name)}"
+
+
+def other_pa_screens(
+    venues: Iterable[Stop], stops: Iterable[Stop], device_pa: str, reviewed: set[str]
+) -> list[OtherPaScreen]:
+    """Screens of the Dolphin data (the all-venues list, `domain/venues.py`) at the same normalised address as one of
+    the project's stores, whose PA is not the project's device PA (or is blank) and whose DD code no store here has.
+    Address alone on purpose: this only asks for a check, it never merges. Archived venues are skipped, as in review;
+    `reviewed` holds the `other_pa_situation`s someone marked fine. Nothing without a device PA."""
+    ours = name_key(device_pa)
+    if not ours:
+        return []
+    stops = list(stops)
+    known = {venue_code_key(code) for stop in stops for screen in stop.screens for code in split_codes(screen.venue_id)}
+    at: dict[str, list[Stop]] = {}
+    for stop in stops:
+        for address in stop_address_keys(stop):
+            at.setdefault(address, []).append(stop)
+    items: list[OtherPaScreen] = []
+    for venue in venues:
+        if not venue.screens or name_key(venue.pa) == ours:
+            continue
+        screen = venue.screens[0]
+        code = venue_code_key(screen.venue_id)
+        if not code or code in known or screen.status in VENUE_CLOSED:
+            continue
+        address = dedupe_key_address({"addr": venue.addr, "city": venue.city, "state": venue.state, "zip": venue.zip})
+        for stop in at.get(address, []) if address else []:
+            item = OtherPaScreen(
+                key=f"{code}:{stop.uid}", venue_id=screen.venue_id, pa_name=venue.pa.strip(),
+                venue_name=screen.cms_name, status=_REPORT_WORD.get(screen.status, str(screen.status)),
+                stop_uid=stop.uid, store_name=stop.store_name, external_id=stop.external_id,
+                address=_one_line(stop),
+            )
+            if other_pa_situation(item) not in reviewed:
+                items.append(item)
+    items.sort(key=lambda item: (item.store_name.lower() or "~", item.key))
+    return items

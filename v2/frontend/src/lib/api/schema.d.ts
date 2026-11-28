@@ -249,6 +249,26 @@ export interface paths {
         patch: operations["update_project_api_projects__project_id__patch"];
         trace?: never;
     };
+    "/api/projects/{project_id}/tag-options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Tag Options
+         * @description The tags a store of this project may carry. Stores keep a tag that is taken off the list.
+         */
+        put: operations["set_tag_options_api_projects__project_id__tag_options_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects/{project_id}/routes": {
         parameters: {
             query?: never;
@@ -607,6 +627,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{project_id}/stores/{stop_uid}/tag": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Tag
+         * @description The store's tag: one of the project's tag options, or "" for none.
+         */
+        put: operations["set_tag_api_projects__project_id__stores__stop_uid__tag_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects/{project_id}/stores/{stop_uid}/progress": {
         parameters: {
             query?: never;
@@ -874,6 +914,52 @@ export interface paths {
          * @description Log one visit for one stick. Never changes status.
          */
         post: operations["create_visit_api_projects__project_id__stores__stop_uid__visits_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{project_id}/stores/{stop_uid}/comments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Store Comments
+         * @description The store's comments as log entries of their own, newest first.
+         */
+        get: operations["list_store_comments_api_projects__project_id__stores__stop_uid__comments_get"];
+        put?: never;
+        /**
+         * Add Store Comment
+         * @description Log a comment on the store as a whole; it becomes the store's comment too. Held to the same rule as
+         *     editing the comment (PATCH …/progress): someone who only logs visits, while the store is on a route.
+         */
+        post: operations["add_store_comment_api_projects__project_id__stores__stop_uid__comments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/visit-search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search For A Visit
+         * @description Stores of every project matching `q`, best first: an exact DD code, then part of one, then the store's
+         *     words. Fewer than two characters find nothing.
+         */
+        get: operations["search_for_a_visit_api_visit_search_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1370,6 +1456,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{project_id}/device-sync/other-pa": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Other Pa
+         * @description Screens of another PA (or none) at the address of one of the project's stores, as of the last sync.
+         */
+        get: operations["list_other_pa_api_projects__project_id__device_sync_other_pa_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{project_id}/device-sync/other-pa/{key}/reviewed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark Other Pa Reviewed
+         * @description "Reviewed, it's fine": not listed again while its PA and our store stay the same.
+         */
+        post: operations["mark_other_pa_reviewed_api_projects__project_id__device_sync_other_pa__key__reviewed_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects/{project_id}/device-sync/overwrite": {
         parameters: {
             query?: never;
@@ -1735,6 +1861,11 @@ export interface components {
              * @default 0
              */
             not_reporting: number;
+            /**
+             * Other Pa Count
+             * @default 0
+             */
+            other_pa_count: number;
         };
         /** ExternalIdSet */
         ExternalIdSet: {
@@ -2598,6 +2729,22 @@ export interface components {
             google_map_id: string;
         };
         /**
+         * MatchKind
+         * @enum {string}
+         */
+        MatchKind: "dd_code" | "stick_number" | "store";
+        /**
+         * MismatchIgnore
+         * @description Someone looked at a done store's missing screens and chose to ignore them: the committed total and the
+         *     number of screen rows at that moment. The ignore holds only while both numbers stay the same.
+         */
+        MismatchIgnore: {
+            /** Committed */
+            committed: number;
+            /** Rows */
+            rows: number;
+        };
+        /**
          * MountPrice
          * @description What the mounts for one screen size cost: the wall mount and the ceiling mount (None = we have none for this
          *     size, or it is not priced yet).
@@ -2740,6 +2887,58 @@ export interface components {
             /** Version */
             version?: number | null;
         };
+        /** OtherPaPage */
+        OtherPaPage: {
+            /** Items */
+            items: components["schemas"]["OtherPaScreen"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+            /** Total */
+            total: number;
+        };
+        /**
+         * OtherPaScreen
+         * @description A screen of the Dolphin data at the address of one of the project's stores, under another PA or none (an ATM
+         *     screen at the store, say). Shown for a check only: never added to the project; any fix is made in the CMS.
+         */
+        OtherPaScreen: {
+            /** Key */
+            key: string;
+            /** Venue Id */
+            venue_id: string;
+            /**
+             * Pa Name
+             * @default
+             */
+            pa_name: string;
+            /**
+             * Venue Name
+             * @default
+             */
+            venue_name: string;
+            /**
+             * Status
+             * @default
+             */
+            status: string;
+            /** Stop Uid */
+            stop_uid: string;
+            /**
+             * Store Name
+             * @default
+             */
+            store_name: string;
+            /**
+             * External Id
+             * @default
+             */
+            external_id: string;
+            /**
+             * Address
+             * @default
+             */
+            address: string;
+        };
         /** OverwriteResult */
         OverwriteResult: {
             /** Stores Updated */
@@ -2780,6 +2979,13 @@ export interface components {
             /** Next Cursor */
             next_cursor: string | null;
         };
+        /** Page[StoreComment] */
+        Page_StoreComment_: {
+            /** Items */
+            items: components["schemas"]["StoreComment"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
         /** Page[Visit] */
         Page_Visit_: {
             /** Items */
@@ -2791,7 +2997,7 @@ export interface components {
          * Permission
          * @enum {string}
          */
-        Permission: "projects.view" | "projects.edit" | "stores.delete" | "installers.manage" | "routes.view" | "routes.manage" | "routes.arrange" | "visits.log" | "routes.own";
+        Permission: "projects.view" | "projects.edit" | "stores.delete" | "stores.tag" | "installers.manage" | "routes.view" | "routes.manage" | "routes.arrange" | "visits.log" | "routes.own";
         /**
          * PickedPlace
          * @description A place the person picked from a Google search: the store is saved at its pin, without geocoding again.
@@ -2831,6 +3037,31 @@ export interface components {
             visit_state: components["schemas"]["VisitState"];
             /** Screen Statuses */
             screen_statuses: components["schemas"]["ScreenStatus"][];
+            /**
+             * Display Id
+             * @default
+             */
+            display_id: string;
+            /**
+             * Addr
+             * @default
+             */
+            addr: string;
+            /**
+             * City
+             * @default
+             */
+            city: string;
+            /**
+             * State
+             * @default
+             */
+            state: string;
+            /**
+             * Zip
+             * @default
+             */
+            zip: string;
         };
         /**
          * PlaceHit
@@ -3248,6 +3479,8 @@ export interface components {
             installer_name?: string | null;
             /** Updated By */
             updated_by?: string | null;
+            /** Ignore Mismatch */
+            ignore_mismatch?: boolean | null;
         };
         /** Project */
         Project: {
@@ -3299,6 +3532,8 @@ export interface components {
             import_mappings: {
                 [key: string]: string;
             };
+            /** Tag Options */
+            tag_options: string[];
             /** Uploads */
             uploads: components["schemas"]["ProjectUpload"][];
             /** @default ready */
@@ -3432,6 +3667,8 @@ export interface components {
             import_mappings: {
                 [key: string]: string;
             };
+            /** Tag Options */
+            tag_options: string[];
             /** Uploads */
             uploads: components["schemas"]["ProjectUpload"][];
             /** @default ready */
@@ -3893,6 +4130,8 @@ export interface components {
              */
             status_changed_at: string;
             device: components["schemas"]["ScreenDevice"] | null;
+            /** Pictures */
+            pictures: string[];
         };
         /**
          * ScreenDevice
@@ -3996,6 +4235,8 @@ export interface components {
             needs_mount?: boolean;
             /** @default Upcoming */
             status?: components["schemas"]["ScreenStatus"];
+            /** Pictures */
+            pictures?: string[] | null;
         };
         /**
          * ScreenListRow
@@ -4581,6 +4822,12 @@ export interface components {
              * @default
              */
             last_visit_at: string;
+            /**
+             * Tag
+             * @default
+             */
+            tag: string;
+            mismatch_ignore: components["schemas"]["MismatchIgnore"] | null;
             /** Updated At */
             updated_at: string;
             /**
@@ -4592,6 +4839,28 @@ export interface components {
             readonly place_city: string;
             /** Place State */
             readonly place_state: string;
+            /**
+             * Effective Mounts Needed
+             * @description Per piece: wall_24, wall, ceiling.
+             */
+            readonly effective_mounts_needed: {
+                [key: string]: number;
+            };
+            /** Effective Mounts Needed Total */
+            readonly effective_mounts_needed_total: number;
+            /** Effective Mounts Used */
+            readonly effective_mounts_used: number;
+            /** Committed Screens Total */
+            readonly committed_screens_total: number;
+            /** Installed Screens Total */
+            readonly installed_screens_total: number;
+            /**
+             * Screen Mismatch
+             * @description Done with fewer screen rows than committed, whether the mismatch is ignored or not.
+             */
+            readonly screen_mismatch: boolean;
+            /** Mismatch Ignored */
+            readonly mismatch_ignored: boolean;
         };
         /**
          * StopInput
@@ -4871,6 +5140,75 @@ export interface components {
              */
             zip?: string;
         };
+        /** StoreComment */
+        StoreComment: {
+            /** Text */
+            text: string;
+            /** Visit Date */
+            visit_date: string;
+            /**
+             * Installer
+             * @default
+             */
+            installer: string;
+            /**
+             * Dolphin Manager
+             * @default
+             */
+            dolphin_manager: string;
+            /**
+             * Route Plan Id
+             * @default
+             */
+            route_plan_id: string;
+            /** Id */
+            id: string;
+            /** Project Id */
+            project_id: string;
+            /** Stop Uid */
+            stop_uid: string;
+            /**
+             * Created By
+             * @default
+             */
+            created_by: string;
+            /**
+             * Plan Name
+             * @default
+             */
+            plan_name: string;
+            /** Plan Day */
+            plan_day: number | null;
+            /** Created At */
+            created_at: string;
+        };
+        /**
+         * StoreCommentInput
+         * @description A comment on the store as a whole, kept as a log entry of its own (no screen). Saving one also makes it
+         *     the store's `comment` (the latest), which the store window and the CSV read. It is not a visit: no screen
+         *     counts as visited and no plan outcome changes.
+         */
+        StoreCommentInput: {
+            /** Text */
+            text: string;
+            /** Visit Date */
+            visit_date: string;
+            /**
+             * Installer
+             * @default
+             */
+            installer?: string;
+            /**
+             * Dolphin Manager
+             * @default
+             */
+            dolphin_manager?: string;
+            /**
+             * Route Plan Id
+             * @default
+             */
+            route_plan_id?: string;
+        };
         /**
          * StoreDetailsUpdate
          * @description Detail edit (STORE-MODEL §2, "editable in planner"). Omitted keys are unchanged; `fields` merges per key
@@ -5093,6 +5431,10 @@ export interface components {
             fulfilled: components["schemas"]["FilterOption"][];
             /** Review */
             review: components["schemas"]["FilterOption"][];
+            /** Committed Over Installed */
+            committed_over_installed: components["schemas"]["FilterOption"][];
+            /** Tag */
+            tag: components["schemas"]["FilterOption"][];
         };
         /**
          * StoreOverview
@@ -5119,6 +5461,10 @@ export interface components {
             total: number;
             /** Offset */
             offset: number;
+            /** Distances */
+            distances: {
+                [key: string]: number;
+            } | null;
         };
         /** StoreRef */
         StoreRef: {
@@ -5126,6 +5472,14 @@ export interface components {
             project_id: string;
             /** Stop Uid */
             stop_uid: string;
+        };
+        /**
+         * StoreTagSet
+         * @description A store's tag: one of the project's tag options, or "" to clear it.
+         */
+        StoreTagSet: {
+            /** Tag */
+            tag: string;
         };
         /** Suggestions */
         Suggestions: {
@@ -5142,6 +5496,14 @@ export interface components {
              * @default 0
              */
             stores_updated: number;
+        };
+        /**
+         * TagOptionsUpdate
+         * @description The project's tag options, the whole list at once (Settings).
+         */
+        TagOptionsUpdate: {
+            /** Tag Options */
+            tag_options: string[];
         };
         /** UploadList */
         UploadList: {
@@ -5381,6 +5743,91 @@ export interface components {
              * @enum {string}
              */
             outcome?: "" | "done" | "incomplete";
+        };
+        /** VisitSearchResult */
+        VisitSearchResult: {
+            /** Items */
+            items: components["schemas"]["VisitSearchRow"][];
+            /** Total */
+            total: number;
+        };
+        /**
+         * VisitSearchRow
+         * @description A store a visit may be logged to, and why it matched.
+         */
+        VisitSearchRow: {
+            /** Project Id */
+            project_id: string;
+            /** Project Name */
+            project_name: string;
+            /** Uid */
+            uid: string;
+            /**
+             * Display Id
+             * @default
+             */
+            display_id: string;
+            /**
+             * External Id
+             * @default
+             */
+            external_id: string;
+            /**
+             * Store Name
+             * @default
+             */
+            store_name: string;
+            /**
+             * Addr
+             * @default
+             */
+            addr: string;
+            /**
+             * City
+             * @default
+             */
+            city: string;
+            /**
+             * State
+             * @default
+             */
+            state: string;
+            /**
+             * Zip
+             * @default
+             */
+            zip: string;
+            /**
+             * Status
+             * @default
+             */
+            status: string;
+            /** Screens */
+            screens: components["schemas"]["VisitSearchScreen"][];
+            /** Matched On */
+            matched_on: components["schemas"]["MatchKind"][];
+            /** Matched Screen Ids */
+            matched_screen_ids: string[];
+        };
+        /** VisitSearchScreen */
+        VisitSearchScreen: {
+            /** Id */
+            id: string;
+            /**
+             * Stick Number
+             * @default
+             */
+            stick_number: string;
+            /**
+             * Venue Id
+             * @default
+             */
+            venue_id: string;
+            /**
+             * Status
+             * @default
+             */
+            status: string;
         };
         /**
          * VisitState
@@ -5838,6 +6285,41 @@ export interface operations {
             };
         };
     };
+    set_tag_options_api_projects__project_id__tag_options_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TagOptionsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Project"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_routes_api_projects__project_id__routes_get: {
         parameters: {
             query?: never;
@@ -6077,14 +6559,38 @@ export interface operations {
                 technician?: string[] | null;
                 /** @description Repeatable; "Needs mount" or "No mount needed" */
                 mount?: string[] | null;
-                /** @description Repeatable; "Fulfilled", "Not fulfilled" or "No commitment" */
+                /** @description Repeatable; "Fulfilled", "Needs review", "Mismatch ignored", "Not fulfilled", "No commitment" */
                 fulfilled?: string[] | null;
                 /** @description Repeatable; "Has review notes" or "No review notes" */
                 review?: string[] | null;
+                /** @description A comparison with a whole number: "gt:2", "lt:3" or "eq:0" */
+                screens_committed?: string | null;
+                /** @description A comparison with a whole number: "gt:2", "lt:3" or "eq:0" */
+                screens_installed?: string | null;
+                /** @description A comparison with a whole number: "gt:2", "lt:3" or "eq:0" */
+                mounts_needed?: string | null;
+                /** @description A comparison with a whole number: "gt:2", "lt:3" or "eq:0" */
+                mounts_installed?: string | null;
+                /** @description Repeatable; "Yes" (fewer screens installed than committed) or "No" */
+                committed_over_installed?: string[] | null;
+                /** @description Repeatable; one of the project's tags, "" = no tag */
+                tag?: string[] | null;
+                /** @description YYYY-MM-DD, inclusive; empty = open */
+                first_registered_from?: string;
+                /** @description YYYY-MM-DD, inclusive; empty = open */
+                first_registered_to?: string;
+                /** @description YYYY-MM-DD, inclusive; empty = open */
+                last_registered_from?: string;
+                /** @description YYYY-MM-DD, inclusive; empty = open */
+                last_registered_to?: string;
+                /** @description Nearby: with near_lng and radius_miles */
+                near_lat?: number | null;
+                near_lng?: number | null;
+                radius_miles?: number | null;
                 q?: string;
                 /** @description Only stores added without a name or a verified address */
                 needs_attention?: boolean;
-                /** @description a store attribute, status, installer, day, screens, fields.<key> */
+                /** @description a store attribute, status, installer, day, screens, tag, fields.<key>; distance (Nearby) */
                 sort?: string;
                 dir?: string;
             };
@@ -6189,14 +6695,38 @@ export interface operations {
                 technician?: string[] | null;
                 /** @description Repeatable; "Needs mount" or "No mount needed" */
                 mount?: string[] | null;
-                /** @description Repeatable; "Fulfilled", "Not fulfilled" or "No commitment" */
+                /** @description Repeatable; "Fulfilled", "Needs review", "Mismatch ignored", "Not fulfilled", "No commitment" */
                 fulfilled?: string[] | null;
                 /** @description Repeatable; "Has review notes" or "No review notes" */
                 review?: string[] | null;
+                /** @description A comparison with a whole number: "gt:2", "lt:3" or "eq:0" */
+                screens_committed?: string | null;
+                /** @description A comparison with a whole number: "gt:2", "lt:3" or "eq:0" */
+                screens_installed?: string | null;
+                /** @description A comparison with a whole number: "gt:2", "lt:3" or "eq:0" */
+                mounts_needed?: string | null;
+                /** @description A comparison with a whole number: "gt:2", "lt:3" or "eq:0" */
+                mounts_installed?: string | null;
+                /** @description Repeatable; "Yes" (fewer screens installed than committed) or "No" */
+                committed_over_installed?: string[] | null;
+                /** @description Repeatable; one of the project's tags, "" = no tag */
+                tag?: string[] | null;
+                /** @description YYYY-MM-DD, inclusive; empty = open */
+                first_registered_from?: string;
+                /** @description YYYY-MM-DD, inclusive; empty = open */
+                first_registered_to?: string;
+                /** @description YYYY-MM-DD, inclusive; empty = open */
+                last_registered_from?: string;
+                /** @description YYYY-MM-DD, inclusive; empty = open */
+                last_registered_to?: string;
+                /** @description Nearby: with near_lng and radius_miles */
+                near_lat?: number | null;
+                near_lng?: number | null;
+                radius_miles?: number | null;
                 q?: string;
                 /** @description Only stores added without a name or a verified address */
                 needs_attention?: boolean;
-                /** @description a store attribute, status, installer, day, screens, fields.<key> */
+                /** @description a store attribute, status, installer, day, screens, tag, fields.<key>; distance (Nearby) */
                 sort?: string;
                 dir?: string;
             };
@@ -6263,14 +6793,38 @@ export interface operations {
                 technician?: string[] | null;
                 /** @description Repeatable; "Needs mount" or "No mount needed" */
                 mount?: string[] | null;
-                /** @description Repeatable; "Fulfilled", "Not fulfilled" or "No commitment" */
+                /** @description Repeatable; "Fulfilled", "Needs review", "Mismatch ignored", "Not fulfilled", "No commitment" */
                 fulfilled?: string[] | null;
                 /** @description Repeatable; "Has review notes" or "No review notes" */
                 review?: string[] | null;
+                /** @description A comparison with a whole number: "gt:2", "lt:3" or "eq:0" */
+                screens_committed?: string | null;
+                /** @description A comparison with a whole number: "gt:2", "lt:3" or "eq:0" */
+                screens_installed?: string | null;
+                /** @description A comparison with a whole number: "gt:2", "lt:3" or "eq:0" */
+                mounts_needed?: string | null;
+                /** @description A comparison with a whole number: "gt:2", "lt:3" or "eq:0" */
+                mounts_installed?: string | null;
+                /** @description Repeatable; "Yes" (fewer screens installed than committed) or "No" */
+                committed_over_installed?: string[] | null;
+                /** @description Repeatable; one of the project's tags, "" = no tag */
+                tag?: string[] | null;
+                /** @description YYYY-MM-DD, inclusive; empty = open */
+                first_registered_from?: string;
+                /** @description YYYY-MM-DD, inclusive; empty = open */
+                first_registered_to?: string;
+                /** @description YYYY-MM-DD, inclusive; empty = open */
+                last_registered_from?: string;
+                /** @description YYYY-MM-DD, inclusive; empty = open */
+                last_registered_to?: string;
+                /** @description Nearby: with near_lng and radius_miles */
+                near_lat?: number | null;
+                near_lng?: number | null;
+                radius_miles?: number | null;
                 q?: string;
                 /** @description Only stores added without a name or a verified address */
                 needs_attention?: boolean;
-                /** @description a store attribute, status, installer, day, screens, fields.<key> */
+                /** @description a store attribute, status, installer, day, screens, tag, fields.<key>; distance (Nearby) */
                 sort?: string;
                 dir?: string;
             };
@@ -6334,14 +6888,38 @@ export interface operations {
                 technician?: string[] | null;
                 /** @description Repeatable; "Needs mount" or "No mount needed" */
                 mount?: string[] | null;
-                /** @description Repeatable; "Fulfilled", "Not fulfilled" or "No commitment" */
+                /** @description Repeatable; "Fulfilled", "Needs review", "Mismatch ignored", "Not fulfilled", "No commitment" */
                 fulfilled?: string[] | null;
                 /** @description Repeatable; "Has review notes" or "No review notes" */
                 review?: string[] | null;
+                /** @description A comparison with a whole number: "gt:2", "lt:3" or "eq:0" */
+                screens_committed?: string | null;
+                /** @description A comparison with a whole number: "gt:2", "lt:3" or "eq:0" */
+                screens_installed?: string | null;
+                /** @description A comparison with a whole number: "gt:2", "lt:3" or "eq:0" */
+                mounts_needed?: string | null;
+                /** @description A comparison with a whole number: "gt:2", "lt:3" or "eq:0" */
+                mounts_installed?: string | null;
+                /** @description Repeatable; "Yes" (fewer screens installed than committed) or "No" */
+                committed_over_installed?: string[] | null;
+                /** @description Repeatable; one of the project's tags, "" = no tag */
+                tag?: string[] | null;
+                /** @description YYYY-MM-DD, inclusive; empty = open */
+                first_registered_from?: string;
+                /** @description YYYY-MM-DD, inclusive; empty = open */
+                first_registered_to?: string;
+                /** @description YYYY-MM-DD, inclusive; empty = open */
+                last_registered_from?: string;
+                /** @description YYYY-MM-DD, inclusive; empty = open */
+                last_registered_to?: string;
+                /** @description Nearby: with near_lng and radius_miles */
+                near_lat?: number | null;
+                near_lng?: number | null;
+                radius_miles?: number | null;
                 q?: string;
                 /** @description Only stores added without a name or a verified address */
                 needs_attention?: boolean;
-                /** @description a store attribute, status, installer, day, screens, fields.<key> */
+                /** @description a store attribute, status, installer, day, screens, tag, fields.<key>; distance (Nearby) */
                 sort?: string;
                 dir?: string;
             };
@@ -6405,14 +6983,38 @@ export interface operations {
                 technician?: string[] | null;
                 /** @description Repeatable; "Needs mount" or "No mount needed" */
                 mount?: string[] | null;
-                /** @description Repeatable; "Fulfilled", "Not fulfilled" or "No commitment" */
+                /** @description Repeatable; "Fulfilled", "Needs review", "Mismatch ignored", "Not fulfilled", "No commitment" */
                 fulfilled?: string[] | null;
                 /** @description Repeatable; "Has review notes" or "No review notes" */
                 review?: string[] | null;
+                /** @description A comparison with a whole number: "gt:2", "lt:3" or "eq:0" */
+                screens_committed?: string | null;
+                /** @description A comparison with a whole number: "gt:2", "lt:3" or "eq:0" */
+                screens_installed?: string | null;
+                /** @description A comparison with a whole number: "gt:2", "lt:3" or "eq:0" */
+                mounts_needed?: string | null;
+                /** @description A comparison with a whole number: "gt:2", "lt:3" or "eq:0" */
+                mounts_installed?: string | null;
+                /** @description Repeatable; "Yes" (fewer screens installed than committed) or "No" */
+                committed_over_installed?: string[] | null;
+                /** @description Repeatable; one of the project's tags, "" = no tag */
+                tag?: string[] | null;
+                /** @description YYYY-MM-DD, inclusive; empty = open */
+                first_registered_from?: string;
+                /** @description YYYY-MM-DD, inclusive; empty = open */
+                first_registered_to?: string;
+                /** @description YYYY-MM-DD, inclusive; empty = open */
+                last_registered_from?: string;
+                /** @description YYYY-MM-DD, inclusive; empty = open */
+                last_registered_to?: string;
+                /** @description Nearby: with near_lng and radius_miles */
+                near_lat?: number | null;
+                near_lng?: number | null;
+                radius_miles?: number | null;
                 q?: string;
                 /** @description Only stores added without a name or a verified address */
                 needs_attention?: boolean;
-                /** @description a store attribute, status, installer, day, screens, fields.<key> */
+                /** @description a store attribute, status, installer, day, screens, tag, fields.<key>; distance (Nearby) */
                 sort?: string;
                 dir?: string;
             };
@@ -6476,14 +7078,38 @@ export interface operations {
                 technician?: string[] | null;
                 /** @description Repeatable; "Needs mount" or "No mount needed" */
                 mount?: string[] | null;
-                /** @description Repeatable; "Fulfilled", "Not fulfilled" or "No commitment" */
+                /** @description Repeatable; "Fulfilled", "Needs review", "Mismatch ignored", "Not fulfilled", "No commitment" */
                 fulfilled?: string[] | null;
                 /** @description Repeatable; "Has review notes" or "No review notes" */
                 review?: string[] | null;
+                /** @description A comparison with a whole number: "gt:2", "lt:3" or "eq:0" */
+                screens_committed?: string | null;
+                /** @description A comparison with a whole number: "gt:2", "lt:3" or "eq:0" */
+                screens_installed?: string | null;
+                /** @description A comparison with a whole number: "gt:2", "lt:3" or "eq:0" */
+                mounts_needed?: string | null;
+                /** @description A comparison with a whole number: "gt:2", "lt:3" or "eq:0" */
+                mounts_installed?: string | null;
+                /** @description Repeatable; "Yes" (fewer screens installed than committed) or "No" */
+                committed_over_installed?: string[] | null;
+                /** @description Repeatable; one of the project's tags, "" = no tag */
+                tag?: string[] | null;
+                /** @description YYYY-MM-DD, inclusive; empty = open */
+                first_registered_from?: string;
+                /** @description YYYY-MM-DD, inclusive; empty = open */
+                first_registered_to?: string;
+                /** @description YYYY-MM-DD, inclusive; empty = open */
+                last_registered_from?: string;
+                /** @description YYYY-MM-DD, inclusive; empty = open */
+                last_registered_to?: string;
+                /** @description Nearby: with near_lng and radius_miles */
+                near_lat?: number | null;
+                near_lng?: number | null;
+                radius_miles?: number | null;
                 q?: string;
                 /** @description Only stores added without a name or a verified address */
                 needs_attention?: boolean;
-                /** @description a store attribute, status, installer, day, screens, fields.<key> */
+                /** @description a store attribute, status, installer, day, screens, tag, fields.<key>; distance (Nearby) */
                 sort?: string;
                 dir?: string;
             };
@@ -6550,14 +7176,38 @@ export interface operations {
                 technician?: string[] | null;
                 /** @description Repeatable; "Needs mount" or "No mount needed" */
                 mount?: string[] | null;
-                /** @description Repeatable; "Fulfilled", "Not fulfilled" or "No commitment" */
+                /** @description Repeatable; "Fulfilled", "Needs review", "Mismatch ignored", "Not fulfilled", "No commitment" */
                 fulfilled?: string[] | null;
                 /** @description Repeatable; "Has review notes" or "No review notes" */
                 review?: string[] | null;
+                /** @description A comparison with a whole number: "gt:2", "lt:3" or "eq:0" */
+                screens_committed?: string | null;
+                /** @description A comparison with a whole number: "gt:2", "lt:3" or "eq:0" */
+                screens_installed?: string | null;
+                /** @description A comparison with a whole number: "gt:2", "lt:3" or "eq:0" */
+                mounts_needed?: string | null;
+                /** @description A comparison with a whole number: "gt:2", "lt:3" or "eq:0" */
+                mounts_installed?: string | null;
+                /** @description Repeatable; "Yes" (fewer screens installed than committed) or "No" */
+                committed_over_installed?: string[] | null;
+                /** @description Repeatable; one of the project's tags, "" = no tag */
+                tag?: string[] | null;
+                /** @description YYYY-MM-DD, inclusive; empty = open */
+                first_registered_from?: string;
+                /** @description YYYY-MM-DD, inclusive; empty = open */
+                first_registered_to?: string;
+                /** @description YYYY-MM-DD, inclusive; empty = open */
+                last_registered_from?: string;
+                /** @description YYYY-MM-DD, inclusive; empty = open */
+                last_registered_to?: string;
+                /** @description Nearby: with near_lng and radius_miles */
+                near_lat?: number | null;
+                near_lng?: number | null;
+                radius_miles?: number | null;
                 q?: string;
                 /** @description Only stores added without a name or a verified address */
                 needs_attention?: boolean;
-                /** @description a store attribute, status, installer, day, screens, fields.<key> */
+                /** @description a store attribute, status, installer, day, screens, tag, fields.<key>; distance (Nearby) */
                 sort?: string;
                 dir?: string;
             };
@@ -6654,14 +7304,38 @@ export interface operations {
                 technician?: string[] | null;
                 /** @description Repeatable; "Needs mount" or "No mount needed" */
                 mount?: string[] | null;
-                /** @description Repeatable; "Fulfilled", "Not fulfilled" or "No commitment" */
+                /** @description Repeatable; "Fulfilled", "Needs review", "Mismatch ignored", "Not fulfilled", "No commitment" */
                 fulfilled?: string[] | null;
                 /** @description Repeatable; "Has review notes" or "No review notes" */
                 review?: string[] | null;
+                /** @description A comparison with a whole number: "gt:2", "lt:3" or "eq:0" */
+                screens_committed?: string | null;
+                /** @description A comparison with a whole number: "gt:2", "lt:3" or "eq:0" */
+                screens_installed?: string | null;
+                /** @description A comparison with a whole number: "gt:2", "lt:3" or "eq:0" */
+                mounts_needed?: string | null;
+                /** @description A comparison with a whole number: "gt:2", "lt:3" or "eq:0" */
+                mounts_installed?: string | null;
+                /** @description Repeatable; "Yes" (fewer screens installed than committed) or "No" */
+                committed_over_installed?: string[] | null;
+                /** @description Repeatable; one of the project's tags, "" = no tag */
+                tag?: string[] | null;
+                /** @description YYYY-MM-DD, inclusive; empty = open */
+                first_registered_from?: string;
+                /** @description YYYY-MM-DD, inclusive; empty = open */
+                first_registered_to?: string;
+                /** @description YYYY-MM-DD, inclusive; empty = open */
+                last_registered_from?: string;
+                /** @description YYYY-MM-DD, inclusive; empty = open */
+                last_registered_to?: string;
+                /** @description Nearby: with near_lng and radius_miles */
+                near_lat?: number | null;
+                near_lng?: number | null;
+                radius_miles?: number | null;
                 q?: string;
                 /** @description Only stores added without a name or a verified address */
                 needs_attention?: boolean;
-                /** @description a store attribute, status, installer, day, screens, fields.<key> */
+                /** @description a store attribute, status, installer, day, screens, tag, fields.<key>; distance (Nearby) */
                 sort?: string;
                 dir?: string;
             };
@@ -6875,6 +7549,42 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["ExternalIdSet"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Stop"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_tag_api_projects__project_id__stores__stop_uid__tag_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                stop_uid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StoreTagSet"];
             };
         };
         responses: {
@@ -7409,6 +8119,110 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Visit"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_store_comments_api_projects__project_id__stores__stop_uid__comments_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+                stop_uid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_StoreComment_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_store_comment_api_projects__project_id__stores__stop_uid__comments_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                stop_uid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StoreCommentInput"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoreComment"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    search_for_a_visit_api_visit_search_get: {
+        parameters: {
+            query?: {
+                /** @description A DD code or stick number (whole or part), or words of the store's name, ExtID or address */
+                q?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VisitSearchResult"];
                 };
             };
             /** @description Validation Error */
@@ -8380,6 +9194,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ReviewItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_other_pa_api_projects__project_id__device_sync_other_pa_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OtherPaPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mark_other_pa_reviewed_api_projects__project_id__device_sync_other_pa__key__reviewed_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OtherPaScreen"];
                 };
             };
             /** @description Validation Error */

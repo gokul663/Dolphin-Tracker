@@ -19,6 +19,7 @@ from dolphin_tracker.api.schemas import (
     StoreDetailsUpdate,
     StoreFilterOptions,
     StoreOverview,
+    StoreTagSet,
 )
 from dolphin_tracker.domain.auth import (
     SERVICE_PROGRESS_FIELDS,
@@ -29,7 +30,16 @@ from dolphin_tracker.domain.auth import (
 )
 from dolphin_tracker.domain.models import ScreenStatus, Stop
 from dolphin_tracker.domain.statuses import StatusBucket
-from dolphin_tracker.services.stores import Bounds, ScreenPage, StorePage, StoreQuery, StoreService
+from dolphin_tracker.services.stores import (
+    COMPARISON_PATTERN,
+    Bounds,
+    Near,
+    ScreenPage,
+    StorePage,
+    StoreQuery,
+    StoreService,
+    parse_comparison,
+)
 from dolphin_tracker.services.uploads import UploadService
 
 router = APIRouter(prefix="/projects/{project_id}/stores", tags=["stores"])
@@ -38,6 +48,11 @@ UploadDep = Annotated[UploadService, Depends(get_upload_service)]
 
 
 ListParam = Annotated[list[str] | None, Query(description="Repeatable; a store matches any of the values")]
+NumberParam = Annotated[
+    str | None,
+    Query(pattern=COMPARISON_PATTERN, description='A comparison with a whole number: "gt:2", "lt:3" or "eq:0"'),
+]
+DayParam = Annotated[str, Query(pattern=r"^(\d{4}-\d{2}-\d{2})?$", description="YYYY-MM-DD, inclusive; empty = open")]
 
 
 def store_query(
@@ -57,25 +72,56 @@ def store_query(
     technician: Annotated[list[str] | None, Query(description="Repeatable; a technician's name, \"\" = none")] = None,
     mount: Annotated[list[str] | None, Query(description='Repeatable; "Needs mount" or "No mount needed"')] = None,
     fulfilled: Annotated[
-        list[str] | None, Query(description='Repeatable; "Fulfilled", "Not fulfilled" or "No commitment"')
+        list[str] | None,
+        Query(description='Repeatable; "Fulfilled", "Needs review", "Mismatch ignored", "Not fulfilled", '
+                          '"No commitment"'),
     ] = None,
     review: Annotated[
         list[str] | None, Query(description='Repeatable; "Has review notes" or "No review notes"')
     ] = None,
+    screens_committed: NumberParam = None,
+    screens_installed: NumberParam = None,
+    mounts_needed: NumberParam = None,
+    mounts_installed: NumberParam = None,
+    committed_over_installed: Annotated[
+        list[str] | None, Query(description='Repeatable; "Yes" (fewer screens installed than committed) or "No"')
+    ] = None,
+    tag: Annotated[list[str] | None, Query(description='Repeatable; one of the project\'s tags, "" = no tag')] = None,
+    first_registered_from: DayParam = "",
+    first_registered_to: DayParam = "",
+    last_registered_from: DayParam = "",
+    last_registered_to: DayParam = "",
+    near_lat: Annotated[
+        float | None, Query(ge=-90, le=90, description="Nearby: with near_lng and radius_miles")
+    ] = None,
+    near_lng: Annotated[float | None, Query(ge=-180, le=180)] = None,
+    radius_miles: Annotated[float | None, Query(gt=0, le=3000)] = None,
     q: Annotated[str, Query(max_length=200)] = "",
     needs_attention: Annotated[bool, Query(description="Only stores added without a name or a verified address")] = (
         False
     ),
-    sort: Annotated[str, Query(description="a store attribute, status, installer, day, screens, fields.<key>")] = (
+    sort: Annotated[
+        str,
+        Query(description="a store attribute, status, installer, day, screens, tag, fields.<key>; distance (Nearby)"),
+    ] = (
         "store_name"
     ),
     dir: Annotated[str, Query(pattern="^(asc|desc)$")] = "asc",
 ) -> StoreQuery:
+    nearby = (near_lat, near_lng, radius_miles)
+    if any(part is not None for part in nearby) and None in nearby:
+        raise HTTPException(status_code=400, detail="Give all of near_lat, near_lng and radius_miles, or none")
+    near = Near(near_lat, near_lng, radius_miles) if near_lat is not None else None  # type: ignore[arg-type]
     return StoreQuery(
         status=status or [], installer=installer or [], pa=pa or [], state=state or [], city=city or [],
         dma=dma or [], venue_type=venue_type or [], dd_code=dd_code or [], screen_size=screen_size or [],
         route=route or [], visit=visit or [], bucket=bucket or [], install_type=install_type or [],
         technician=technician or [], mount=mount or [], fulfilled=fulfilled or [], review=review or [],
+        screens_committed=parse_comparison(screens_committed), screens_installed=parse_comparison(screens_installed),
+        mounts_needed=parse_comparison(mounts_needed), mounts_installed=parse_comparison(mounts_installed),
+        committed_over_installed=committed_over_installed or [], tag=tag or [],
+        first_registered_from=first_registered_from, first_registered_to=first_registered_to,
+        last_registered_from=last_registered_from, last_registered_to=last_registered_to, near=near,
         q=q, sort=sort, dir=dir,
         needs_attention=needs_attention,
     )
@@ -273,6 +319,12 @@ def update_screens(project_id: str, stop_uid: str, body: ScreensUpdate, service:
 def set_external_id(project_id: str, stop_uid: str, body: ExternalIdSet, service: ServiceDep) -> Stop:
     """The ExtID of a store that has none (added from the Dolphin data); fixed once set."""
     return service.set_external_id(project_id, stop_uid, body.external_id)
+
+
+@router.put("/{stop_uid}/tag", response_model=Stop)
+def set_tag(project_id: str, stop_uid: str, body: StoreTagSet, service: ServiceDep) -> Stop:
+    """The store's tag: one of the project's tag options, or "" for none."""
+    return service.set_tag(project_id, stop_uid, body.tag)
 
 
 @router.patch("/{stop_uid}/progress", response_model=Stop)

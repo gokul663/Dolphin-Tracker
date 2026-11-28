@@ -13,6 +13,7 @@ from dolphin_tracker.api.schemas import (
     ProjectUpdate,
     ReassignResult,
     StopReassign,
+    TagOptionsUpdate,
 )
 from dolphin_tracker.domain.models import Page, Project, ProjectCreate, ProjectSummary, RoutesBundle
 from dolphin_tracker.services.projects import ProjectService
@@ -77,6 +78,12 @@ def update_project(project_id: str, body: ProjectUpdate, service: ServiceDep) ->
         return service.update(project_id, changes, expected_version=body.expected_version)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.put("/{project_id}/tag-options", response_model=Project)
+def set_tag_options(project_id: str, body: TagOptionsUpdate, service: ServiceDep) -> Project:
+    """The tags a store of this project may carry. Stores keep a tag that is taken off the list."""
+    return service.set_tag_options(project_id, body.tag_options)
 
 
 @router.delete("/{project_id}", status_code=204, response_class=Response)

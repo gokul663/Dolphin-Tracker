@@ -23,7 +23,6 @@ from dolphin_tracker.domain.device import split_codes, venue_code_key
 from dolphin_tracker.domain.device_sync import packed_screens, shown_location, store_with_code
 from dolphin_tracker.domain.errors import ConflictError, NotFoundError, ValidationFailed
 from dolphin_tracker.domain.import_mapping import clean_mapping, dedupe_key_address, single_pa, split_duplicates
-from dolphin_tracker.domain.kpi import missing_screens
 from dolphin_tracker.domain.lists import best_spellings, name_key
 from dolphin_tracker.domain.models import (
     PENDING_STATUSES,
@@ -41,7 +40,7 @@ from dolphin_tracker.domain.models import (
     now_iso,
 )
 from dolphin_tracker.domain.parsing import clean_cell
-from dolphin_tracker.domain.route_optimizer import state_key
+from dolphin_tracker.domain.route_optimizer import haversine, state_key
 from dolphin_tracker.domain.schema import coerce_fields, validate_fields, validate_stop_inputs, with_sheet_fields
 from dolphin_tracker.domain.search import matches, search_text
 from dolphin_tracker.domain.statuses import (
@@ -53,6 +52,18 @@ from dolphin_tracker.domain.statuses import (
     screen_size_label,
     store_bucket_of,
 )
+from dolphin_tracker.domain.store_counts import (  # re-exported: callers import the mount helpers from here
+    MOUNT_KINDS as MOUNT_KINDS,
+)
+from dolphin_tracker.domain.store_counts import (
+    committed_screens,
+    installed_screens,
+    mismatch_ignored,
+    mount_kind,
+    mounts_needed,
+    screen_mismatch,
+)
+from dolphin_tracker.domain.tags import clean_tag, tag_problem
 from dolphin_tracker.domain.validation import (
     EDITABLE_FIELDS,
     FIELDS_BY_NAME,
@@ -72,11 +83,20 @@ from dolphin_tracker.services.routing import sync_routing_slot
 FILTER_FIELDS = (
     "status", "bucket", "installer", "pa", "state", "city", "dma", "venue_type", "dd_code", "screen_size", "route",
     "visit", "install_type", "mount", "fulfilled", "technician", "review",
+    # Committed > installed ("Yes" / "No") and the manager's tag.
+    "committed_over_installed", "tag",
 )
+# The store's worked-out numbers, each filtered by a comparison ("Screens committed > 2"), not picked from a list.
+NUMBER_FILTERS = ("screens_committed", "screens_installed", "mounts_needed", "mounts_installed")
+YES, NO = "Yes", "No"
+# The date-range filters on the screens' device data: each is a `<name>_from` / `<name>_to` pair on the query.
+REGISTRATION_RANGES = ("first_registered", "last_registered")
 NEEDS_MOUNT, NO_MOUNT_NEEDED = "Needs mount", "No mount needed"
 FULFILLED, NOT_FULFILLED, NO_COMMITMENT = "Fulfilled", "Not fulfilled", "No commitment"
 # Reads as done (Completed or Offline) but has fewer screen rows than the sheet committed.
 NEEDS_REVIEW = "Needs review"
+# The same mismatch, ignored by someone for the store's current numbers (it no longer counts as Needs review).
+MISMATCH_IGNORED = "Mismatch ignored"
 # The Projects-view overlays (ROUTE-PLANNER §6) as filter values.
 IN_ROUTE, NOT_IN_ROUTE = "In route", "Not in route"
 HAS_REVIEW_NOTES, NO_REVIEW_NOTES = "Has review notes", "No review notes"
@@ -85,13 +105,14 @@ OVERLAY_ORDER = {
     value: index
     for index, value in enumerate([
         IN_ROUTE, NOT_IN_ROUTE, *VISIT_LABELS.values(), NEEDS_MOUNT, NO_MOUNT_NEEDED, FULFILLED, NEEDS_REVIEW,
-        NOT_FULFILLED,
-        NO_COMMITMENT, HAS_REVIEW_NOTES, NO_REVIEW_NOTES,
+        MISMATCH_IGNORED, NOT_FULFILLED,
+        NO_COMMITMENT, HAS_REVIEW_NOTES, NO_REVIEW_NOTES, YES, NO,
         *(bucket.value for bucket in BUCKET_ORDER), StatusBucket.IN_PROGRESS.value,
     ])
 }
 SORT_KEYS = frozenset(
-    {"store_name", "addr", "status", "installer", "installer_name", "day", "updated_at", "display_id", "screens"}
+    {"store_name", "addr", "status", "installer", "installer_name", "day", "updated_at", "display_id", "screens", "tag",
+     "distance"}  # distance: only with the Nearby filter
     | {spec.name for spec in STORE_FIELDS if spec.kind not in (Kind.TRISTATE, Kind.BOOL)}
 )
 ADDRESS_PARTS = ("addr", "city", "state", "zip")
@@ -108,6 +129,8 @@ class StorePage(ApiModel):
     next_cursor: str | None = None
     total: int
     offset: int
+    # Miles from the Nearby point per store uid on this page; only while that filter is on (None otherwise).
+    distances: dict[str, float] | None = None
 
 
 class ScreenListRow(ApiModel):
@@ -179,6 +202,73 @@ def in_bounds(stop: Stop, bounds: Bounds) -> bool:
     return bounds.south <= lat <= bounds.north and bounds.west <= lng <= bounds.east
 
 
+@dataclass(frozen=True)
+class Near:
+    """The Nearby filter: stores within `radius_miles` (great-circle) of a point."""
+
+    lat: float
+    lng: float
+    radius_miles: float
+
+
+def distance_miles(stop: Stop, near: Near) -> float | None:
+    """Miles from the Nearby point to where the map draws the store; None when it has no location."""
+    lat, lng = shown_location(stop)
+    if lat is None or lng is None:
+        return None
+    return haversine(near.lat, near.lng, lat, lng)
+
+
+def registered_between(stop: Stop, which: str, start: str, end: str) -> bool:
+    """Any of the store's screens first (or last) registered on a day from `start` to `end` (YYYY-MM-DD, either may be
+    "", both inclusive). The device data's timestamps are ISO UTC, so their first ten characters are the UTC day."""
+    for screen in stop.screens:
+        day = (getattr(screen.device, which) if screen.device else "")[:10]
+        if day and (not start or day >= start) and (not end or day <= end):
+            return True
+    return False
+
+
+@dataclass(frozen=True)
+class Comparison:
+    """A number filter: the store's number higher than (`gt`), lower than (`lt`) or equal to (`eq`) `value`."""
+
+    op: str
+    value: int
+
+    def matches(self, number: int) -> bool:
+        if self.op == "gt":
+            return number > self.value
+        if self.op == "lt":
+            return number < self.value
+        return number == self.value
+
+
+COMPARISON_PATTERN = r"^(gt|lt|eq):\d{1,6}$"
+
+
+def parse_comparison(text: str | None) -> Comparison | None:
+    """`gt:2` → Comparison("gt", 2); None or "" → no filter. The router has checked the shape already."""
+    if not text:
+        return None
+    op, _, value = text.partition(":")
+    return Comparison(op, int(value))
+
+
+def number_value(stop: Stop, name: str) -> int:
+    """The number a number filter compares: committed Dolphin screens + store TVs, screen rows on the wall, mounts
+    to bring, mounts used (typed-over or worked out). A blank count is 0."""
+    match name:
+        case "screens_committed":
+            return stop.committed_screens_total
+        case "screens_installed":
+            return stop.installed_screens_total
+        case "mounts_needed":
+            return stop.effective_mounts_needed_total
+        case _:
+            return stop.effective_mounts_used
+
+
 @dataclass
 class StoreQuery:
     """Filters (STORE-MODEL §5), search and sort. Within one filter values are OR'ed; filters are AND'ed."""
@@ -200,6 +290,19 @@ class StoreQuery:
     mount: list[str] = field(default_factory=list)  # "Needs mount" / "No mount needed"
     fulfilled: list[str] = field(default_factory=list)  # "Fulfilled" / "Not fulfilled" / "No commitment"
     review: list[str] = field(default_factory=list)  # "Has review notes" / "No review notes"
+    # The number filters (`number_value`); None = off.
+    screens_committed: Comparison | None = None
+    screens_installed: Comparison | None = None
+    mounts_needed: Comparison | None = None
+    mounts_installed: Comparison | None = None
+    committed_over_installed: list[str] = field(default_factory=list)  # "Yes" / "No": committed > installed
+    tag: list[str] = field(default_factory=list)  # one of the project's tags; "" = no tag
+    # Registration days (YYYY-MM-DD, inclusive, "" = open end) of any screen, from the device data.
+    first_registered_from: str = ""
+    first_registered_to: str = ""
+    last_registered_from: str = ""
+    last_registered_to: str = ""
+    near: Near | None = None
     needs_attention: bool = False  # only stores added without a name or a verified address
     q: str = ""
     sort: str = "store_name"
@@ -243,40 +346,23 @@ def facet_values(stop: Stop, project: Project, name: str) -> list[str]:
             return [fulfillment(stop)]
         case "review":
             return [HAS_REVIEW_NOTES if stop.review_notes.strip() else NO_REVIEW_NOTES]
+        case "committed_over_installed":  # literally fewer installed than committed, mismatch ignored or not
+            return [YES if stop.committed_screens_total > stop.installed_screens_total else NO]
+        case "tag":
+            return [stop.tag]
         case "state":  # as shown: the Dolphin data's or the verified address's, never a typed spelling
             return [stop.place_state] if stop.place_state else []
         case "city":
             return [stop.place_city] if stop.place_city else []
+        case "dma":  # as shown: the Dolphin data's over the sheet's
+            dma = (stop.device.dma if stop.device else "") or stop.dma
+            return [dma] if dma else []
         case _:
             value = getattr(stop, name)
             return [value] if value else []
 
 
-MOUNT_KINDS = ("wall_24", "wall", "ceiling")
 DEFAULT_SIZE = '24"'  # a screen saved without a size
-
-
-def mount_kind(screen: Screen) -> str | None:
-    """The piece a screen's mount is: the 24 inch wall mount, a wall mount of another size, or a ceiling mount; None
-    when no mount is picked."""
-    if not screen.has_mount:
-        return None
-    if screen.has_ceiling_mount:
-        return "ceiling"
-    return "wall_24" if screen_size_label(screen.screen_size) == '24"' else "wall"
-
-
-def mounts_needed(stop: Stop) -> dict[str, int]:
-    """Mounts to bring, per piece: the typed number when there is one, else worked out from the screens still to be
-    installed (Upcoming and the like) and the mount picked on each."""
-    worked_out = dict.fromkeys(MOUNT_KINDS, 0)
-    for screen in stop.screens:
-        kind = mount_kind(screen)
-        if kind and screen.status in PENDING_STATUSES:
-            worked_out[kind] += 1
-    typed = {"wall_24": stop.wall_24_mounts_needed, "wall": stop.wall_mounts_needed,
-             "ceiling": stop.ceiling_mounts_needed}
-    return {kind: worked_out[kind] if typed[kind] is None else typed[kind] for kind in MOUNT_KINDS}
 
 
 def needs_mount(stop: Stop) -> bool:
@@ -288,13 +374,14 @@ def needs_mount(stop: Stop) -> bool:
 def fulfillment(stop: Stop) -> str:
     """Fulfilled once the screen rows on the wall (Completed, Offline, Needs More Work) reach the committed Dolphin
     screens + store TVs. A blank committed count is 0: a store with something installed and no count is fulfilled,
-    and it is "No commitment" only when it has neither."""
-    committed = (stop.committed_dolphin_screens or 0) + (stop.committed_store_tvs or 0)
-    installed = sum(1 for screen in stop.screens if screen.status in INSTALLED_STATUSES)
+    and it is "No commitment" only when it has neither. A done store short of screen rows is "Needs review", or
+    "Mismatch ignored" once someone ignored that for its current numbers."""
+    committed = committed_screens(stop)
+    installed = installed_screens(stop)
     if committed == 0:  # a blank count is 0: anything installed meets it
         return FULFILLED if installed else NO_COMMITMENT
-    if missing_screens(stop.status, committed, len(stop.screens)):
-        return NEEDS_REVIEW
+    if screen_mismatch(stop):
+        return MISMATCH_IGNORED if mismatch_ignored(stop) else NEEDS_REVIEW
     return FULFILLED if installed >= committed else NOT_FULFILLED
 
 
@@ -396,11 +483,25 @@ class StoreService:
                 stops = [stop for stop in stops if name_key(stop.installer_name) in keys]
             elif wanted:
                 stops = [stop for stop in stops if wanted.intersection(facet_values(stop, project, name))]
+        for name in NUMBER_FILTERS:
+            comparison: Comparison | None = getattr(query, name)
+            if comparison is not None:
+                stops = [stop for stop in stops if comparison.matches(number_value(stop, name))]
         needle = query.q.strip().lower()
         if needle:
             stops = [stop for stop in stops if _matches(stop, needle)]
         if query.needs_attention:
             stops = [stop for stop in stops if stop.needs_attention]
+        for which in REGISTRATION_RANGES:
+            start, end = getattr(query, f"{which}_from"), getattr(query, f"{which}_to")
+            if start or end:
+                stops = [stop for stop in stops if registered_between(stop, which, start, end)]
+        if query.near is not None:
+            near = query.near
+            stops = [
+                stop for stop in stops
+                if (miles := distance_miles(stop, near)) is not None and miles <= near.radius_miles
+            ]
         return stops
 
     def _query(self, project: Project, query: StoreQuery, stops: list[Stop] | None = None) -> list[Stop]:
@@ -411,12 +512,22 @@ class StoreService:
             raise ValueError(f"Unknown sort field {sort!r}")
         if query.dir not in ("asc", "desc"):
             raise ValueError("dir must be asc or desc")
+        near = query.near
+        if sort == "distance" and near is None:
+            raise ValueError("Sort by distance needs near_lat, near_lng and radius_miles")
         stops = self._filter(project, self._stores.list_all(project.id) if stops is None else stops, query)
+
+        def value(stop: Stop) -> Any:
+            if sort == "distance" and near is not None:
+                miles = distance_miles(stop, near)
+                return None if miles is None else (0, miles)
+            return _sort_value(stop, sort)
+
         # Stable two-step sort: a deterministic tie-break first, then the requested key; blanks always last.
         stops.sort(key=lambda stop: (_natural(stop.display_id), stop.uid))
-        present = [stop for stop in stops if _sort_value(stop, sort) is not None]
-        blank = [stop for stop in stops if _sort_value(stop, sort) is None]
-        present.sort(key=lambda stop: _sort_value(stop, sort), reverse=query.dir == "desc")
+        present = [stop for stop in stops if value(stop) is not None]
+        blank = [stop for stop in stops if value(stop) is None]
+        present.sort(key=value, reverse=query.dir == "desc")
         return present + blank
 
     def list(
@@ -438,7 +549,11 @@ class StoreService:
             stops = [stop for stop in stops if in_bounds(stop, bounds)]
         window = stops[start : start + limit]
         next_cursor = encode_cursor({"offset": start + limit}) if start + limit < len(stops) else None
-        return StorePage(items=window, next_cursor=next_cursor, total=len(stops), offset=start)
+        near = (query or StoreQuery()).near
+        distances = None
+        if near is not None:  # every store the filter kept has a location
+            distances = {stop.uid: round(distance_miles(stop, near) or 0.0, 2) for stop in window}
+        return StorePage(items=window, next_cursor=next_cursor, total=len(stops), offset=start, distances=distances)
 
     def screens(
         self,
@@ -520,6 +635,11 @@ class StoreService:
                 "route_plan_id": stop.route_plan_id,
                 "visit_state": stop_visit_state(stop),
                 "screen_statuses": [screen.status for screen in stop.screens],
+                "display_id": stop.external_id or stop.display_id,
+                "addr": stop.addr,
+                "city": stop.place_city,
+                "state": stop.place_state,
+                "zip": stop.zip,
             }
             for stop, lat, lng in located
             if lat is not None and lng is not None
@@ -549,7 +669,10 @@ class StoreService:
                 counts = merged
             if name == "status":
                 ordered = [status.value for status in STATUS_PRECEDENCE if counts[status.value]]
-            elif name in ("route", "visit", "bucket", "mount", "fulfilled", "review"):
+            elif name == "tag":  # every tag of the project (to pick one no store has yet), then stale ones, no tag last
+                stale = sorted(value for value in counts if value and value not in project.tag_options)
+                ordered = [*project.tag_options, *stale, *([""] if counts[""] else [])]
+            elif name in ("route", "visit", "bucket", "mount", "fulfilled", "review", "committed_over_installed"):
                 ordered = sorted(counts, key=lambda value: OVERLAY_ORDER[value])
             else:
                 ordered = sorted(counts, key=lambda value: (value == "", _natural(value)))
@@ -638,6 +761,8 @@ class StoreService:
             "ID", *[spec.label for spec in STORE_FIELDS], "Lat", "Lng", "Status", "Screens",
             "Dolphin screens (actual)", "Store TVs (actual)", "Screen rows", "Installer", "Day", "Seq",
             "Completed by", "Notes", "Review notes", *[f.label for f in schema], "Updated by", "Updated at",
+            # The store's worked-out (or typed-over) numbers and the manager's tag, as the table shows them.
+            "Mounts needed (total)", "Mounts used (total)", "Tag", "Screen mismatch",
         ]
         buffer = io.StringIO()
         writer = csv.writer(buffer)
@@ -654,6 +779,8 @@ class StoreService:
                 stop.installer, stop.day, stop.seq, stop.installer_name,
                 stop.comment, stop.review_notes, *[stop.fields.get(f.key, "") for f in schema],
                 stop.updated_by, stop.updated_at,
+                stop.effective_mounts_needed_total, stop.effective_mounts_used, stop.tag,
+                (MISMATCH_IGNORED.lower() if stop.mismatch_ignored else "yes") if stop.screen_mismatch else "no",
             ]
             writer.writerow([_csv_cell(value) for value in row])
         return buffer.getvalue()
@@ -747,7 +874,11 @@ class StoreService:
         rows = []
         for screen in screens:
             before = known.get(screen.id or "")
-            row = screen.model_copy(update={"id": screen.id if before else None}).to_screen()
+            row = screen.model_copy(update={
+                "id": screen.id if before else None,
+                # Left out: the pictures the screen has stay (a row new to the store has none).
+                "pictures": screen.pictures if screen.pictures is not None else (before.pictures if before else []),
+            }).to_screen()
             # The device report's values stay with the screen; a status change is stamped (device alert timing).
             changed = row.status != (before.status if before else ScreenStatus.UPCOMING)
             stamp = now if changed else (before.status_changed_at if before else "")
@@ -776,11 +907,33 @@ class StoreService:
         reasons = [str(r) for r in current.needs_attention if r != NeedsAttention.EXTERNAL_ID]
         return self._stores.set_external_id(project_id, stop_uid, value, reasons)
 
+    def set_tag(self, project_id: str, stop_uid: str, tag: str) -> Stop:
+        """Set a store's tag to one of the project's options, or clear it with "". A tag removed from the options
+        stays on the stores that carry it until someone changes it."""
+        project = self._project(project_id)
+        current = self.get(project_id, stop_uid)
+        value = clean_tag(tag)
+        problem = tag_problem(value, project.tag_options, current.tag)
+        if problem:
+            raise ValidationFailed(problem, errors=[problem], fields={"tag": problem})
+        if value == current.tag:
+            return current
+        return self._stores.update_fields(project_id, stop_uid, {"tag": value})
+
     def update_progress(self, project_id: str, stop_uid: str, changes: dict[str, Any]) -> Stop:
         """Comment / review notes / additional task / installer name / updated_by. Status is per screen
-        (`update_screens`)."""
-        self.get(project_id, stop_uid)
+        (`update_screens`). `ignore_mismatch` True remembers the store's current committed total and screen rows
+        (only while they mismatch); False forgets the ignore."""
+        current = self.get(project_id, stop_uid)
+        changes = dict(changes)
+        ignore = changes.pop("ignore_mismatch", None)
         update = {key: value for key, value in changes.items() if value is not None}
+        if ignore is True:
+            if not screen_mismatch(current):
+                raise ValidationFailed("This store has no screen mismatch to ignore")
+            update["mismatch_ignore"] = {"committed": committed_screens(current), "rows": len(current.screens)}
+        elif ignore is False:
+            update["mismatch_ignore"] = None
         extra = set(update) - (PROGRESS_FIELDS - {"screens", "status"})
         if extra:
             raise ValueError(f"Not progress fields: {sorted(extra)}")

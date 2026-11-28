@@ -1,7 +1,7 @@
 """Lambda entry point for the device report: the only function that holds the Mongo secret.
 
 Invoked synchronously by the API and the worker (`repositories/device_data.LambdaDeviceData`), never from the
-internet. Events: {"op": "latest_date"} | {"op": "list_pas"} | {"op": "snapshot", "pa": "..."} |
+internet. Events: {"op": "latest_date"} | {"op": "list_pas"} | {"op": "snapshot", "pa": "..."} ("" = no PA) |
 {"op": "logs", "codes": ["DD_...", ...]}.
 Answers {"ok": true, ...} or {"ok": false, "error": "..."}.
 """
@@ -33,9 +33,9 @@ def dispatch(event: dict[str, Any], source: DeviceDataSource | None = None) -> d
             date, pas = source.list_pas()
             return {"ok": True, "date": date, "pas": pas}
         if op == "snapshot":
-            pa = str(event.get("pa") or "").strip()
-            if not pa:
+            if event.get("pa") is None:
                 return {"ok": False, "error": "pa is required"}
+            pa = str(event["pa"]).strip()  # "" = the venues with no PA
             return {"ok": True, "snapshot": source.snapshot(pa).model_dump(mode="json")}
         if op == "logs":
             codes = [str(code) for code in event.get("codes") or []]

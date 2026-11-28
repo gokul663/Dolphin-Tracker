@@ -14,6 +14,7 @@ const StoresFullPage = lazy(() => import("@/features/stores/StoresFullPage").the
 const SettingsTab = lazy(() => import("@/features/settings/SettingsTab").then((m) => ({ default: m.SettingsTab })));
 
 const InstallersPage = lazy(() => import("@/features/installers/InstallersPage").then((m) => ({ default: m.InstallersPage })));
+const LogVisitPage = lazy(() => import("@/features/logvisit/LogVisitPage").then((m) => ({ default: m.LogVisitPage })));
 
 const tab = (element: ReactNode) => (
   <Suspense fallback={<div className="p-6 text-center font-mono text-sm text-slate-500">Loading…</div>}>{element}</Suspense>
@@ -45,6 +46,7 @@ export const router = createBrowserRouter([
       { path: "planner/new", element: tab(<PlanWizard />) },
       { path: "planner/:planId", element: tab(<PlanPage />) },
       { path: "installers", element: tab(<InstallersPage />) },
+      { path: "log-visit", element: tab(<LogVisitPage />) },
       { path: "*", element: <Navigate to="/" replace /> },
     ],
   },

@@ -50,17 +50,18 @@ class VenueCatalogService:
         return len(added), len(updated)
 
     def refresh_all(self) -> VenueRefresh:
-        """Every PA of the report's newest day. One PA failing does not stop the others."""
+        """Every PA of the report's newest day, then the venues with no PA (`snapshot("")`), which the PA list
+        leaves out. One PA failing does not stop the others."""
         if self._source is None:
             raise DeviceDataUnavailable("Device data is not configured (set DT_MONGO_URI locally)")
         date, pas = self._source.list_pas()
         kept = {stop.uid: stop for stop in self._stores.list_all(VENUES_PROJECT_ID)}
         result = VenueRefresh(date=date, pas=len(pas))
-        for pa in pas:
+        for pa in [*pas, ""]:
             try:
                 records = self._source.snapshot(pa).records
             except Exception:  # reported, then the next PA
-                result.failed.append(pa)
+                result.failed.append(pa or "(no PA)")
                 continue
             added, updated = self.upsert(records, kept)
             result.added += added

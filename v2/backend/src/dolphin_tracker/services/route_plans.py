@@ -794,5 +794,10 @@ class RoutePlanService:
         stop = self._plans.get_stop(plan_id, plan_stop_key(project_id, stop_uid))
         return stop.day if stop else None
 
+    def plan_name(self, plan_id: str) -> str:
+        """The plan's name, "" when there is no such plan (a log entry snapshots it)."""
+        plan = self._plans.get(plan_id)
+        return plan.name if plan else ""
+
     def record_visit(self, plan_id: str, project_id: str, stop_uid: str, screen_id: str) -> None:
         self._plans.record_visit(plan_id, plan_stop_key(project_id, stop_uid), screen_id)

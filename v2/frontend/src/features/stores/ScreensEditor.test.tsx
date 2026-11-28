@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { presetOf } from "@/features/stores/ScreensEditor";
+import { presetOf, ScreensView, toInputs, toRows } from "@/features/stores/ScreensEditor";
 import { makeProject, makeScreen, makeStop } from "@/test/fixtures";
 import { mockApi, renderWithProviders } from "@/test/render";
 import { draftScreens } from "@/test/screens";
@@ -86,4 +86,17 @@ describe("ScreensEditor", () => {
     expect(draft.latest()[0]?.screen_type).toBe("Onida");
   });
 
+});
+
+describe("ScreensView pictures", () => {
+  it("shows how many pictures each screen has, the thumbnails a click away, and keeps them in an edit", async () => {
+    mockApi({ "GET /api/projects/p1/stores/u1/visits": () => ({ items: [], next_cursor: null }) });
+    const stop = makeStop({ screens: [makeScreen({ id: "s1", pictures: ["https://example.com/a.jpg", "https://example.com/b.jpg"] }), makeScreen({ id: "s2" })] });
+    renderWithProviders(<ScreensView project={makeProject()} stop={stop} rows={toRows(stop)} />);
+    await userEvent.click(screen.getByRole("button", { name: "Pictures of screen 1: 2" }));
+    expect(within(await screen.findByRole("list", { name: "Pictures of screen 1" })).getAllByRole("listitem")).toHaveLength(2);
+    expect(screen.queryByRole("button", { name: /Pictures of screen 2/ })).toBeNull();
+    // Sent back with the rows, so a save of anything else keeps them.
+    expect(toInputs(toRows(stop))[0]?.pictures).toEqual(["https://example.com/a.jpg", "https://example.com/b.jpg"]);
+  });
 });

@@ -112,6 +112,13 @@ class Pin(ApiModel):
     route_plan_id: str = ""  # the active plan holding the store: the "In route" overlay
     visit_state: VisitState = VisitState.NONE  # sticks visited since the store's latest plan
     screen_statuses: list[ScreenStatus] = Field(default_factory=list)  # one per screen row (the map's Screens view)
+    # The full-page map's pop-up, as the stores table shows them: ExtID (else the minted id), the street, and the
+    # city / state as shown (place_city / place_state).
+    display_id: str = ""
+    addr: str = ""
+    city: str = ""
+    state: str = ""
+    zip: str = ""
 
 
 class StoreDetailsUpdate(ApiModel):
@@ -186,10 +193,12 @@ class ProgressUpdate(ApiModel):
     additional_task: bool | None = None
     installer_name: str | None = Field(default=None, max_length=200)
     updated_by: str | None = Field(default=None, max_length=200)
+    # True: ignore the done store's missing screens for its current numbers ("Ignore mismatch"); False: undo that.
+    ignore_mismatch: bool | None = None
 
 
 class FilterOption(ApiModel):
-    value: str  # "" = unassigned (installer only)
+    value: str  # "" = unassigned (installer, technician) or no tag
     count: int  # stores with this value, under the other active filters
 
 
@@ -213,6 +222,10 @@ class StoreFilterOptions(ApiModel):
     mount: list[FilterOption]
     fulfilled: list[FilterOption]
     review: list[FilterOption]
+    # The four store numbers (screens committed / installed, mounts needed / installed) are comparison filters
+    # ("gt:2"), not listed here.
+    committed_over_installed: list[FilterOption]  # "Yes" / "No"
+    tag: list[FilterOption]  # every tag of the project (count may be 0), stale tags, then "" = no tag
 
 
 class StoreFieldSpec(ApiModel):
@@ -279,6 +292,22 @@ class ExternalIdSet(ApiModel):
     model_config = ConfigDict(extra="forbid")
 
     external_id: str = Field(min_length=1, max_length=100)
+
+
+class StoreTagSet(ApiModel):
+    """A store's tag: one of the project's tag options, or "" to clear it."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    tag: str = Field(max_length=100)
+
+
+class TagOptionsUpdate(ApiModel):
+    """The project's tag options, the whole list at once (Settings)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    tag_options: list[str] = Field(max_length=100)
 
 
 class ReviewAdd(ApiModel):

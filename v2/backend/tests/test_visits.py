@@ -15,7 +15,7 @@ from dolphin_tracker.api.deps import (
 from dolphin_tracker.domain.errors import NotFoundError, ValidationFailed
 from dolphin_tracker.domain.lists import NameListKind
 from dolphin_tracker.domain.models import Project, ProjectType, Screen, ScreenStatus, Stop
-from dolphin_tracker.domain.visits import Visit, VisitInput, VisitState, visit_state
+from dolphin_tracker.domain.visits import StoreComment, Visit, VisitInput, VisitState, visit_state
 from dolphin_tracker.repositories.dynamo import TABLE_DEFINITION
 from dolphin_tracker.repositories.memory import (
     InMemoryListRepository,
@@ -107,6 +107,24 @@ class VisitRepositoryContract:
             self.repo.add(Visit(**form(), project_id="p1", stop_uid="nope"))
         self.assertEqual(self.repo.list_for_store("p1", "nope").items, [])
 
+    def test_a_store_comment_sets_the_comment_and_visits_no_screen(self):
+        self.stores.put_many("p1", [make_stop()])
+        before = self.stores.get("p1", "u1")
+        for hour, text in enumerate(["first", "second"]):
+            self.repo.add_store_comment(StoreComment(text=text, visit_date="2026-11-06", project_id="p1",
+                                                     stop_uid="u1", created_at=f"2026-11-06T1{hour}:00:00Z"))
+        after = self.stores.get("p1", "u1")
+        self.assertEqual(after.comment, "second")  # the latest
+        self.assertEqual((after.screen_visits, after.last_visit_at), (before.screen_visits, before.last_visit_at))
+        page = self.repo.list_store_comments("p1", "u1", limit=1)
+        self.assertEqual([c.text for c in page.items], ["second"])  # newest first, paged
+        rest = self.repo.list_store_comments("p1", "u1", limit=1, cursor=page.next_cursor)
+        self.assertEqual([c.text for c in rest.items], ["first"])
+        self.assertEqual(self.repo.list_for_store("p1", "u1").items, [])  # not among the visits
+        with self.assertRaises(NotFoundError):
+            self.repo.add_store_comment(StoreComment(text="x", visit_date="2026-11-06", project_id="p1",
+                                                     stop_uid="nope"))
+
 
 class InMemoryVisitRepositoryTests(VisitRepositoryContract, unittest.TestCase):
     def setUp(self):
@@ -127,7 +145,14 @@ class DynamoVisitRepositoryTests(VisitRepositoryContract, unittest.TestCase):
     def test_project_delete_takes_the_visits(self):
         self.stores.put_many("p1", [make_stop()])
         self.repo.add(Visit(**form(), project_id="p1", stop_uid="u1"))
+        self.repo.add_store_comment(StoreComment(text="x", visit_date="2026-11-06", project_id="p1", stop_uid="u1"))
         self.assertEqual(self.stores.delete_all("p1"), 1)
+        self.assertEqual(self.table.scan()["Items"], [])
+
+    def test_store_delete_takes_its_comments(self):
+        self.stores.put_many("p1", [make_stop()])
+        self.repo.add_store_comment(StoreComment(text="x", visit_date="2026-11-06", project_id="p1", stop_uid="u1"))
+        self.assertTrue(self.stores.delete("p1", "u1"))
         self.assertEqual(self.table.scan()["Items"], [])
 
 
@@ -202,3 +227,25 @@ class VisitsApiTests(unittest.TestCase):
         self.assertEqual(self.client.post("/api/projects/p1/stores/u1/visits", json=bad).status_code, 422)
         self.assertEqual(self.client.post("/api/projects/p1/stores/zz/visits", json=form()).status_code, 404)
         self.assertEqual(self.client.get("/api/projects/p1/stores/u1/visits?cursor=%%%").status_code, 400)
+
+    def test_store_comments(self):
+        url = "/api/projects/p1/stores/u1/comments"
+        response = self.client.post(url, json={"text": "Gate code 1234", "visit_date": "2026-11-06",
+                                               "installer": "Ann"})
+        self.assertEqual(response.status_code, 201, response.text)
+        created = response.json()
+        self.assertEqual((created["text"], created["installer"], created["dolphin_manager"], created["created_by"]),
+                         ("Gate code 1234", "Ann", "", "Local user"))
+        self.assertEqual([c["id"] for c in self.client.get(url).json()["items"]], [created["id"]])
+        stop = self.client.get("/api/projects/p1/stores/u1").json()
+        self.assertEqual((stop["comment"], stop["screen_visits"]), ("Gate code 1234", {}))
+        self.assertEqual(self.client.get("/api/projects/p1/stores/u1/visits").json()["items"], [])
+        # Blank text, a store that is not there; and someone who only logs visits, off a route.
+        self.assertEqual(self.client.post(url, json={"text": "  ", "visit_date": "2026-11-06"}).status_code, 422)
+        self.assertEqual(self.client.post("/api/projects/p1/stores/zz/comments",
+                                          json={"text": "x", "visit_date": "2026-11-06"}).status_code, 404)
+        for role in ("operator", "viewer"):
+            refused = self.client.post(url, json={"text": "x", "visit_date": "2026-11-06"},
+                                       headers={"x-dev-role": role})
+            self.assertEqual(refused.status_code, 403, role)
+        self.assertEqual(self.client.get(url, headers={"x-dev-role": "viewer"}).status_code, 200)

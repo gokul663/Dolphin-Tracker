@@ -3,21 +3,24 @@ import { useState } from "react";
 import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { toRows } from "@/features/stores/ScreensEditor";
-import { StoreSummary, type SummaryDraft } from "@/features/stores/StoreSummary";
+import { computedMountsUsed, computedMountsUsedByPiece, StoreSummary, type SummaryDraft } from "@/features/stores/StoreSummary";
 import { makeScreen, makeStop } from "@/test/fixtures";
 import { renderWithProviders } from "@/test/render";
 
-const NO_COUNTS = { committed_dolphin_screens: "", committed_store_tvs: "", wall_mounts_needed: "", wall_24_mounts_needed: "", ceiling_mounts_needed: "", tv_mounts_needed: "" };
+const NO_COUNTS = { committed_dolphin_screens: "", committed_store_tvs: "", wall_mounts_needed: "", wall_24_mounts_needed: "", ceiling_mounts_needed: "", tv_mounts_needed: "", mounts_used: "" };
 
 const PRICES = { stick: 40 as number | null, screens: [{ size: '24"', type: "Dolphin", cost: 120 }, { size: '43"', type: "Dolphin", cost: 300 }] };
 
 function Harness({ initial, costs = PRICES }: { initial: SummaryDraft; costs?: typeof PRICES }) {
   const [draft, setDraft] = useState(initial);
+  const [editing, setEditing] = useState(false);
   return (
     <StoreSummary
       draft={draft}
       costs={costs}
       technicians={["Sai"]}
+      editingCommitted={editing}
+      onEditCommitted={setEditing}
       onCount={(key, text) => setDraft((current) => ({ ...current, counts: { ...current.counts, [key]: text } }))}
       onTechnician={(technician) => setDraft((current) => ({ ...current, technician }))}
       onInstallType={(installType) => setDraft((current) => ({ ...current, installType }))}
@@ -44,7 +47,7 @@ describe("StoreSummary", () => {
     expect(screen.getByText("2 of 3 committed")).toBeTruthy();
   });
 
-  it("mounts needed: worked out from the Upcoming screens' mounts per piece, and a typed number goes over it", async () => {
+  it("mounts needed: worked out from the Upcoming screens' mounts, with nothing to type", () => {
     renderWithProviders(
       <Harness
         initial={draftOf([
@@ -56,15 +59,29 @@ describe("StoreSummary", () => {
         ])}
       />,
     );
-    const mounts = screen.getByRole("region", { name: "Mounts needed" });
-    const computed = (label: string) => within(mounts).getByLabelText(`${label} computed`).textContent;
-    expect([computed("Wall 24″"), computed("Wall"), computed("Ceiling")]).toEqual(["1", "1", "1"]);
-    expect(within(mounts).getByLabelText("Mounts total").textContent).toBe("3");
-    expect(within(mounts).queryByLabelText(/TV/)).toBeNull();
-    await userEvent.type(within(mounts).getByLabelText("Wall 24″ override"), "4");
-    expect(within(mounts).getByLabelText("Mounts total").textContent).toBe("6"); // 4 typed + 1 + 1
-    await userEvent.type(within(mounts).getByLabelText("Ceiling override"), "0");
-    expect(within(mounts).getByLabelText("Mounts total").textContent).toBe("5"); // a typed 0 counts
+    const mounts = screen.getByRole("region", { name: "Mounts" });
+    expect(within(mounts).getByLabelText("Mounts needed").textContent).toBe("3"); // wall 24, wall, ceiling
+    expect(within(mounts).getByLabelText("Mounts used").textContent).toBe("1");
+    expect(within(mounts).queryAllByRole("textbox")).toEqual([]); // two numbers, no boxes
+    expect(within(mounts).queryByLabelText(/override/i)).toBeNull();
+  });
+
+  it("mounts: Not Registered still needs its mount; installed screens (Needs More Work too) have used theirs", () => {
+    renderWithProviders(
+      <Harness
+        initial={draftOf([
+          makeScreen({ id: "a", has_mount: true, status: "Not Registered" }),
+          makeScreen({ id: "b", has_mount: true, status: "Serviced - Needs More Work" }),
+          makeScreen({ id: "c", has_mount: true, status: "Completed" }),
+          makeScreen({ id: "d", has_mount: true, status: "Offline" }),
+          makeScreen({ id: "e", has_mount: true, status: "Cancelled" }), // neither
+          makeScreen({ id: "f", status: "Completed" }), // no mount picked
+        ])}
+      />,
+    );
+    const mounts = screen.getByRole("region", { name: "Mounts" });
+    expect(within(mounts).getByLabelText("Mounts needed").textContent).toBe("1");
+    expect(within(mounts).getByLabelText("Mounts used").textContent).toBe("3");
   });
 
   it("counts an Offline screen as installed", () => {
@@ -135,5 +152,119 @@ describe("StoreSummary", () => {
   it("hardware cost asks for a price that is not set yet", () => {
     renderWithProviders(<Harness initial={draftOf([makeScreen({ id: "a", status: "Completed", is_dolphin_screen: true, screen_size: '50"' })])} />);
     expect(screen.getByLabelText("Hardware cost").textContent).toContain('Set the 50" Dolphin screen price in Settings');
+  });
+});
+
+describe("StoreSummary cards", () => {
+  const card = () => screen.getByRole("region", { name: "Screens: committed and installed" });
+
+  it("one Screens card holds committed and installed, and turns green once installed reaches committed (equal or more)", async () => {
+    const rows = [makeScreen({ id: "a", status: "Completed" }), makeScreen({ id: "b", status: "Completed", is_dolphin_screen: false })];
+    renderWithProviders(<Harness initial={draftOf(rows, { committed_dolphin_screens: "2", committed_store_tvs: "1" })} />);
+    expect(within(card()).getByRole("group", { name: "Committed" })).toBeTruthy();
+    expect(within(card()).getByRole("group", { name: "Installed" })).toBeTruthy();
+    expect(within(card()).getByLabelText("Installed total").textContent).toBe("2");
+    expect(card().className).not.toContain("bg-green-50"); // 2 of 3: under
+    expect(within(card()).queryByLabelText("Fulfilled")).toBeNull();
+    await userEvent.click(within(card()).getByRole("button", { name: "Edit committed counts" }));
+    // Equal: 2 committed in all, 2 installed.
+    await userEvent.clear(screen.getByLabelText("TVs"));
+    await userEvent.type(screen.getByLabelText("TVs"), "0");
+    expect(card().className).toContain("bg-green-50");
+    expect(within(card()).getByLabelText("Fulfilled")).toBeTruthy();
+    expect(within(card()).getByText("2 of 2 committed")).toBeTruthy();
+    // More installed than committed: still met, still green (as the stores table's check).
+    await userEvent.clear(screen.getByLabelText("Screens"));
+    await userEvent.type(screen.getByLabelText("Screens"), "1");
+    expect(card().className).toContain("bg-green-50");
+    expect(within(card()).getByLabelText("Fulfilled")).toBeTruthy();
+    expect(within(card()).getByText("2 of 1 committed")).toBeTruthy();
+  });
+
+  it("committed reads as numbers until Edit; Edit shows the boxes (focused), View goes back keeping the draft", async () => {
+    renderWithProviders(<Harness initial={draftOf([makeScreen({ id: "a" })], { committed_dolphin_screens: "4", committed_store_tvs: "" })} />);
+    expect(within(card()).getByLabelText("Committed screens").textContent).toBe("4");
+    expect(within(card()).getByLabelText("Committed TVs").textContent).toBe("—");
+    expect(within(card()).queryByRole("textbox")).toBeNull();
+    await userEvent.click(within(card()).getByRole("button", { name: "Edit committed counts" }));
+    const boxes = within(card()).getByLabelText("Screens") as HTMLInputElement;
+    expect(document.activeElement).toBe(boxes); // straight into the first box
+    await userEvent.clear(boxes);
+    await userEvent.type(boxes, "6");
+    await userEvent.click(within(card()).getByRole("button", { name: "View committed counts" }));
+    expect(within(card()).queryByRole("textbox")).toBeNull();
+    expect(within(card()).getByLabelText("Committed screens").textContent).toBe("6"); // the draft stays
+  });
+
+  it("a committed count that is not valid keeps the boxes open with the message", () => {
+    renderWithProviders(
+      <Harness initial={{ ...draftOf([makeScreen({ id: "a" })], { committed_store_tvs: "x" }), errors: { committed_store_tvs: "Store TVs (committed): must be a whole number of 0 or more" } }} />,
+    );
+    const tvs = within(card()).getByLabelText("TVs");
+    expect(tvs.getAttribute("aria-invalid")).toBe("true");
+    expect(within(card()).getByText("Store TVs (committed): must be a whole number of 0 or more")).toBeTruthy();
+    expect(within(card()).getByRole("button", { name: "View committed counts" }).hasAttribute("disabled")).toBe(true);
+  });
+
+  it("a viewer sees the committed counts with no Edit", () => {
+    renderWithProviders(<Harness initial={draftOf([makeScreen({ id: "a" })], { committed_dolphin_screens: "2" })} />, { role: "viewer" });
+    expect(within(card()).getByLabelText("Committed screens").textContent).toBe("2");
+    expect(within(card()).queryByRole("button", { name: /committed counts/ })).toBeNull();
+  });
+
+  it("with nothing committed the card stays neutral, however much is installed", () => {
+    renderWithProviders(<Harness initial={draftOf([makeScreen({ id: "a", status: "Completed" })])} />);
+    expect(card().className).not.toContain("bg-green-50");
+    expect(within(card()).getByText("No commitment yet")).toBeTruthy();
+  });
+
+  it("hardware cost is its own card, second in the row, and absent when the project hides it", () => {
+    const rows = [makeScreen({ id: "a", status: "Completed", screen_size: '24"' })];
+    const { unmount } = renderWithProviders(<Harness initial={draftOf(rows)} />);
+    const cards = within(screen.getByLabelText("Store summary")).getAllByRole("region").map((region) => region.getAttribute("aria-label"));
+    expect(cards).toEqual(["Screens: committed and installed", "Hardware cost", "Mounts", "Assignment"]);
+    unmount();
+    renderWithProviders(<Harness initial={draftOf(rows)} costs={{ ...PRICES, hidden: true } as typeof PRICES} />);
+    const three = within(screen.getByLabelText("Store summary")).getAllByRole("region").map((region) => region.getAttribute("aria-label"));
+    expect(three).toEqual(["Screens: committed and installed", "Mounts", "Assignment"]);
+    expect(screen.queryByLabelText("Hardware cost")).toBeNull();
+  });
+
+  it("mounts needed and used are each split per piece: Wall 24″, Wall, Ceiling", () => {
+    renderWithProviders(
+      <Harness
+        initial={draftOf([
+          makeScreen({ id: "a", has_mount: true, screen_size: '24"' }), // needed, wall 24
+          makeScreen({ id: "b", has_mount: true, screen_size: '43"' }), // needed, wall
+          makeScreen({ id: "c", has_mount: true, has_ceiling_mount: true, screen_size: '43"' }), // needed, ceiling
+          makeScreen({ id: "d", has_mount: true, screen_size: "", status: "Completed" }), // used, wall 24 (no size)
+          makeScreen({ id: "e", has_mount: true, screen_size: '55"', status: "Offline" }), // used, wall
+          makeScreen({ id: "f", has_mount: true, has_ceiling_mount: true, status: "Serviced - Needs More Work" }), // used, ceiling
+          makeScreen({ id: "g", has_mount: true, has_ceiling_mount: true, status: "Completed" }), // used, ceiling
+        ])}
+      />,
+    );
+    const mounts = screen.getByRole("region", { name: "Mounts" });
+    const value = (label: string) => within(mounts).getByLabelText(label).textContent;
+    expect([value("Mounts needed"), value("Mounts needed: Wall 24″"), value("Mounts needed: Wall"), value("Mounts needed: Ceiling")]).toEqual(["3", "1", "1", "1"]);
+    expect([value("Mounts used"), value("Mounts used: Wall 24″"), value("Mounts used: Wall"), value("Mounts used: Ceiling")]).toEqual(["4", "1", "1", "2"]);
+  });
+});
+
+describe("computedMountsUsedByPiece", () => {
+  it("sorts installed screens with a mount into the pieces, totalling computedMountsUsed", () => {
+    const rows = toRows(
+      makeStop({
+        screens: [
+          makeScreen({ id: "a", has_mount: true, screen_size: '24"', status: "Completed" }),
+          makeScreen({ id: "b", has_mount: true, screen_size: '32"', status: "Completed" }),
+          makeScreen({ id: "c", has_mount: true, has_ceiling_mount: true, status: "Offline" }),
+          makeScreen({ id: "d", has_mount: true, status: "Upcoming" }), // not installed
+          makeScreen({ id: "e", status: "Completed" }), // no mount
+        ],
+      }),
+    );
+    expect(computedMountsUsedByPiece(rows)).toEqual({ wall_24: 1, wall: 1, ceiling: 1 });
+    expect(computedMountsUsed(rows)).toBe(3);
   });
 });

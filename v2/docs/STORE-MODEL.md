@@ -136,8 +136,19 @@ Screen = {
   has_mount: bool,              # default false
   has_ceiling_mount: bool,      # default false; false means wall mount, the default
   status: ScreenStatus,         # §4.2
+  pictures: list[str],          # picture links of this screen (default []; ≤ 20, each an http(s) link ≤ 2000 chars)
 }
 ```
+
+**Screen pictures (2026-11-27).** Links, like the store's own Pictures (`image_url`): nothing is uploaded to the
+app (it has no file store for pictures); the photo lives in Google Drive or Dropbox and the screen keeps its share
+link, previewed through the same thumbnail address the store window uses (`previewSrc`). They belong to the screen,
+not to a visit, so every later visit and the store window's screen list (a count with the thumbnails a click away)
+show them; they go with the screen when it is deleted. On a screens `PUT` a row's `pictures` is the new list;
+left out (`null`), the screen keeps the ones it has, so a client that does not know them never wipes them. Links
+are trimmed and repeats dropped. Rows merged for sharing a DD code keep every row's pictures (first row's first, up
+to the cap). Changing them is a screen edit: the same rule as the rest of the screen (an Operator only while the
+store is on a route). Not in the CSV (the export's one line per screen has no picture column).
 
 Import builds the rows: split "Stick Number" and "Venue ID" on commas, strip, zip them (pad the shorter list);
 if both are empty use `max(1, parsed "No of Sticks")` rows with empty identifiers ("Only 1 Stick" parses as 1).
@@ -192,6 +203,39 @@ becomes one screen row with `venue_id = venue_code`. `external_id` = v1 `venue_c
 DD code (`screens[].venue_id`), Screen size (`screens[].screen_size`). A filter is disabled (greyed, with "no
 values") when no store in the project has a value for it. `GET /projects/{id}/stores/filters` returns the distinct
 values per filter so the UI can grey out without loading every store.
+
+The bar shows Status, State, City, DMA, DD Code and Tag inline, then the two registration-date pickers; **More
+Filters** opens a side panel with every filter, in collapsible sections Location / Screens / Mounts / Dolphin Data /
+Work (a section with an active filter opens; the others remember open/closed for the browser session; a closed
+section shows how many of its filters are active). Filter names are Title Case, acronyms kept (DMA, DD, PA, ExtID);
+option values are shown as stored. Besides the facets above the panel has:
+
+- **Number comparisons** for Screens Committed, Screens Installed, Mounts Needed and Mounts Installed (the store's
+  worked-out `committed_screens_total`, `installed_screens_total`, `effective_mounts_needed_total`,
+  `effective_mounts_used`; a blank count is 0). One query param each, `<name>=<op>:<n>` with `op` one of `gt`
+  (higher than), `lt` (lower than), `eq` (equal to) and `n` a whole number of up to 6 digits, e.g.
+  `screens_committed=gt:2`. Anything else is a 422. They are not facets: `/filters` lists no values for them. In the
+  UI: an operator (> < =) and a number box; an empty box is off; chips read "Screens Committed > 2". Old links with
+  a list of numbers (`screens_committed=2`) are ignored.
+- **Committed > Installed** (`Yes` when `committed_screens_total > installed_screens_total`, literally, so a store
+  whose mismatch was ignored still counts) and **Tag** (every project tag, stale tags, `""` = no tag).
+- **First / Last Registration Date** on the screens' device data, `first_registered_from/_to` and
+  `last_registered_from/_to` (YYYY-MM-DD, inclusive, either end optional; a store matches when any screen's day, the
+  UTC day of its timestamp, is in range, never when it has no registration data). The picker offers Today, Last 2 /
+  7 / 30 Days, Last N Days or Weeks, and a custom start–end (start ≤ end). A relative choice stays relative in the
+  view and the link (`first_registered=last:7d`, `last:2w`) and becomes dates only for the request, on the user's
+  local calendar: "Last N Days" is today and the N − 1 days before, "Today" is today only, N weeks are 7 × N days.
+
+**Nearby** (`near_lat`, `near_lng`, `radius_miles`, all three or none): stores whose shown location is within the
+great-circle radius; stores without a location never match. It combines with every other filter on every store
+endpoint. With it, `sort=distance` is allowed and the list page carries `distances` (miles per uid on the page; `null`
+otherwise). The address text is the UI's only (chip and link).
+
+**Map pins** (Stores tab and full-page map): one click on a store's pin opens a small pop-up (name, ExtID, address,
+status) with an Open store button and a Nearby action; a double click (or Open store) opens the store window. A
+click also remembers the store, and the Nearby form starts from it (its point, labelled with its name and address)
+until Apply. Several stores at one address list in the pop-up, each opening its store window. The route planner's
+maps keep their own click behaviour.
 
 **Map panel:** next to the map, a bar chart "Top states by upcoming installs" (stores whose derived status is in
 the pending set, grouped by `state`, top 10). Clicking a bar sets the State filter to that state; the map and the

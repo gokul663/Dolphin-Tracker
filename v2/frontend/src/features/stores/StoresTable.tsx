@@ -12,6 +12,7 @@ import {
   ChevronsLeft,
   ChevronsRight,
   ChevronsUpDown,
+  ListFilter,
   Loader2,
   Monitor,
   Route,
@@ -27,9 +28,35 @@ import type { Project, Stop } from "@/lib/api/types";
 import { STATUS_META, storeStatusLabel } from "@/lib/status";
 import { DEVICE_TONE } from "@/features/device/DeviceBits";
 import { InstallerName } from "@/features/installers/InstallerName";
+import { tagChip } from "@/features/stores/tagTone";
 import { cn } from "@/lib/utils";
+import type { Facet } from "@/stores/ui";
 
 const ROW_HEIGHT = 44;
+
+type OnFilter = ((facet: Facet, value: string) => void) | undefined;
+
+/** A cell value that filters the list by itself when clicked; the rest of the row still opens the store. Nothing to
+ *  filter by (no value, or no handler): the value as it is. */
+function FilterCell({ facet, value, label, onFilter, className, children }: {
+  facet: Facet; value: string; label: string; onFilter: OnFilter; className?: string; children: ReactNode;
+}) {
+  if (!onFilter || !value) return <>{children}</>;
+  return (
+    <button
+      type="button"
+      className={cn("-mx-1 max-w-full truncate rounded px-1 text-left align-middle hover:bg-brand/10 hover:underline focus-visible:outline-2 focus-visible:outline-brand", className)}
+      title={`Filter by ${label}: ${value}`}
+      aria-label={`Filter by ${label}: ${value}`}
+      onClick={(event) => {
+        event.stopPropagation();
+        onFilter(facet, value);
+      }}
+    >
+      {children}
+    </button>
+  );
+}
 
 interface Props {
   project: Project;
@@ -48,6 +75,10 @@ interface Props {
   hoveredId: string | null;
   onHover: (uid: string | null) => void;
   onOpen: (uid: string) => void;
+  /** A click on a City, DMA, State, Status, Tag, Route or Installer value filters by it (again takes it off). */
+  onFilter?: (facet: Facet, value: string) => void;
+  /** Miles from the Nearby point per store uid, while that filter is on: a Distance column shows them. */
+  distances?: Record<string, number> | null;
 }
 
 const helper = createColumnHelper<Stop>();
@@ -64,6 +95,8 @@ const SORT_KEYS: Record<string, string> = {
   committed: "committed_dolphin_screens",
   install_type: "install_type",
   installer_name: "installer_name",
+  tag: "tag",
+  distance: "distance",
 };
 
 /** One dot per screen in its status colour: the row's mini status summary. */
@@ -172,7 +205,7 @@ function rowTint(stop: Stop): string {
   return "hover:bg-slate-50";
 }
 
-function ServicingCell({ stop, planNames }: { stop: Stop; planNames: Map<string, string> }) {
+function ServicingCell({ stop, planNames, onFilter }: { stop: Stop; planNames: Map<string, string>; onFilter?: OnFilter }) {
   const state = visitState(stop);
   const visited = stop.screens.filter((screen) => {
     const at = stop.screen_visits[screen.id];
@@ -190,6 +223,11 @@ function ServicingCell({ stop, planNames }: { stop: Stop; planNames: Map<string,
           <Route size={11} className="shrink-0" /> <span className="truncate">{planNames.get(stop.route_plan_id) ?? "In route"}</span>
         </Link>
       )}
+      {stop.route_plan_id && (
+        <FilterCell facet="route" value="In route" label="route" onFilter={onFilter} className="shrink-0 text-slate-400 hover:text-brand">
+          {onFilter ? <ListFilter size={12} /> : null}
+        </FilterCell>
+      )}
       {state === "visited" && (
         <span className="inline-flex items-center gap-0.5 rounded bg-emerald-100 px-1.5 py-0.5 text-emerald-800" title={`Last visit ${stop.last_visit_at.slice(0, 10)}`}>
           <Check size={11} /> Visited
@@ -200,7 +238,11 @@ function ServicingCell({ stop, planNames }: { stop: Stop; planNames: Map<string,
           {visited}/{stop.screens.length} sticks
         </span>
       )}
-      {!stop.route_plan_id && state === "none" && (stop.last_visit_at ? <span className="text-slate-400">last {stop.last_visit_at.slice(0, 10)}</span> : dash)}
+      {!stop.route_plan_id && state === "none" && (
+        <FilterCell facet="route" value="Not in route" label="route" onFilter={onFilter}>
+          {stop.last_visit_at ? <span className="text-slate-400">last {stop.last_visit_at.slice(0, 10)}</span> : dash}
+        </FilterCell>
+      )}
     </span>
   );
 }
@@ -209,7 +251,7 @@ function ServicingCell({ stop, planNames }: { stop: Stop; planNames: Map<string,
 export const singlePa = (pa: string) => pa.trim() !== "" && !pa.includes(",");
 
 export function StoresTable(props: Props) {
-  const { project, stops, sort, dir, onSort, selectedId, hoveredId, onHover, onOpen } = props;
+  const { project, stops, sort, dir, onSort, selectedId, hoveredId, onHover, onOpen, onFilter, distances = null } = props;
   const plans = useRoutePlans("active");
   const planNames = useMemo(() => new Map((plans.data ?? []).map((plan) => [plan.id, plan.name])), [plans.data]);
   const hidePa = singlePa(project.pa) && stops.every((stop) => !stop.pa.trim() || stop.pa.trim() === project.pa.trim());
@@ -235,6 +277,20 @@ export function StoresTable(props: Props) {
           );
         },
       }),
+      // Only while the Nearby filter is on: how far each store is from its point.
+      ...(distances
+        ? [
+            helper.accessor((stop) => String(distances[stop.uid] ?? ""), {
+              id: "distance",
+              header: "Distance",
+              size: 84,
+              cell: (info) => {
+                const miles = distances[info.row.original.uid];
+                return miles === undefined ? dash : <span className="font-mono text-xs tabular-nums">{miles.toFixed(1)} mi</span>;
+              },
+            }),
+          ]
+        : []),
       helper.accessor("store_name", {
         header: "Store name",
         size: 240,
@@ -256,18 +312,12 @@ export function StoresTable(props: Props) {
         header: "City",
         size: 120,
         cell: (info) => (
-          <button
-            type="button"
-            className="flex w-full items-center gap-1 truncate text-left hover:text-brand"
-            title={`${addressLine(info.row.original)} (open to edit; the address is re-verified with Google)`}
-            onClick={(event) => {
-              event.stopPropagation();
-              onOpen(info.row.original.uid);
-            }}
-          >
+          <span className="flex w-full items-center gap-1 truncate" title={addressLine(info.row.original)}>
             {info.row.original.route_stale && info.row.original.route_plan_id && <AlertTriangle size={12} className="shrink-0 text-amber-600" aria-label="Route may be stale" />}
-            <span className={cn("truncate", info.row.original.device?.city && DEVICE_TONE.text)}>{info.getValue() || "—"}</span>
-          </button>
+            <FilterCell facet="city" value={info.getValue()} label="city" onFilter={onFilter}>
+              <span className={cn("truncate", info.row.original.device?.city && DEVICE_TONE.text)}>{info.getValue() || "—"}</span>
+            </FilterCell>
+          </span>
         ),
       }),
       helper.accessor((stop) => stop.device?.dma || stop.dma, {
@@ -275,26 +325,34 @@ export function StoresTable(props: Props) {
         header: "DMA",
         size: 130,
         // The Dolphin data's DMA shows over ours, in its colour (ours on hover).
-        cell: (info) =>
-          info.row.original.device?.dma ? (
-            <span className={DEVICE_TONE.text} title={info.row.original.dma && info.row.original.dma !== info.getValue() ? `Dolphin data. Sheet: ${info.row.original.dma}` : "Dolphin data"}>
-              {info.getValue()}
-            </span>
-          ) : (
-            info.getValue() || dash
-          ),
+        cell: (info) => (
+          <FilterCell facet="dma" value={info.getValue()} label="DMA" onFilter={onFilter}>
+            {info.row.original.device?.dma ? (
+              <span className={DEVICE_TONE.text} title={info.row.original.dma && info.row.original.dma !== info.getValue() ? `Dolphin data. Sheet: ${info.row.original.dma}` : "Dolphin data"}>
+                {info.getValue()}
+              </span>
+            ) : (
+              info.getValue() || dash
+            )}
+          </FilterCell>
+        ),
       }),
       helper.accessor((stop) => stop.place_state, {
         id: "state",
         header: "State",
         size: 62,
-        cell: (info) => <span className={cn("font-mono text-xs", info.row.original.device?.state && DEVICE_TONE.text)}>{info.getValue() || dash}</span>,
+        cell: (info) => (
+          <FilterCell facet="state" value={info.getValue()} label="state" onFilter={onFilter}>
+            <span className={cn("font-mono text-xs", info.row.original.device?.state && DEVICE_TONE.text)}>{info.getValue() || dash}</span>
+          </FilterCell>
+        ),
       }),
       helper.accessor((stop): string => stop.status, {
         id: "status",
         header: "Status",
         size: 112,
         cell: (info) => (
+          <FilterCell facet="status" value={info.row.original.status} label="status" onFilter={onFilter}>
           <span
             aria-label={`Status of ${info.row.original.external_id || info.row.original.display_id}`}
             title={storeStatusLabel(info.row.original.status)}
@@ -303,14 +361,31 @@ export function StoresTable(props: Props) {
           >
             {storeStatusLabel(info.row.original.status)}
           </span>
+          </FilterCell>
         ),
+      }),
+      // The project manager's tag (Settings → Store tags), apart from the status.
+      helper.accessor((stop) => stop.tag, {
+        id: "tag",
+        header: "Tag",
+        size: 96,
+        cell: (info) =>
+          info.getValue() ? (
+            <FilterCell facet="tag" value={info.getValue()} label="tag" onFilter={onFilter}>
+              <span className={cn(tagChip(info.getValue()), "inline-block max-w-full truncate")} aria-label={`Tag: ${info.getValue()}`}>
+                {info.getValue()}
+              </span>
+            </FilterCell>
+          ) : (
+            dash
+          ),
       }),
       helper.accessor((stop) => String(stop.screens.length), { id: "screens", header: "Screens", size: 78, cell: (info) => <ScreenDots stop={info.row.original} /> }),
       helper.accessor((stop) => stop.route_plan_id, {
         id: "servicing",
         header: "Route / visits",
         size: 150,
-        cell: (info) => <ServicingCell stop={info.row.original} planNames={planNames} />,
+        cell: (info) => <ServicingCell stop={info.row.original} planNames={planNames} onFilter={onFilter} />,
       }),
       // A single-PA project shows its PA in the header: the column would repeat it on every row (it stays when a
       // store on this page carries a PA of its own).
@@ -325,12 +400,20 @@ export function StoresTable(props: Props) {
           const type = info.row.original.install_type;
           if (type === "Self install" || type === "Rep install") {
             return (
-              <span className="inline-flex rounded-full border border-brand/30 bg-brand/10 px-2 py-0.5 text-xs font-semibold text-brand" title={type}>
-                {type === "Self install" ? "Self" : "Rep"}
-              </span>
+              <FilterCell facet="install_type" value={type} label="install type" onFilter={onFilter}>
+                <span className="inline-flex rounded-full border border-brand/30 bg-brand/10 px-2 py-0.5 text-xs font-semibold text-brand" title={type}>
+                  {type === "Self install" ? "Self" : "Rep"}
+                </span>
+              </FilterCell>
             );
           }
-          return info.getValue() ? <InstallerName name={info.getValue()} /> : dash;
+          return info.getValue() ? (
+            <FilterCell facet="technician" value={info.getValue()} label="installer" onFilter={onFilter}>
+              <InstallerName name={info.getValue()} />
+            </FilterCell>
+          ) : (
+            dash
+          );
         },
       }),
 
@@ -371,7 +454,7 @@ export function StoresTable(props: Props) {
             }),
           ]),
     ],
-    [project.pa, project.hardware_costs, onOpen, planNames, hidePa], // the mutation object is stable per project
+    [project.pa, project.hardware_costs, onOpen, onFilter, planNames, hidePa, distances], // the mutation object is stable per project
   );
 
   const table = useReactTable({ data: stops, columns, getCoreRowModel: getCoreRowModel(), manualSorting: true, getRowId: (stop) => stop.uid });

@@ -132,7 +132,7 @@ class FakeDeviceData:
         return self.date
 
     def list_pas(self) -> tuple[str, list[str]]:
-        return self.date, sorted({row["PA Name"] for row in self.rows})
+        return self.date, sorted({row["PA Name"] for row in self.rows if row["PA Name"].strip()})  # as Mongo's
 
     def logs(self, codes: list[str]):
         from dolphin_tracker.domain.device import DeviceLog, code_variants

@@ -22,6 +22,7 @@ function project(id: string, overrides: Partial<ProjectSummary["kpi"]> & { insta
     field_schema: [], routing_status: "ready", routing_job_id: "", stop_count: 0, version: 1,
     created_at: "", updated_at: "",
     import_mappings: {},
+    tag_options: [],
     kpi: makeKpi({
       total: 0, complete: 0, pending: 0, offline: 0, other: 0, by_status: {}, by_installer: {}, ...kpi,
     }),

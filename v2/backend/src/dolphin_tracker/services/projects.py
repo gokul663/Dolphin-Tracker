@@ -24,6 +24,7 @@ from dolphin_tracker.domain.schema import (
     validate_stop_inputs,
     with_sheet_fields,
 )
+from dolphin_tracker.domain.tags import clean_tag_options, tag_options_problem
 from dolphin_tracker.domain.validation import stop_details
 from dolphin_tracker.domain.venues import VENUES_PROJECT_ID
 from dolphin_tracker.repositories.projects import ProjectRepository
@@ -175,6 +176,15 @@ class ProjectService:
         if "device_pa" in update and update["device_pa"] != current.device_pa:
             update["device_sync"] = None  # a different PA: the next sync starts over
         return self._projects.update(project_id, update, expected_version=expected_version)
+
+    def set_tag_options(self, project_id: str, options: list[str]) -> Project:
+        """Replace the project's tag options (cleaned, repeats dropped). Stores keep a tag that is removed."""
+        self.get(project_id)
+        cleaned = clean_tag_options(options)
+        problem = tag_options_problem(cleaned)
+        if problem:
+            raise ValidationFailed(problem, errors=[problem])
+        return self._projects.update(project_id, {"tag_options": cleaned})
 
     def delete(self, project_id: str, *, confirm: str) -> None:
         """Two-step safeguard from v1: the caller must echo the exact project name."""

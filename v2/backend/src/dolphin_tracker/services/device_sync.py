@@ -1,6 +1,7 @@
 """Device sync use cases: pick a project's PA in the device report, sync it (on open when the report has a newer day,
-on "Sync now", and daily from the worker), review report records the project lacks, overwrite sheet values with the
-report's, and ignore a "not in Dolphin data" alert until the next report day. Rules: `domain/device_sync.py`."""
+on "Sync now", and daily from the worker), review report records the project lacks, check screens of another PA at
+the stores' addresses, overwrite sheet values with the report's, and ignore a "not in Dolphin data" alert until the
+next report day. Rules: `domain/device_sync.py`."""
 from __future__ import annotations
 
 import logging
@@ -12,7 +13,9 @@ from dolphin_tracker.domain.device import (
     DeviceLog,
     DeviceSnapshot,
     DeviceSyncState,
+    OtherPaScreen,
     ReviewItem,
+    StoreDevice,
     split_codes,
     venue_code_key,
 )
@@ -20,6 +23,8 @@ from dolphin_tracker.domain.device_sync import (
     OVERWRITABLE,
     add_record_changes,
     index_records,
+    other_pa_screens,
+    other_pa_situation,
     overwrite_changes,
     placeholder_screen,
     review_items,
@@ -38,6 +43,7 @@ from dolphin_tracker.domain.models import (
     now_iso,
 )
 from dolphin_tracker.domain.search import matches, search_text
+from dolphin_tracker.domain.venues import VENUES_PROJECT_ID
 from dolphin_tracker.repositories.device_data import DeviceDataSource, DeviceDataUnavailable
 from dolphin_tracker.repositories.device_review import DeviceReviewRepository
 from dolphin_tracker.repositories.projects import ProjectRepository
@@ -70,6 +76,12 @@ class ReviewPage(ApiModel):
     next_cursor: str | None = None
     total: int
     snoozed: int  # hidden by "Not now" until the next report day
+
+
+class OtherPaPage(ApiModel):
+    items: list[OtherPaScreen]
+    next_cursor: str | None = None
+    total: int
 
 
 class LogPage(ApiModel):
@@ -147,19 +159,28 @@ class DeviceSyncService:
 
     def _apply(self, project_id: str, pa: str, snapshot: DeviceSnapshot) -> SyncResult:
         """One sync against a snapshot already read."""
+        venues: dict[str, Stop] | None = None
         try:  # the planner's all-venues list takes this PA's latest too; it never fails the project's sync
-            self._venues.upsert(snapshot.records)
+            venues = {stop.uid: stop for stop in self._stores.list_all(VENUES_PROJECT_ID)}
+            self._venues.upsert(snapshot.records, venues)
         except Exception:
+            venues = None
             logger.exception("Could not update the all-venues list")
         codes = index_records(snapshot.records)
         now = now_iso()
         stops = self._stores.list_all(project_id)
         writes: list[tuple[str, dict[str, Any]]] = []
+        located: list[Stop] = []  # the stores with this sync's Dolphin data address, for the other-PA check
         status_changes = matched = flagged = 0
         for stop in stops:
             changes = sync_stop(stop, codes, snapshot, now)
             if changes:
                 writes.append((stop.uid, changes))
+            if "device" in changes:
+                device = StoreDevice.model_validate(changes["device"]) if changes["device"] else None
+                located.append(stop.model_copy(update={"device": device}))
+            else:
+                located.append(stop)
             for screen in changes.get("screens") or []:
                 status_changes += int(screen.get("status_changed_at") == now)
             matched += sum(1 for screen in stop.screens if venue_code_key(screen.venue_id) in codes)
@@ -170,10 +191,17 @@ class DeviceSyncService:
         snoozed = {item.key: item.snoozed_date for item in self._reviews.list(project_id) if item.snoozed_date}
         items = review_items(snapshot.records, stops, snoozed, snapshot.date)
         self._reviews.replace(project_id, items)
+        if venues is None:  # the all-venues list could not be read: the last list stands
+            other_pa = len(self._reviews.list_other_pa(project_id))
+        else:
+            other = other_pa_screens(venues.values(), located, pa, self._reviews.reviewed_other_pa(project_id))
+            self._reviews.replace_other_pa(project_id, other)
+            other_pa = len(other)
         state = DeviceSyncState(
             pa=pa, snapshot_date=snapshot.date, ingested_at=snapshot.ingested_at, synced_at=now,
             matched_screens=matched, status_changes=status_changes,
             review_count=sum(1 for item in items if not item.snoozed_date), not_reporting=flagged,
+            other_pa_count=other_pa,
         )
         self._projects.update(project_id, {"device_sync": state.model_dump(mode="json")})
         return SyncResult(synced=True, state=state, stores_updated=written)
@@ -184,6 +212,12 @@ class DeviceSyncService:
 
     def sync_all(self) -> dict[str, Any]:
         """Every project with a PA chosen (the daily schedule). One project failing does not stop the others."""
+        # First every venue of every PA, for the Route Planner (domain/venues.py) and for each project's check of
+        # the screens of another PA at its addresses, so that check reads the same report day as the sync.
+        try:
+            venues: dict[str, Any] = self._venues.refresh_all().model_dump()
+        except Exception as exc:
+            venues = {"error": f"{type(exc).__name__}: {exc}"}
         synced, failed, cursor = 0, [], None
         while True:
             page = self._projects.list(limit=100, cursor=cursor)
@@ -198,11 +232,6 @@ class DeviceSyncService:
             cursor = page.next_cursor
             if not cursor:
                 break
-        # Then every venue of every PA, for the Route Planner (domain/venues.py).
-        try:
-            venues: dict[str, Any] = self._venues.refresh_all().model_dump()
-        except Exception as exc:
-            venues = {"error": f"{type(exc).__name__}: {exc}"}
         return {"synced": synced, "failed": failed, "venues": venues}
 
     # ---- review -----------------------------------------------------------------------------------------
@@ -243,7 +272,10 @@ class DeviceSyncService:
             1 for row in self._stores.list_projected(project_id, ("needs_attention",))
             if NeedsAttention.NOT_REPORTING.value in (row.get("needs_attention") or [])
         )
-        state = project.device_sync.model_copy(update={"review_count": count, "not_reporting": not_reporting})
+        state = project.device_sync.model_copy(update={
+            "review_count": count, "not_reporting": not_reporting,
+            "other_pa_count": len(self._reviews.list_other_pa(project_id)),
+        })
         self._projects.update(project_id, {"device_sync": state.model_dump(mode="json")})
 
     def snooze(self, project_id: str, key: str) -> ReviewItem:
@@ -253,6 +285,28 @@ class DeviceSyncService:
         item = item.model_copy(update={"snoozed_date": project.device_sync.snapshot_date if project.device_sync
                                        else item.date})
         self._reviews.put(project_id, item)
+        self._recount(project_id)
+        return item
+
+    def other_pa(self, project_id: str, *, limit: int = 50, cursor: str | None = None) -> OtherPaPage:
+        """Screens of another PA (or none) at the address of one of the stores, as of the last sync; the ones
+        marked reviewed are not listed."""
+        self._project(project_id)
+        items = self._reviews.list_other_pa(project_id)
+        items.sort(key=lambda item: (item.store_name.lower() or "~", item.key))
+        start = offset_from_cursor(cursor)
+        next_cursor = encode_cursor({"offset": start + limit}) if start + limit < len(items) else None
+        return OtherPaPage(items=items[start : start + limit], next_cursor=next_cursor, total=len(items))
+
+    def mark_other_pa_reviewed(self, project_id: str, key: str) -> OtherPaScreen:
+        """"Reviewed, it's fine": hidden for good, for this screen at this store under this PA. Nothing in the
+        project changes; a new PA or another store of ours lists it again."""
+        self._project(project_id)
+        item = self._reviews.get_other_pa(project_id, key)
+        if item is None:
+            raise NotFoundError("That screen is no longer listed for review")
+        self._reviews.mark_other_pa_reviewed(project_id, other_pa_situation(item))
+        self._reviews.delete_other_pa(project_id, key)
         self._recount(project_id)
         return item
 

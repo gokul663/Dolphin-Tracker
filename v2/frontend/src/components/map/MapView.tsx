@@ -21,12 +21,15 @@ import {
 } from "@/components/map/pins";
 import { useMapsConfig } from "@/features/places/api";
 import type { Pin } from "@/lib/api/types";
-import { BUCKET_LABEL, BUCKET_META, BUCKETS, MAP_BUCKETS, bucketOf, bucketShade, darkTextUntil, shadeLevel, STATUS_META, type StatusBucket } from "@/lib/status";
+import { BUCKET_LABEL, BUCKET_META, BUCKETS, MAP_BUCKETS, bucketOf, bucketShade, darkTextUntil, shadeLevel, type StatusBucket } from "@/lib/status";
 import { cn } from "@/lib/utils";
+import { LocationPopup, StorePopup } from "@/components/map/PinPopup";
 
 /** Clusters form at this zoom and below; closer in, every location gets its own pin. */
 export const CLUSTER_MAX_ZOOM = 11;
 const US_CENTER = { lat: 39.5, lng: -98.35 };
+/** Pop-ups open above the pin's head, not over it. One array for every render: a new one would reopen the window. */
+const POPUP_OFFSET: [number, number] = [0, -44];
 /** Cluster size in px grows with the log of its store count. */
 export function clusterSize(count: number): number {
   return Math.round(Math.min(56, 26 + Math.log10(Math.max(count, 1)) * 14));
@@ -63,6 +66,25 @@ export function clusterRenderer(bucket: StatusBucket): Renderer {
   };
 }
 
+/** The Nearby filter's area: a centre and a radius in miles. */
+export interface MapCircle {
+  lat: number;
+  lng: number;
+  radiusMiles: number;
+  /** The centre marker's hover text (the address). */
+  label?: string;
+}
+
+const METERS_PER_MILE = 1609.344;
+const MILES_PER_DEGREE_LAT = 69.05;
+
+/** The box around a circle, to fit the map to it (a degree of longitude shrinks towards the poles). */
+export function circleBounds({ lat, lng, radiusMiles }: MapCircle): Bounds {
+  const dLat = radiusMiles / MILES_PER_DEGREE_LAT;
+  const dLng = dLat / Math.max(Math.cos((lat * Math.PI) / 180), 0.01);
+  return { north: Math.min(lat + dLat, 90), south: Math.max(lat - dLat, -90), east: lng + dLng, west: lng - dLng };
+}
+
 export interface MapViewProps {
   pins: Pin[];
   selectedId?: string | null;
@@ -84,10 +106,22 @@ export interface MapViewProps {
   labels?: Record<string, string>;
   /** Lines over the map: an installer's day, in order. */
   routes?: { key: string; color: string; points: { lat: number; lng: number }[]; bold?: boolean }[];
+  /** A click on a single store's pin shows its name, ExtID, address and status in a small pop-up instead of calling
+   *  `onSelect` (the Stores tab and the full-page map). */
+  popup?: boolean;
+  /** With `popup`: open the store window, from a double click on the pin, the pop-up's Open store button or an entry
+   *  of a several-stores pop-up. */
+  onOpen?: (uid: string) => void;
+  /** With `popup`: a single store's pin was clicked (the Nearby form starts from it). */
+  onPinClick?: (pin: Pin) => void;
+  /** With `popup`: the pop-up's Nearby action. */
+  onNearby?: (pin: Pin) => void;
+  /** The Nearby filter: the radius drawn around a centre marker of its own, and the map fitted to it. */
+  circle?: MapCircle | null;
 }
 
 /** Shared map for the Stores and Routes tabs: status pins, same-location stacks, legend, clustering, sync. */
-export function MapView({ pins, selectedId, hoveredId, onSelect, onBoundsChange, className, unit = "locations", controls, action, installerColors, labels, routes }: MapViewProps) {
+export function MapView({ pins, selectedId, hoveredId, onSelect, onBoundsChange, className, unit = "locations", controls, action, installerColors, labels, routes, popup = false, circle = null, onOpen, onPinClick, onNearby }: MapViewProps) {
   const config = useMapsConfig();
   // The map shows what the filters above select; the legend only explains the colours.
   const visible = pins;
@@ -173,8 +207,9 @@ export function MapView({ pins, selectedId, hoveredId, onSelect, onBoundsChange,
                 if (bounds) onBoundsChange?.(bounds);
               }}
             >
-              <Markers groups={groups} fitSignature={fitSignature} selectedId={selectedId} hoveredId={hoveredId} onSelect={onSelect} unit={unit} paint={{ installerColors, labels }} />
+              <Markers groups={groups} fitSignature={fitSignature} selectedId={selectedId} hoveredId={hoveredId} onSelect={onSelect} unit={unit} paint={{ installerColors, labels }} popup={popup} circle={circle} onOpen={onOpen} onPinClick={onPinClick} onNearby={onNearby} />
               {routes && <RouteLines routes={routes} />}
+              {circle && <NearbyCircle circle={circle} />}
             </Map>
           </APIProvider>
         )}
@@ -209,6 +244,37 @@ interface MarkersProps {
   onSelect?: (uid: string) => void;
   unit: MapUnit;
   paint: PinPaint;
+  popup: boolean;
+  circle: MapCircle | null;
+  onOpen?: (uid: string) => void;
+  onPinClick?: (pin: Pin) => void;
+  onNearby?: (pin: Pin) => void;
+}
+
+/** The Nearby area: a light ring of the radius and a dark centre dot, under the pins. */
+function NearbyCircle({ circle }: { circle: MapCircle }) {
+  const map = useMap();
+  const { lat, lng, radiusMiles, label } = circle;
+  useEffect(() => {
+    if (!map) return;
+    const ring = new google.maps.Circle({
+      map, center: { lat, lng }, radius: radiusMiles * METERS_PER_MILE, clickable: false,
+      strokeColor: "#0f172a", strokeOpacity: 0.6, strokeWeight: 2, fillColor: "#0f172a", fillOpacity: 0.06,
+    });
+    const centre = new google.maps.Marker({
+      map,
+      position: { lat, lng },
+      title: label ? `Nearby: ${label}` : "Nearby centre",
+      clickable: false,
+      zIndex: Number(google.maps.Marker.MAX_ZINDEX) + 10_000,
+      icon: { path: google.maps.SymbolPath.CIRCLE, scale: 7, fillColor: "#0f172a", fillOpacity: 1, strokeColor: "#fff", strokeWeight: 3 },
+    });
+    return () => {
+      ring.setMap(null);
+      centre.setMap(null);
+    };
+  }, [map, lat, lng, radiusMiles, label]);
+  return null;
 }
 
 /** Each installer's day as a line through its stops, in the installer's colour; the clicked day is heavier. */
@@ -238,7 +304,7 @@ function RouteLines({ routes }: { routes: NonNullable<MapViewProps["routes"]> })
 }
 
 /** Imperative markers (one per location) in a clusterer that only clusters at low zoom. */
-function Markers({ groups, fitSignature, selectedId, hoveredId, onSelect, unit, paint }: MarkersProps) {
+function Markers({ groups, fitSignature, selectedId, hoveredId, onSelect, unit, paint, popup, circle, onOpen, onPinClick, onNearby }: MarkersProps) {
   const map = useMap();
   const loose = Boolean(paint.installerColors); // installer-coloured pins sit on the map itself, never in a bubble
   const clusterers = useRef(new globalThis.Map<StatusBucket, MarkerClusterer>()); // one per status group
@@ -247,11 +313,26 @@ function Markers({ groups, fitSignature, selectedId, hoveredId, onSelect, unit, 
   const latest = useRef(new globalThis.Map<string, PinGroup>()); // click handlers read the current group
   latest.current = new globalThis.Map(groups.map((group) => [group.key, group]));
   const onSelectRef = useRef(onSelect);
+  const popupRef = useRef(popup);
+  const onOpenRef = useRef(onOpen);
+  const onPinClickRef = useRef(onPinClick);
   useEffect(() => {
     onSelectRef.current = onSelect;
-  }, [onSelect]);
+    popupRef.current = popup;
+    onOpenRef.current = onOpen;
+    onPinClickRef.current = onPinClick;
+  }, [onSelect, popup, onOpen, onPinClick]);
+  // One pop-up at a time, by location: it stays open while the pins are re-fetched and the location is still there.
   const [openKey, setOpenKey] = useState<string | null>(null);
   const openGroup = openKey ? latest.current.get(openKey) ?? null : null;
+  useEffect(() => {
+    if (openKey && !openGroup) setOpenKey(null); // its stores were filtered out: don't reopen when they come back
+  }, [openKey, openGroup]);
+  useEffect(() => {
+    if (!map) return;
+    const listener = map.addListener("click", () => setOpenKey(null));
+    return () => listener.remove();
+  }, [map]);
 
   useEffect(() => {
     if (!map) return;
@@ -290,8 +371,24 @@ function Markers({ groups, fitSignature, selectedId, hoveredId, onSelect, unit, 
       marker.addListener("click", () => {
         const current = latest.current.get(group.key);
         if (!current) return;
-        if (current.pins.length === 1 && current.pins[0]) onSelectRef.current?.(current.pins[0].uid);
-        else setOpenKey(current.key);
+        const only = current.pins.length === 1 ? current.pins[0] : undefined;
+        if (only && !popupRef.current) {
+          onSelectRef.current?.(only.uid);
+          return;
+        }
+        if (only) onPinClickRef.current?.(only);
+        // Opens at once (no wait to tell it from a double click): the double click's second click finds it open
+        // already, and the double click then swaps it for the store window, so it never blinks.
+        setOpenKey(current.key);
+      });
+      marker.addListener("dblclick", (event: google.maps.MapMouseEvent) => {
+        if (!popupRef.current) return; // the planner maps keep Google's default
+        event.stop(); // the map does not zoom in as well
+        const current = latest.current.get(group.key);
+        const only = current?.pins.length === 1 ? current.pins[0] : undefined;
+        if (!only || !onOpenRef.current) return;
+        setOpenKey(null);
+        onOpenRef.current(only.uid);
       });
       markers.current.set(group.key, marker);
       if (loose) {
@@ -307,9 +404,16 @@ function Markers({ groups, fitSignature, selectedId, hoveredId, onSelect, unit, 
   // Fit to the project's locations (v1: one pin → zoom 13) only when those change, not on legend toggles.
   const fitGroups = useRef(groups);
   fitGroups.current = groups;
+  const fitCircle = useRef(circle);
+  fitCircle.current = circle;
+  const circleKey = circle ? `${circle.lat},${circle.lng},${circle.radiusMiles}` : "";
   const moved = useRef(false); // the person panned or zoomed: stop refitting on resize
   const fit = useCallback(() => {
     if (!map) return;
+    if (fitCircle.current) {
+      map.fitBounds(circleBounds(fitCircle.current), 24); // the Nearby area, whatever pins are in it
+      return;
+    }
     const bounds = boundsOf(fitGroups.current);
     if (!bounds) {
       map.setCenter(US_CENTER);
@@ -324,7 +428,7 @@ function Markers({ groups, fitSignature, selectedId, hoveredId, onSelect, unit, 
   useEffect(() => {
     moved.current = false;
     fit();
-  }, [fit, fitSignature]);
+  }, [fit, fitSignature, circleKey]);
   // The map can be fitted while its box is still small (the page is laying out) and then grow, which leaves it
   // zoomed far out. Refit whenever the box changes size, until the person moves the map themselves.
   useEffect(() => {
@@ -380,33 +484,33 @@ function Markers({ groups, fitSignature, selectedId, hoveredId, onSelect, unit, 
   }, [map, selectedId]); // only when the selection changes
 
   if (!openGroup) return null;
+  const [only] = openGroup.pins;
   return (
-    <InfoWindow position={{ lat: openGroup.lat, lng: openGroup.lng }} onCloseClick={() => setOpenKey(null)}>
-      <div className="max-w-64 space-y-1 text-sm">
-        <div className="font-semibold">{openGroup.pins.length} locations at this address</div>
-        <ul className="max-h-48 space-y-1 overflow-y-auto">
-          {openGroup.pins.map((pin, index) => (
-            <li key={pin.uid}>
-              <button
-                type="button"
-                className="text-left hover:underline"
-                onClick={() => {
-                  onSelect?.(pin.uid);
-                  setOpenKey(null);
-                }}
-              >
-                <b>
-                  {index + 1}. {pin.store_name}
-                </b>{" "}
-                <span className="text-slate-500">
-                  {pin.installer ? `${pin.installer} · Day ${pin.day} · ` : ""}
-                </span>
-                <span style={{ color: STATUS_META[pin.status].color, fontWeight: 700 }}>{STATUS_META[pin.status].label}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      </div>
+    <InfoWindow position={{ lat: openGroup.lat, lng: openGroup.lng }} pixelOffset={POPUP_OFFSET} onCloseClick={() => setOpenKey(null)}>
+      {openGroup.pins.length === 1 && only ? (
+        <StorePopup
+          pin={only}
+          onOpen={
+            onOpen &&
+            ((uid) => {
+              setOpenKey(null);
+              onOpen(uid);
+            })
+          }
+          onNearby={onNearby}
+        />
+      ) : (
+        <LocationPopup
+          pins={openGroup.pins}
+          onSelect={
+            (onOpen ?? onSelect) &&
+            ((uid) => {
+              (onOpen ?? onSelect)?.(uid);
+              setOpenKey(null);
+            })
+          }
+        />
+      )}
     </InfoWindow>
   );
 }

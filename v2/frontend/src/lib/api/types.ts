@@ -26,7 +26,10 @@ export type StopStatus = ScreenStatus;
 export type Screen = Schemas["Screen"];
 export type ScreenInput = Schemas["ScreenInput"];
 export type ScreensUpdate = Schemas["ScreensUpdate"];
-export type Pin = Schemas["Pin"];
+/** The server always sends the pop-up's ExtID and address; pins built in the browser (planner maps, tests) may leave
+ *  them out. */
+type PinAddress = "display_id" | "addr" | "city" | "state" | "zip";
+export type Pin = Omit<Schemas["Pin"], PinAddress> & Partial<Pick<Schemas["Pin"], PinAddress>>;
 export type StoreDetailsUpdate = Schemas["StoreDetailsUpdate"];
 export type ProgressUpdate = Schemas["ProgressUpdate"];
 export type StoreFilterOptions = Schemas["StoreFilterOptions"];
@@ -70,6 +73,9 @@ export type MyProfileUpdate = Schemas["MyProfileUpdate"];
 export type Permission = Schemas["Permission"];
 export type Role = Schemas["Role"];
 export type VisitInput = Schemas["VisitInput"];
+/** A comment on the store as a whole, kept as a log entry of its own (no screen). */
+export type StoreComment = Schemas["StoreComment"];
+export type StoreCommentInput = Schemas["StoreCommentInput"];
 export type StartLocation = Schemas["StartLocation"];
 export type PlanInstaller = Schemas["PlanInstaller-Output"];
 export type PlanDay = Schemas["PlanDay"];
@@ -99,6 +105,9 @@ export type ScreenPage = Schemas["ScreenPage"];
 export type ScreenListRow = Schemas["ScreenListRow"];
 export type PoolStore = Schemas["PoolStore"];
 export type PoolFacets = Schemas["PoolFacets"];
+// Log Visit: a store of any project found by DD code or address.
+export type VisitSearchResult = Schemas["VisitSearchResult"];
+export type VisitSearchRow = Schemas["VisitSearchRow"];
 export type FacetValue = Schemas["FacetValue"];
 export type MapsConfig = Schemas["MapsConfig"];
 export type DeviceSyncState = Schemas["DeviceSyncState"];
@@ -106,6 +115,9 @@ export type StoreDevice = Schemas["StoreDevice"];
 export type ScreenDevice = Schemas["ScreenDevice"];
 export type ReviewItem = Schemas["ReviewItem"];
 export type ReviewPage = Schemas["ReviewPage"];
+/** A screen of another PA (or none) at one of the project's addresses: shown for a check, never added. */
+export type OtherPaScreen = Schemas["OtherPaScreen"];
+export type OtherPaPage = Schemas["OtherPaPage"];
 export type DeviceLog = Schemas["DeviceLog"];
 export type LogPage = Schemas["LogPage"];
 export type SyncResult = Schemas["SyncResult"];

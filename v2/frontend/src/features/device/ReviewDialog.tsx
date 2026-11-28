@@ -7,19 +7,22 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { DEVICE_TONE, DeviceBadge, REPORT_STATUS_TONE, reportDay } from "@/features/device/DeviceBits";
 import { useAddReviewed, useAddReviewedMany, useDeviceReview, useSnoozeReviewed, useSnoozeReviewedMany } from "@/features/device/api";
 import { Input } from "@/components/ui/input";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { GoogleSearchPicker } from "@/features/places/GoogleSearchPicker";
+import { OtherPaSection } from "@/features/device/OtherPaSection";
 import { ApiError, type Project, type ProjectSummary, type ReviewAdd, type ReviewItem } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
 
 const PAGE = 25;
 
 /** Report records of the project's PA whose DD code is in no store: add each as a store, or "Not now" (it comes
- *  back with the next report day). */
+ *  back with the next report day). On a second tab, screens of another PA at our addresses, for a check only. */
 export function ReviewDialog({
   project,
   open,
   onClose,
   onMissingScreens,
+  onOpenStore,
   search = "",
 }: {
   project: Project & { kpi?: ProjectSummary["kpi"] };
@@ -27,10 +30,19 @@ export function ReviewDialog({
   onClose: () => void;
   /** Show the done stores that have fewer screens than the sheet committed. */
   onMissingScreens?: () => void;
+  /** Open one of the project's stores (from the screens of another PA at its address). */
+  onOpenStore?: (uid: string) => void;
   /** What the list starts narrowed to (the Stores search, when it found records waiting here). */
   search?: string;
 }) {
   const missing = project.kpi?.review_screens ?? 0;
+  const newCount = project.device_sync?.review_count ?? 0;
+  const otherCount = project.device_sync?.other_pa_count ?? 0;
+  // Two lists, one tab each, so neither has to be scrolled past to reach the other.
+  const [tab, setTab] = useState<"new" | "other">("new");
+  useEffect(() => {
+    if (open) setTab(newCount === 0 && otherCount > 0 && !search ? "other" : "new"); // start where there is something
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
   const [cursors, setCursors] = useState<(string | null)[]>([null]);
   const [includeSnoozed, setIncludeSnoozed] = useState(false);
   const [query, setQuery] = useState(search);
@@ -131,14 +143,14 @@ export function ReviewDialog({
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
-      <DialogContent className="flex max-h-[88vh] flex-col gap-3 sm:max-w-5xl">
+      <DialogContent className="flex h-[90vh] w-[92vw] max-w-[92vw] flex-col gap-3 sm:max-w-[92vw]">
         <DialogHeader>
           <DialogTitle className="flex flex-wrap items-center gap-2">
             Needs review {date && <DeviceBadge date={date} />}
           </DialogTitle>
           <DialogDescription>
-            Screens the CMS reports for {project.device_pa} whose DD code is in no store of this project. Add creates the store from the
-            report; Not now hides it until the next report day.
+            What the Dolphin data has that this project does not: screens of {project.device_pa} in no store here, and screens of
+            another PA at our addresses.
           </DialogDescription>
         </DialogHeader>
         {missing > 0 && (
@@ -154,6 +166,19 @@ export function ReviewDialog({
             )}
           </div>
         )}
+        <Tabs value={tab} onValueChange={(value) => setTab(value as "new" | "other")} className="min-h-0 flex-1 gap-3">
+        <TabsList aria-label="What to review">
+          <TabsTrigger value="new" className="gap-1.5 px-3">
+            New screens of {project.device_pa} <TabCount value={newCount} />
+          </TabsTrigger>
+          <TabsTrigger value="other" className="gap-1.5 px-3">
+            Screens from another PA at our addresses <TabCount value={otherCount} />
+          </TabsTrigger>
+        </TabsList>
+        <TabsContent value="new" className="flex min-h-0 flex-1 flex-col gap-3">
+        <p className="text-sm text-slate-600">
+          Their DD code is in no store of this project. Add creates the store from the report; Not now hides it until the next report day.
+        </p>
         <div className="flex flex-wrap items-center gap-3 text-sm">
           <Input
             type="search"
@@ -280,6 +305,11 @@ export function ReviewDialog({
             </Button>
           </div>
         )}
+        </TabsContent>
+        <TabsContent value="other" className="flex min-h-0 flex-1 flex-col">
+          <OtherPaSection projectId={project.id} open={open} onOpenStore={onOpenStore} />
+        </TabsContent>
+        </Tabs>
       </DialogContent>
     </Dialog>
   );
@@ -289,6 +319,15 @@ const day = (iso: string) => (iso ?? "").slice(0, 10);
 const STATUS_TONE = REPORT_STATUS_TONE;
 
 /** One labelled value of a report record; a dash when the report has none. */
+/** How many rows a tab holds; quiet at 0. */
+function TabCount({ value }: { value: number }) {
+  return (
+    <span className={cn("rounded-full px-1.5 text-xs tabular-nums", value > 0 ? "bg-cyan-100 text-cyan-900" : "bg-slate-200 text-slate-500")}>
+      {value.toLocaleString()}
+    </span>
+  );
+}
+
 function Fact({ label, value, title, empty = "—", mono = false }: { label: string; value: string; title?: string; empty?: ReactNode; mono?: boolean }) {
   return (
     <div className="flex items-baseline gap-1.5" title={title}>

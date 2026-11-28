@@ -6,7 +6,7 @@ import { makeStop } from "@/test/fixtures";
 const stop = (uid: string): Stop => makeStop({ uid, display_id: uid, store_name: uid, installer: "A" });
 
 describe("patchStopInPage", () => {
-  const data: StorePage = { items: [stop("a"), stop("b")], next_cursor: null, total: 2, offset: 0 };
+  const data: StorePage = { items: [stop("a"), stop("b")], next_cursor: null, total: 2, offset: 0, distances: null };
 
   it("patches the stop and leaves the original untouched", () => {
     const next = patchStopInPage(data, "b", { status: "Completed", comment: "done" });

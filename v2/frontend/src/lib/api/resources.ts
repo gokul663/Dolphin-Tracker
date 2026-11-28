@@ -1,6 +1,7 @@
 /** One thin, typed function per endpoint (AGENT-HANDOFF §4). Hooks in `the per-feature api.ts modules` wrap these. */
 import { api, apiUrl, fetchJson, uploadFile } from "@/lib/api/client";
 import type {
+  VisitSearchResult,
   AppendResult,
   AppendStops,
   StoreAdd,
@@ -47,9 +48,10 @@ import type {
   RoutePlanCreate,
   RoutePlanUpdate,
   Visit,
-  VisitInput, OverwriteField, ReviewAdd, OverwriteResult, PaList, ReviewItem, ReviewPage, LogPage, UploadList, SyncResult, PopulateResult, StoreOverview, DayInsert, DayLockSet, StopMove, StopMark, InsertOptions, InsertQuery, StorePage, ScreenPage, PlaceHit, InstallerSave, InstallerSaved, InstallerWorkReport, ScreenSheetResult } from "@/lib/api/types";
+  VisitInput, OverwriteField, ReviewAdd, OverwriteResult, PaList, ReviewItem, ReviewPage, OtherPaScreen, OtherPaPage, LogPage, UploadList, SyncResult, PopulateResult, StoreOverview, DayInsert, DayLockSet, StopMove, StopMark, InsertOptions, InsertQuery, StorePage, ScreenPage, PlaceHit, InstallerSave, InstallerSaved, InstallerWorkReport, ScreenSheetResult } from "@/lib/api/types";
 import type { StorePageParams } from "@/lib/api/keys";
 import type { StatusBucket } from "@/lib/status";
+import type { StoreComment, StoreCommentInput } from "@/lib/api/types";
 
 /** The store list/pins/export/facet query (STORE-MODEL §5). Repeated values OR together; filters AND. */
 export interface StoreFilters {
@@ -80,6 +82,25 @@ export interface StoreFilters {
   fulfilled?: string[];
   /** "Has review notes" / "No review notes": what the import's review step (or someone since) left to check. */
   review?: string[];
+  /** A comparison with a whole number ("gt:2", "lt:3", "eq:0"): committed Dolphin screens + store TVs, screens on
+   *  the wall, mounts to bring, mounts used. */
+  screens_committed?: string;
+  screens_installed?: string;
+  mounts_needed?: string;
+  mounts_installed?: string;
+  /** "Yes" (fewer screens installed than committed, mismatch ignored or not) / "No". */
+  committed_over_installed?: string[];
+  /** One of the project's tags; "" selects stores without one. */
+  tag?: string[];
+  /** Days (YYYY-MM-DD, inclusive) any screen first / last registered, from the device data. */
+  first_registered_from?: string;
+  first_registered_to?: string;
+  last_registered_from?: string;
+  last_registered_to?: string;
+  /** Nearby: stores within `radius_miles` of the point (all three, or none). */
+  near_lat?: number;
+  near_lng?: number;
+  radius_miles?: number;
   /** Only stores added without a name or a verified address (not fixed yet). */
   needs_attention?: boolean;
   q?: string;
@@ -108,6 +129,19 @@ function storeQuery(filters: StoreFilters) {
     mount: filters.mount,
     fulfilled: filters.fulfilled,
     review: filters.review,
+    screens_committed: filters.screens_committed,
+    screens_installed: filters.screens_installed,
+    mounts_needed: filters.mounts_needed,
+    mounts_installed: filters.mounts_installed,
+    committed_over_installed: filters.committed_over_installed,
+    tag: filters.tag,
+    first_registered_from: filters.first_registered_from || undefined,
+    first_registered_to: filters.first_registered_to || undefined,
+    last_registered_from: filters.last_registered_from || undefined,
+    last_registered_to: filters.last_registered_to || undefined,
+    near_lat: filters.near_lat,
+    near_lng: filters.near_lng,
+    radius_miles: filters.radius_miles,
     needs_attention: filters.needs_attention || undefined,
     q: filters.q || undefined,
     sort: filters.sort,
@@ -142,6 +176,9 @@ export const projectsApi = {
   /** Every sheet imported into the project (kept for good), newest first, each with a download link. */
   uploads: (id: string) => api<UploadList>(`/projects/${enc(id)}/uploads`),
   update: (id: string, body: ProjectUpdate) => api<Project>(`/projects/${enc(id)}`, { method: "PATCH", body }),
+  /** The tags a store of this project may carry (Settings), the whole list at once. */
+  setTagOptions: (id: string, tagOptions: string[]) =>
+    api<Project>(`/projects/${enc(id)}/tag-options`, { method: "PUT", body: { tag_options: tagOptions } }),
   remove: (id: string, confirm: string) =>
     api<void>(`/projects/${enc(id)}`, { method: "DELETE", query: { confirm } }),
   routes: (id: string) => api<RoutesBundle>(`/projects/${enc(id)}/routes`),
@@ -200,6 +237,9 @@ export const storesApi = {
     api<Stop>(`/projects/${enc(projectId)}/stores/${enc(uid)}/external-id`, { method: "PUT", body: { external_id: externalId } }),
   updateProgress: (projectId: string, uid: string, body: ProgressUpdate) =>
     api<Stop>(`/projects/${enc(projectId)}/stores/${enc(uid)}/progress`, { method: "PATCH", body }),
+  /** The store's tag: one of the project's tag options, or "" for none. */
+  setTag: (projectId: string, uid: string, tag: string) =>
+    api<Stop>(`/projects/${enc(projectId)}/stores/${enc(uid)}/tag`, { method: "PUT", body: { tag } }),
   add: (projectId: string, body: StoreAdd) => api<Stop>(`/projects/${enc(projectId)}/stores`, { method: "POST", body }),
   append: (projectId: string, body: AppendStops) =>
     api<AppendResult>(`/projects/${enc(projectId)}/stores/append`, { method: "POST", body }),
@@ -323,6 +363,21 @@ export const visitsApi = {
     api<Visit>(`/projects/${enc(projectId)}/stores/${enc(uid)}/visits`, { method: "POST", body }),
 };
 
+/** Store comments as log entries (no screen). Posting one also makes it the store's `comment`. */
+export const storeCommentsApi = {
+  list: (projectId: string, uid: string, params: { limit?: number; cursor?: string | null } = {}) =>
+    api<Page<StoreComment>>(`/projects/${enc(projectId)}/stores/${enc(uid)}/comments`, {
+      query: { limit: params.limit, cursor: params.cursor },
+    }),
+  create: (projectId: string, uid: string, body: StoreCommentInput) =>
+    api<StoreComment>(`/projects/${enc(projectId)}/stores/${enc(uid)}/comments`, { method: "POST", body }),
+};
+
+/** Log Visit: stores of every project by a screen's DD code or stick number, or the store's name, ExtID or address. */
+export const visitSearchApi = {
+  search: (q: string, limit = 25) => api<VisitSearchResult>("/visit-search", { query: { q, limit } }),
+};
+
 /** The CMS device report (MongoDB, read through the device-data Lambda) and each project's sync with it. */
 export const deviceSyncApi = {
   pas: () => api<PaList>("/device-data/pas"),
@@ -345,6 +400,14 @@ export const deviceSyncApi = {
     api<Stop>(`/projects/${enc(projectId)}/device-sync/review/${enc(key)}/add`, { method: "POST", body }),
   snooze: (projectId: string, key: string) =>
     api<ReviewItem>(`/projects/${enc(projectId)}/device-sync/review/${enc(key)}/snooze`, { method: "POST" }),
+  /** Screens of another PA (or none) at one of the project's addresses, as of the last sync. */
+  otherPa: (projectId: string, params: { limit: number; cursor?: string | null }) =>
+    api<OtherPaPage>(`/projects/${enc(projectId)}/device-sync/other-pa`, {
+      query: { limit: params.limit, cursor: params.cursor ?? undefined },
+    }),
+  /** "Reviewed, it's fine": not listed again while its PA and our store stay the same. */
+  otherPaReviewed: (projectId: string, key: string) =>
+    api<OtherPaScreen>(`/projects/${enc(projectId)}/device-sync/other-pa/${enc(key)}/reviewed`, { method: "POST" }),
   overwriteAll: (projectId: string, fields: OverwriteField[]) =>
     api<OverwriteResult>(`/projects/${enc(projectId)}/device-sync/overwrite`, { method: "POST", body: { fields } }),
   overwriteStore: (projectId: string, uid: string, fields: OverwriteField[]) =>

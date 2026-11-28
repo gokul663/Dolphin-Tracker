@@ -123,6 +123,61 @@ and "Other imported data". On a narrow screen it becomes a collapsible section u
 
 The store modal gains a **Servicing history** section: a timeline of visits, newest first, grouped by stick.
 
+### 5.1 The store window, from a route plan or anywhere else (2026-11-27)
+
+Opening a stop in a plan (its name, a map pin, or **Log entry** on the day card) opens the store window
+(`features/visits/VisitPanel.tsx`, `StoreVisit`), 90% of the screen wide. The **Log Visit** page and the store
+window's **Log visit** button open the same window without a plan (the old single "New Log Entry" form is gone):
+no plan chip, no plan actions, no "Kept on this day"; the date starts as today and the technician as the store's
+assigned installer (`installer_name`); "N of M screens logged" counts the screens with a Done or Incomplete entry
+dated the visit's day; entries are sent with no plan (`route_plan_id: ""`; the server still files them under the
+store's active plan when it has one, and the store window passes the store's plan).
+
+- **Header.** The store's name with its chips beside it: where the stop stands in the plan (In route / Done /
+  Incomplete; a pick list to mark it for whoever may arrange plans, unless every screen is logged), the store's
+  status, "Kept on this day" (with its × to let it be recalculated), and a quiet "N of M screens logged" (its
+  tooltip: the stop is Done when every screen is, Incomplete when any is). On the right, the stop's plan actions
+  the day card offers, through the planner's own handlers and dialogs: **Move** (the Move dialog; **Put back** for
+  a set-aside stop), **Remove from day** (set aside) and **Remove from plan** (asks first). Each shows only when
+  the planner passes its handler and the person has the day card's permission (`routes.arrange`; Remove from plan
+  and Put back `routes.manage`). When the stop ends up on another day or installer, set aside or out of the plan,
+  the window closes (the day it logs for is no longer right).
+- **Inventory**, one line folded: "Needed: 1 stick · 1 screen · 0 mounts — Used: 0 screens · 0 mounts". Open (by
+  itself when something is needed; nothing is remembered) it shows small boxes: **Needed** for the screens not
+  installed yet (sticks, screens by size and brand, store TVs, mounts by piece) and **Used** by the installed
+  screens (screens, store TVs, mounts on the wall by piece, as the store window's summary counts them).
+- **This visit**: date, technician, Dolphin manager, used for everything logged now. The Dolphin manager starts
+  as the signed-in person's name (never a role or an email); without one (sign-in off locally) the name last
+  logged here, else empty. A changed name is remembered when an entry is saved.
+- Three columns: the **screens bar** (each screen a tab, with Add screen, and the store comment folded at the
+  bottom), the picked screen's **log form**, and the store's side, as wide as the form, switched between
+  **Details** (who the store is, its WiFi, owner and store contact each behind its own Edit, the sheet's data)
+  and **Logs** (every log entry, counted on its tab, newest first, filtered by All screens / Store / one screen).
+  Switching never touches the form.
+- The screen's form has, under its details (size, owner, brand, mount, stick #, DD code), its **Pictures**
+  (STORE-MODEL §4.1): thumbnails (click for full size), a pasted link adds one, × removes one after a confirm. They
+  are part of the screen's draft and saved with it (Save log entry, or Save these details only); discarding the
+  draft drops a link not saved yet (there is no uploaded file to orphan). Under the form, once for every screen,
+  the store on a small **map** (its pin, 220 px, "Open in Google Maps"), drawn only when scrolled into view; "No
+  map location" without coordinates.
+- **Who may change what.** Logging needs `visits.log`. The screen's details and pictures, Add / Delete screen, the
+  WiFi / owner / contact edits and the store comment follow the server's store-edit rule (`store_edit_problem`):
+  `projects.edit` always; `visits.log` alone only while the store is on a route (`route_plan_id`). Off a route an
+  Operator sees them read only with one line ("This store is not on a route: you can log the visit, and an admin
+  can change its screen details") and can still fill and save the log entry, which sends no screens update.
+
+**Store comments are log entries.** Saving the store comment records an entry of its own (no screen):
+`POST /api/projects/{id}/stores/{uid}/comments` with `{text, visit_date, installer, dolphin_manager,
+route_plan_id}`, listed by `GET …/comments` (newest first, paged). The entry keeps who was there (the visit row's
+technician and manager) and `created_by` (the signed-in person, shown when both are blank), the date, and the plan
+it came from (`route_plan_id`, `plan_name`, `plan_day`, only when the store is in that plan). The same write sets
+the store's `comment` (the latest), which the store window's notes and the CSV keep reading. It is not a visit:
+it sets no `screen_visits` / `last_visit_at`, so it changes no Visited state, plan stop outcome or KPI. Permission
+as for logging (`visits.log`), and like editing the comment, someone who only logs visits may do it only while the
+store is on a route. Emptying the box clears the store's comment without an entry. Comments saved before this
+have no entry; the box simply shows the current comment. In DynamoDB: `PROJECT#<id>` /
+`STORECOMMENT#<uid>#<created_at>#<id>`, deleted with the store and with the project.
+
 ## 6. Projects view colours and the new status
 
 **New status: Serviced - Needs More Work** (stored with a plain hyphen). It is a per-stick value, set by hand like every other status: a

@@ -7,6 +7,7 @@ Read-only: nothing here writes to Mongo.
 from __future__ import annotations
 
 import json
+import re
 from typing import Any, Protocol
 
 from dolphin_tracker.config import Settings, resolve_mongo_uri
@@ -30,6 +31,7 @@ QUERY_MS = 20_000
 LOGS_COLLECTION = "logs"  # servicing log entries, one per visit to a device; `dd_code` is indexed
 LOG_FIELDS = tuple(name for name in DeviceLog.model_fields)
 MAX_LOGS = 500  # per store: far above what one store's devices collect
+_NO_PA = {"$in": [None, re.compile(r"^\s*$")]}  # missing, null, "" or blank: the venues no PA has
 
 
 class DeviceDataUnavailable(RuntimeError):
@@ -44,7 +46,7 @@ class DeviceDataSource(Protocol):
         """(newest day, the PA names in it, sorted)."""
         ...
     def snapshot(self, pa: str) -> DeviceSnapshot:
-        """Every record of `pa` for the newest day."""
+        """Every record of `pa` for the newest day; `pa` "" = the records with no PA."""
         ...
     def logs(self, codes: list[str]) -> list[DeviceLog]:
         """The servicing log entries of these DD codes, newest first (at most MAX_LOGS)."""
@@ -116,7 +118,7 @@ class MongoDeviceData:
         try:
             docs = list(
                 self._collection()
-                .find({"Date": raw, "PA Name": pa}, dict.fromkeys(FIELDS, 1) | {"_id": 0})
+                .find({"Date": raw, "PA Name": pa or _NO_PA}, dict.fromkeys(FIELDS, 1) | {"_id": 0})
                 .max_time_ms(QUERY_MS)
             )
         except Exception as exc:

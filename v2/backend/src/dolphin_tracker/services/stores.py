@@ -139,7 +139,7 @@ class ScreenListRow(ApiModel):
     uid: str  # the store's
     external_id: str
     display_id: str
-    store_name: str  # as shown: the Dolphin data's when it has one
+    store_name: str  # as shown: the CMS data's when it has one
     addr: str
     city: str  # as shown (place_city / place_state)
     state: str
@@ -350,11 +350,11 @@ def facet_values(stop: Stop, project: Project, name: str) -> list[str]:
             return [YES if stop.committed_screens_total > stop.installed_screens_total else NO]
         case "tag":
             return [stop.tag]
-        case "state":  # as shown: the Dolphin data's or the verified address's, never a typed spelling
+        case "state":  # as shown: the CMS data's or the verified address's, never a typed spelling
             return [stop.place_state] if stop.place_state else []
         case "city":
             return [stop.place_city] if stop.place_city else []
-        case "dma":  # as shown: the Dolphin data's over the sheet's
+        case "dma":  # as shown: the CMS data's over the sheet's
             dma = (stop.device.dma if stop.device else "") or stop.dma
             return [dma] if dma else []
         case _:
@@ -896,7 +896,7 @@ class StoreService:
         return self._stores.update_screens(project_id, stop_uid, rows, updated_by=updated_by.strip())
 
     def set_external_id(self, project_id: str, stop_uid: str, external_id: str) -> Stop:
-        """Enter the ExtID of a store that has none (added from the Dolphin data). Once set it is fixed, like any
+        """Enter the ExtID of a store that has none (added from the CMS data). Once set it is fixed, like any
         ExtID; 409 if another store of the project has it."""
         current = self.get(project_id, stop_uid)
         if current.external_id:

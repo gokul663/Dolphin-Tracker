@@ -1,7 +1,7 @@
 """Spreadsheet import job: read the upload, map columns to store fields (STORE-MODEL §6), verify every address
 with Google, flag duplicates within the sheet, store the result.
 
-A row for a store we already know (another project's, or the Dolphin data's; `domain/known_stores.py`) is not sent
+A row for a store we already know (another project's, or the CMS data's; `domain/known_stores.py`) is not sent
 to Google: it takes the known verified address, and the known DD codes join its screens.
 
 The result shape is `api.schemas.ImportResult`. The mapping used is part of the result; for an append it starts
@@ -336,7 +336,7 @@ class ImportService:
         return dict(project.import_mappings) if project else {}
 
     def _known_stores(self, job: Job) -> tuple[KnownStores | None, str]:
-        """Every store of the other projects and every venue of the Dolphin data, plus the PA a row without one
+        """Every store of the other projects and every venue of the CMS data, plus the PA a row without one
         belongs to (the new project's, typed before the upload; the project's own on an append). A failure here
         never fails the import: the rows are then verified with Google as before."""
         if self._projects is None or self._stores is None:

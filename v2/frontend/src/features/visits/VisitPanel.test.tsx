@@ -210,7 +210,7 @@ describe("VisitPanel from a route plan", () => {
       "PATCH /api/projects/p1/stores/u1/progress": () => stop,
       "PUT /api/projects/p1/stores/u1/screens": () => stop,
       "PATCH /api/projects/p1/stores/u1": () => stop,
-      // The Dolphin data's record for DD_100 (the planner's all-venues list); other codes are not in it.
+      // The CMS data's record for DD_100 (the planner's all-venues list); other codes are not in it.
       "GET /api/projects/venues/stores/v-DD_100": () =>
         makeStop({ uid: "v-DD_100", store_name: "CMS Mart", pa: "ATM Boss", dma: "Macon", geocoded: "1 Elm St, Macon, GA 31201", screens: [makeScreen({ id: "v-DD_100-s1", venue_id: "DD_100", cms_name: "D_005_KIOSK", status: "Offline" })] }),
     });

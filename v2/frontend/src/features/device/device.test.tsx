@@ -152,7 +152,7 @@ describe("Needs review: the address check", () => {
   });
 });
 
-describe("Store drawer: Dolphin data", () => {
+describe("Store drawer: CMS data", () => {
   const device = { store_name: "Report Name", venue_name: "CMS_A", address: "", addr: "9 Oak St", city: "Atlanta", state: "GA",
     zip: "30303", lat: 33.8, lng: -84.3, dma: "Atlanta", venue_type: "Convenience Store", date: "2026-11-09" };
 
@@ -169,17 +169,17 @@ describe("Store drawer: Dolphin data", () => {
     expect(screen.getByRole("button", { name: /Overwrite all \(5\)/ })).toBeTruthy(); // name, address, DMA, venue type, location
   });
 
-  it("explains 'not in Dolphin data' and ignores it until the next report", async () => {
+  it("explains 'not in CMS data' and ignores it until the next report", async () => {
     const { calls } = mockApi({ "POST /api/projects/p1/stores/u1/device-alert/ignore": () => makeStop() });
     const stop = makeStop({ status: "Completed", needs_attention: ["not_reporting"],
       screens: [makeScreen({ id: "s1", venue_id: "DD-GONE01", status: "Completed" })] });
     renderWithProviders(<StoreDeviceSection project={makeProject({ device_sync: STATE })} stop={stop} />);
-    expect(screen.getByRole("alert").textContent).toContain("DD-GONE01 is not in the Dolphin data of 11-09");
+    expect(screen.getByRole("alert").textContent).toContain("DD-GONE01 is not in the CMS data of 11-09");
     await userEvent.click(screen.getByRole("button", { name: "Ignore until the next report" }));
     await waitFor(() => expect(calls.some((call) => call.url.pathname.endsWith("/device-alert/ignore"))).toBe(true));
   });
 
-  it("once the sheet matches the Dolphin data, the section stays out of the way (the header says synced)", () => {
+  it("once the sheet matches the CMS data, the section stays out of the way (the header says synced)", () => {
     mockApi({});
     const synced = makeStop({
       device, store_name: device.store_name, addr: device.addr, city: device.city, state: device.state, zip: device.zip,
@@ -190,7 +190,7 @@ describe("Store drawer: Dolphin data", () => {
   });
 
 
-  it("shows nothing for a store without Dolphin data or alerts", () => {
+  it("shows nothing for a store without CMS data or alerts", () => {
     mockApi({});
     const { container } = renderWithProviders(<StoreDeviceSection project={makeProject()} stop={makeStop()} />);
     expect(container.querySelector("section")).toBeNull();

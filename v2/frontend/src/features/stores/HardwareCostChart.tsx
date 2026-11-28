@@ -25,7 +25,7 @@ export function HardwareCostChart({
   const priced = cost ? cost.lines.reduce((sum, line) => sum + line.count * (line.price ?? 0), 0) : 0;
   const screenLines = cost ? cost.lines.filter((line) => line.label !== "Sticks").map((line) => line.label) : [];
   const pick = (tones: string[], index: number, fallback: string) => tones[Math.min(index, tones.length - 1)] ?? fallback;
-  const tone = (label: string) => (label === "Sticks" ? "#334155" : pick(SCREEN_TONES, screenLines.indexOf(label), "#94a3b8"));
+  const tone = (label: string) => (label === "Sticks" ? "var(--color-slate-700)" : pick(SCREEN_TONES, screenLines.indexOf(label), "#94a3b8"));
   const shareOf = (line: { count: number; price: number | null }) =>
     line.price === null || priced <= 0 ? null : ((line.count * line.price) / priced) * 100;
   return (
@@ -55,7 +55,7 @@ export function HardwareCostChart({
               const share = shareOf(line);
               return (
                 <li key={line.label} className="flex items-baseline gap-2 text-xs">
-                  <span className="size-2 shrink-0 translate-y-px rounded-sm" style={{ background: amount === null ? "#e2e8f0" : tone(line.label) }} aria-hidden />
+                  <span className="size-2 shrink-0 translate-y-px rounded-sm" style={{ background: amount === null ? "var(--color-slate-200)" : tone(line.label) }} aria-hidden />
                   <span className="min-w-0 flex-1 truncate text-slate-600">
                     {line.count.toLocaleString()} × {line.label}
                     {line.price !== null && <span className="text-slate-400"> @ {money(line.price)}</span>}

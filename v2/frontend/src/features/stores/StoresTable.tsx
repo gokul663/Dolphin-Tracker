@@ -173,18 +173,18 @@ export function HardwareCostCell({ cost }: { cost: ReturnType<typeof hardwareCos
 export const ATTENTION_LABELS: Record<string, string> = {
   store_name: "no store name",
   address: "address not verified",
-  not_reporting: "Completed but not in Dolphin data",
+  not_reporting: "Completed but not in CMS data",
   dd_code_review: "a DD code entry holds several codes",
   external_id: "no ExtID",
 };
 
-/** A value from the Dolphin data, in its colour; the sheet's value on hover. Clicking opens the store. */
+/** A value from the CMS data, in its colour; the sheet's value on hover. Clicking opens the store. */
 function DeviceValue({ value, sheet, onOpen }: { value: string; sheet: string; onOpen: () => void }) {
   return (
     <button
       type="button"
       className={cn("block w-full truncate text-left hover:underline", DEVICE_TONE.text)}
-      title={sheet && sheet !== value ? `Dolphin data. Sheet: ${sheet}` : "Dolphin data"}
+      title={sheet && sheet !== value ? `CMS data. Sheet: ${sheet}` : "CMS data"}
       onClick={(event) => {
         event.stopPropagation();
         onOpen();
@@ -296,7 +296,7 @@ export function StoresTable(props: Props) {
         size: 240,
         cell: (info) => {
           const shown = info.row.original.device?.store_name;
-          // The Dolphin data's name shows over the sheet's; it is changed in the store (Overwrite), not here.
+          // The CMS data's name shows over the sheet's; it is changed in the store (Overwrite), not here.
           if (shown) return <DeviceValue value={shown} sheet={info.getValue()} onOpen={() => onOpen(info.row.original.uid)} />;
           // Not edited here: a click anywhere on the row opens the store.
           return (
@@ -306,7 +306,7 @@ export function StoresTable(props: Props) {
           );
         },
       }),
-      // City, DMA, State: as shown everywhere (the Dolphin data's, else the verified address's; never a typed spelling).
+      // City, DMA, State: as shown everywhere (the CMS data's, else the verified address's; never a typed spelling).
       helper.accessor((stop) => stop.place_city, {
         id: "city",
         header: "City",
@@ -324,11 +324,11 @@ export function StoresTable(props: Props) {
         id: "dma",
         header: "DMA",
         size: 130,
-        // The Dolphin data's DMA shows over ours, in its colour (ours on hover).
+        // The CMS data's DMA shows over ours, in its colour (ours on hover).
         cell: (info) => (
           <FilterCell facet="dma" value={info.getValue()} label="DMA" onFilter={onFilter}>
             {info.row.original.device?.dma ? (
-              <span className={DEVICE_TONE.text} title={info.row.original.dma && info.row.original.dma !== info.getValue() ? `Dolphin data. Sheet: ${info.row.original.dma}` : "Dolphin data"}>
+              <span className={DEVICE_TONE.text} title={info.row.original.dma && info.row.original.dma !== info.getValue() ? `CMS data. Sheet: ${info.row.original.dma}` : "CMS data"}>
                 {info.getValue()}
               </span>
             ) : (

@@ -247,7 +247,7 @@ class ImportRunTests(unittest.TestCase):
 
 
 def venue(code: str, pa: str, addr: str, ext: str = "", status: str = "Completed", **extra) -> Stop:
-    """A venue of the Dolphin data, as the all-venues list keeps it (`domain/venues.py`)."""
+    """A venue of the CMS data, as the all-venues list keeps it (`domain/venues.py`)."""
     values = {"city": "Macon", "state": "GA", "zip": "31201", "lat": 32.84, "lng": -83.63,
               "geocoded": f"{addr}, Macon, GA 31201", **extra}
     return Stop(uid=f"v-{code}", display_id=ext, store_name=f"CMS {code}", addr=addr, pa=pa,
@@ -280,7 +280,7 @@ class KnownStoresTests(unittest.TestCase):
     def test_matches_on_pa_with_ext_id_or_address(self):
         by_id = self.known.match("North", "n-1", self.address("somewhere else"))
         self.assertEqual(by_id.tracker.stop.uid, "t1")
-        # "North" is the project's name for the PA the CMS calls "North CMS": the Dolphin data is found too.
+        # "North" is the project's name for the PA the CMS calls "North CMS": the CMS data is found too.
         self.assertEqual([known.stop.uid for known in by_id.dolphin], ["v-DD_AAA111", "v-DD_AAA222"])
         by_address = self.known.match("North", "", self.address("9 ELM ST."))
         self.assertEqual(by_address.tracker.stop.uid, "t1")
@@ -353,16 +353,16 @@ class ImportReuseTests(ImportRunTests):
             csv, geocodes={"1 New St, Macon, GA 31201": geocode_ok("1 New St", city="Macon", zip="31201")})
         ImportResult.model_validate(result)
         elm, pine, new = result["rows"]
-        # Matched by ExtID within the PA: the address corrected in Wave 1, the DD codes from the Dolphin data.
+        # Matched by ExtID within the PA: the address corrected in Wave 1, the DD codes from the CMS data.
         self.assertEqual((elm["status"], elm["addr"], elm["lat"], elm["coordinates_source"]),
                          ("valid", "9 Elm St", 32.9, "known"))
         self.assertEqual([(s["venue_id"], s["status"]) for s in elm["screens"]],
                          [("DD_AAA111", "Completed"), ("DD_AAA222", "Offline"), ("", "Upcoming")])
-        self.assertEqual(elm["reused"], "Address from project Wave 1 · 2 DD codes from the Dolphin data")
-        # Matched by PA + address, in the Dolphin data only.
+        self.assertEqual(elm["reused"], "Address from project Wave 1 · 2 DD codes from the CMS data")
+        # Matched by PA + address, in the CMS data only.
         self.assertEqual((pine["status"], pine["lat"]), ("valid", 32.84))
         self.assertEqual([s["venue_id"] for s in pine["screens"]], ["DD_CCC111"])
-        self.assertEqual(pine["reused"], "Address from the Dolphin data · 1 DD code from the Dolphin data")
+        self.assertEqual(pine["reused"], "Address from the CMS data · 1 DD code from the CMS data")
         # Not known: verified with Google as before.
         self.assertEqual((new["status"], new["coordinates_source"], new["reused"]), ("valid", "geocode", ""))
         self.assertEqual([call for kind, call in geocoder.calls if kind == "geocode"], ["1 New St, Macon, GA 31201"])

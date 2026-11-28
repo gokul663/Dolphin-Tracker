@@ -127,6 +127,19 @@ class FakeDeviceData:
         self.rows = rows or []
         self.date = date
         self.snapshots: list[str] = []
+        self.added: list[dict] = []  # what `add_log` inserted
+        self.down = False  # True: writes fail, as when Mongo is unreachable
+
+    def add_log(self, log: dict) -> bool:
+        from dolphin_tracker.repositories.device_data import DeviceDataUnavailable
+
+        if self.down:
+            raise DeviceDataUnavailable("Log entry not written: ServerSelectionTimeoutError")
+        if any(row.get("tracker_id") == log["tracker_id"] for row in self.log_rows):
+            return False
+        self.log_rows.append(dict(log))
+        self.added.append(dict(log))
+        return True
 
     def latest_date(self) -> str:
         return self.date

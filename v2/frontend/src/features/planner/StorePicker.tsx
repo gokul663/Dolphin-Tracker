@@ -34,7 +34,7 @@ const ROUTED_BUCKETS = STORE_BUCKETS.filter((bucket) => bucket !== "Archived" &&
 const toggle = (list: string[] | undefined, value: string) =>
   (list ?? []).includes(value) ? (list ?? []).filter((v) => v !== value) : [...(list ?? []), value];
 
-/** Stores from every project and every other venue of the Dolphin data (the ones in no project), filtered by status group, state, city, DMA and project; pick them on the map or in the table. */
+/** Stores from every project and every other venue of the CMS data (the ones in no project), filtered by status group, state, city, DMA and project; pick them on the map or in the table. */
 export function StorePicker({ selected, onChange, planId }: Props) {
   const [filters, setFilters] = useState<PoolFilters>({ bucket: ["Upcoming"] });
   const facets = usePoolFacets(filters);
@@ -102,10 +102,10 @@ export function StorePicker({ selected, onChange, planId }: Props) {
               size="sm"
               variant="outline"
               disabled={refresh.isPending}
-              title="Every venue of every PA in the Dolphin data is listed here, also the ones in no project. The daily sync updates them; this does it now."
+              title="Every venue of every PA in the CMS data is listed here, also the ones in no project. The daily sync updates them; this does it now."
               onClick={() =>
                 refresh.mutate(undefined, {
-                  onSuccess: () => toast.success("Updating every venue from the Dolphin data", { description: "It takes a minute or two; the list here follows." }),
+                  onSuccess: () => toast.success("Updating every venue from the CMS data", { description: "It takes a minute or two; the list here follows." }),
                   onError: (error) => toast.error(error instanceof Error ? error.message : "Could not start the update"),
                 })
               }

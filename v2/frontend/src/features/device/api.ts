@@ -43,7 +43,7 @@ export function useSyncNow(projectId: string) {
   return useMutation({ mutationFn: () => deviceSyncApi.sync(projectId), onSuccess: () => refresh() });
 }
 
-/** Build stores from the Dolphin data (records of the PA that no store has), then sync. */
+/** Build stores from the CMS data (records of the PA that no store has), then sync. */
 export function usePopulateFromDevice() {
   const client = useQueryClient();
   return useMutation({

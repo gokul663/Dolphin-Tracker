@@ -36,7 +36,7 @@ class VisitSearchService:
         self._stores = stores
 
     def _all_projects(self) -> list[Project]:
-        """Every real project: the Dolphin data's all-venues list is not one (the project list never holds it; it
+        """Every real project: the CMS data's all-venues list is not one (the project list never holds it; it
         is dropped here too, so it can never slip in)."""
         projects: list[Project] = []
         cursor = None

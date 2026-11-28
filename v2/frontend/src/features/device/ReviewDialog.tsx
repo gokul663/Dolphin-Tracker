@@ -149,7 +149,7 @@ export function ReviewDialog({
             Needs review {date && <DeviceBadge date={date} />}
           </DialogTitle>
           <DialogDescription>
-            What the Dolphin data has that this project does not: screens of {project.device_pa} in no store here, and screens of
+            What the CMS data has that this project does not: screens of {project.device_pa} in no store here, and screens of
             another PA at our addresses.
           </DialogDescription>
         </DialogHeader>

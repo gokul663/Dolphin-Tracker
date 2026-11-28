@@ -4,10 +4,10 @@ import type { StopStatus } from "@/lib/api/types";
 import { INSTALLER_COLORS, STATUS_META } from "@/lib/status";
 
 const TOOLTIP_STYLE = {
-  background: "#ffffff",
-  border: "1px solid #e2e8f0",
+  background: "var(--popover)",
+  border: "1px solid var(--border)",
   borderRadius: 8,
-  color: "#0f172a",
+  color: "var(--popover-foreground)",
   boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
 };
 
@@ -35,8 +35,8 @@ export function InstallerPie({ data }: { data: { name: string; value: number }[]
             <Cell key={entry.name} fill={INSTALLER_COLORS[index % INSTALLER_COLORS.length]} stroke="#fff" strokeWidth={2} />
           ))}
         </Pie>
-        <Tooltip contentStyle={TOOLTIP_STYLE} />
-        <Legend wrapperStyle={{ color: "#475569", fontSize: 12 }} />
+        <Tooltip contentStyle={TOOLTIP_STYLE} itemStyle={{ color: "var(--popover-foreground)" }} labelStyle={{ color: "var(--popover-foreground)", fontWeight: 600 }} />
+        <Legend wrapperStyle={{ color: "var(--muted-foreground)", fontSize: 12 }} />
       </PieChart>
     </ChartCard>
   );
@@ -52,8 +52,8 @@ export function StatusPie({ data }: { data: { status: StopStatus; value: number 
             <Cell key={entry.status} fill={STATUS_META[entry.status].color} stroke="#fff" strokeWidth={2} />
           ))}
         </Pie>
-        <Tooltip contentStyle={TOOLTIP_STYLE} />
-        <Legend wrapperStyle={{ color: "#475569", fontSize: 12 }} />
+        <Tooltip contentStyle={TOOLTIP_STYLE} itemStyle={{ color: "var(--popover-foreground)" }} labelStyle={{ color: "var(--popover-foreground)", fontWeight: 600 }} />
+        <Legend wrapperStyle={{ color: "var(--muted-foreground)", fontSize: 12 }} />
       </PieChart>
     </ChartCard>
   );
@@ -63,11 +63,11 @@ export function SitesBar({ data }: { data: { name: string; sites: number }[] }) 
   return (
     <ChartCard title="Sites per project" empty={data.length ? null : "No projects yet"}>
       <BarChart data={data}>
-        <CartesianGrid stroke="#e2e8f0" />
-        <XAxis dataKey="name" tick={{ fill: "#475569", fontSize: 10 }} interval={0} angle={-20} textAnchor="end" height={50} />
-        <YAxis tick={{ fill: "#475569", fontSize: 11 }} allowDecimals={false} />
-        <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ fill: "rgba(15,91,124,0.08)" }} />
-        <Bar dataKey="sites" fill="#034EA1" radius={[6, 6, 0, 0]} />
+        <CartesianGrid stroke="var(--border)" />
+        <XAxis dataKey="name" tick={{ fill: "var(--muted-foreground)", fontSize: 10 }} interval={0} angle={-20} textAnchor="end" height={50} />
+        <YAxis tick={{ fill: "var(--muted-foreground)", fontSize: 11 }} allowDecimals={false} />
+        <Tooltip contentStyle={TOOLTIP_STYLE} itemStyle={{ color: "var(--popover-foreground)" }} labelStyle={{ color: "var(--popover-foreground)", fontWeight: 600 }} cursor={{ fill: "rgba(15,91,124,0.08)" }} />
+        <Bar dataKey="sites" fill="var(--color-brand)" radius={[6, 6, 0, 0]} />
       </BarChart>
     </ChartCard>
   );

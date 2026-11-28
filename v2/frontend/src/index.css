@@ -1,5 +1,9 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+@import "./dark.css";
+
+/* `dark:` classes (the ui components carry a few) follow the theme switch, not the system setting. */
+@custom-variant dark (&:where(.dark, .dark *));
 
 /* Dolphin's brand colours (dolphin-digital.com): two blues and a magenta.
    Primary: the deep blue, for buttons, links and anything selected (white text on it passes AAA).
@@ -11,8 +15,10 @@
   --color-brand-accent: #009dda;
   --color-brand-magenta: #c5168c;
   --font-display: "Bebas Neue", sans-serif;
+  /* Two fonts only: Bebas Neue for the logo and titles, IBM Plex Mono for everything else. `font-sans` (the
+     default for text) is the mono too, so nothing falls back to a third face. */
   --font-mono: "IBM Plex Mono", ui-monospace, monospace;
-  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "IBM Plex Mono", ui-monospace, monospace;
 
   /* Status colours shared by chips, charts and map pins: the v1 legacy planner's STATUS_MAP. */
   --color-status-complete: #16a34a;
@@ -21,7 +27,7 @@
   --color-status-other: #7c3aed;
 }
 
-/* shadcn/ui tokens (new-york), light only, primary = the brand's deep blue. */
+/* shadcn/ui tokens (new-york); the dark values are in dark.css. Primary = the brand's deep blue. */
 :root {
   color-scheme: light;
   --radius: 0.625rem;

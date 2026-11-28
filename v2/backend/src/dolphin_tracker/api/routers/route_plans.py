@@ -91,7 +91,7 @@ def search_facets(service: SearchDep, query: PoolDep) -> dict:
 
 @router.post("/store-search/venues/refresh", status_code=202)
 def refresh_venues(invoker: Annotated[WorkerInvoker, Depends(get_worker_invoker)]) -> dict[str, bool]:
-    """Bring the all-venues list (every venue of every PA in the Dolphin data) up to date now. It runs in the
+    """Bring the all-venues list (every venue of every PA in the CMS data) up to date now. It runs in the
     background and takes a minute or two; the daily device sync does the same."""
     invoker.invoke({"task": "venues_refresh"})
     return {"started": True}

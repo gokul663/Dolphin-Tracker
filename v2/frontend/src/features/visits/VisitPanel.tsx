@@ -196,7 +196,7 @@ export function VisitPanel({ projectId, stopUid, planId = "", installer = "", vi
 }
 
 /** Who the store is, read only. With a DD code (the store's first, or the one typed in the log entry) the values
- *  come from the Dolphin data (CMS) for that code: name, venue name, address, PA, DMA and status. Without one, or
+ *  come from the CMS data (CMS) for that code: name, venue name, address, PA, DMA and status. Without one, or
  *  when the code is not in the data, the project's own. FA is the project's (the CMS has none). */
 function StoreIdentity({ stop, project, code }: { stop: Stop; project: Project; code?: string }) {
   const lookup = code ?? stop.screens.find((screen) => screen.venue_id)?.venue_id ?? "";
@@ -219,7 +219,7 @@ function StoreIdentity({ stop, project, code }: { stop: Stop; project: Project; 
     <section aria-label="Store" className={cn(SURFACE, "overflow-hidden text-sm")}>
       <ToneStrip name="Store" heading="h3">
         <span className={cn("min-w-0 text-xs", VISIT_TONE.Store.summary)}>
-          {venue.isFetching ? "looking up the DD code…" : cms ? `from the CMS (${lookup})` : lookup ? `${lookup} is not in the Dolphin data: the project's values` : "the project's values (no DD code yet)"}
+          {venue.isFetching ? "looking up the DD code…" : cms ? `from the CMS (${lookup})` : lookup ? `${lookup} is not in the CMS data: the project's values` : "the project's values (no DD code yet)"}
         </span>
       </ToneStrip>
       <dl className="space-y-1.5 p-4">
@@ -496,9 +496,13 @@ function StoreVisit({ stop, project, planId, installer, visitDate, plan }: { sto
       <StoreHeader stop={stop} project={project} plan={plan} logged={logged} screens={saved.length} visitDate={who.visit_date} />
       {/* The pane under the header: every block a solid card on the glass, the three columns scrolling on their own. */}
       <div className="flex min-h-0 flex-1 flex-col gap-3 px-4 pt-3 pb-4">
-        <InventoryStrip stop={stop} />
-        <section aria-label="This visit" hidden={!canLog} className={cn(SURFACE, "shrink-0 px-4 py-3")}>
-          <div className="grid items-end gap-3 sm:grid-cols-3 xl:grid-cols-[repeat(3,minmax(0,16rem))_minmax(0,1fr)]">
+        {/* Inventory and who/when side by side on a wide window, so the two take one row of height, not two. */}
+        <div className="flex shrink-0 flex-col gap-3 xl:flex-row xl:items-stretch">
+        <div className="min-w-0 xl:flex-1 [&>section]:h-full">
+          <InventoryStrip stop={stop} />
+        </div>
+        <section aria-label="This visit" hidden={!canLog} title="Used for every screen logged now" className={cn(SURFACE, "shrink-0 px-4 py-3 xl:w-[46rem]")}>
+          <div className="grid items-end gap-3 sm:grid-cols-3">
             <Field label="Date" required htmlFor="visit-date">
               <Input id="visit-date" type="date" value={who.visit_date} onChange={(e) => setWho({ ...who, visit_date: e.target.value })} />
             </Field>
@@ -508,9 +512,10 @@ function StoreVisit({ stop, project, planId, installer, visitDate, plan }: { sto
             <Field label="Dolphin Manager" required>
               <NameField kind="managers" aria-label="Dolphin Manager" placeholder="Select or type manager name" value={who.dolphin_manager} onChange={(value) => setWho({ ...who, dolphin_manager: value })} />
             </Field>
-            <p className="hidden pb-2.5 text-xs text-slate-600 xl:block">Used for every screen logged now.</p>
           </div>
+          <p className="mt-1.5 text-[11px] text-slate-600">Used for every screen logged now.</p>
         </section>
+        </div>
         {/* The form and the store's side share what the bar leaves, half each. Whatever scrolls pads by a hair (the grid
             takes it back with a negative margin) so the cards' rings and shadows are not clipped by the scroll. */}
         <div className="-m-1 grid min-h-0 flex-1 gap-3 overflow-y-auto p-1 lg:gap-1 lg:p-0 lg:grid-cols-[210px_minmax(0,1fr)_minmax(0,1fr)] lg:overflow-hidden xl:grid-cols-[240px_minmax(0,1fr)_minmax(0,1fr)] 2xl:grid-cols-[260px_minmax(0,1fr)_minmax(0,1fr)]">
@@ -591,8 +596,6 @@ function StoreVisit({ stop, project, planId, installer, visitDate, plan }: { sto
             ) : (
               <p className={cn(SURFACE, "p-10 text-center text-sm text-slate-600")}>This store has no screens yet.</p>
             )}
-            {/* The store's place, the same for every screen: drawn once under the form, not again per screen. */}
-            <StoreMap stop={stop} />
           </div>
 
           <aside className="@container flex min-w-0 flex-col gap-3 lg:gap-2 lg:overflow-hidden" aria-label="Store details">
@@ -629,6 +632,8 @@ function StoreVisit({ stop, project, planId, installer, visitDate, plan }: { sto
                 <LockedGroup stop={stop} projectId={project.id} title="Owner" fields={LOCKED_GROUPS.owner} canEdit={canEditDetails} stacked />
                 <LockedGroup stop={stop} projectId={project.id} title="Store Contact" fields={LOCKED_GROUPS.storeContact} canEdit={canEditDetails} stacked />
                 <StoreSideNotes stop={stop} project={project} />
+                {/* The store's place: a store-level detail, so it sits with the store's details, last. */}
+                <StoreMap stop={stop} />
               </div>
               <div id="side-panel-logs" role="tabpanel" aria-labelledby="side-tab-logs" hidden={side !== "logs"} className={cn(SURFACE, "p-4")}>
                 <LogEntries projectId={project.id} stop={stop} />

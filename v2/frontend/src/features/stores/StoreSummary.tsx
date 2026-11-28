@@ -141,7 +141,9 @@ export function StoreSummary({
     <CountInput field={key} label={label} icon={icon} value={counts[key]} error={draft.errors[key]} inputRef={inputRef} onChange={(text) => onCount(key, text)} />
   );
   // Green once the commitment is met: something committed, and at least as many installed (the stores table's rule).
-  const fulfilled = done.committed > 0 && done.fulfilled;
+  // Green when what is installed is equal to or more than what was committed. A blank committed count is 0, so
+  // anything installed meets it.
+  const fulfilled = done.fulfilled;
   return (
     <div
       className={cn(
@@ -160,7 +162,7 @@ export function StoreSummary({
             <span className="flex items-center gap-2">
               <span className={cn("flex items-center gap-1 text-xs tabular-nums", fulfilled ? "font-medium text-green-800" : "text-slate-600")}>
                 {fulfilled && <Check size={14} className="text-green-700" aria-label="Fulfilled" />}
-                {done.committed > 0 ? `${done.installed} of ${done.committed} committed` : <span title="Installed: Completed, Offline or Needs More Work">No commitment yet</span>}
+                <span title="Installed: Completed, Offline or Needs More Work. A blank committed count is 0.">{`${done.installed} of ${done.committed} committed`}</span>
               </span>
               <EditToggle
                 label="committed counts"
@@ -187,12 +189,12 @@ export function StoreSummary({
                 </>
               ) : (
                 <>
-                  <Figure icon={<Monitor size={13} />} label="Screens" value={counts.committed_dolphin_screens} ariaLabel="Committed screens" />
-                  <Figure icon={<Tv size={13} />} label="TVs" value={counts.committed_store_tvs} ariaLabel="Committed TVs" />
+                  <Figure icon={<Monitor size={13} />} label="Screens" value={counts.committed_dolphin_screens.trim() || "0"} ariaLabel="Committed screens" />
+                  <Figure icon={<Tv size={13} />} label="TVs" value={counts.committed_store_tvs.trim() || "0"} ariaLabel="Committed TVs" />
                 </>
               )}
             </div>
-            <Total value={sum(toNumber(counts.committed_dolphin_screens), toNumber(counts.committed_store_tvs))} label="Committed total" />
+            <Total value={sum(toNumber(counts.committed_dolphin_screens), toNumber(counts.committed_store_tvs)) ?? 0} label="Committed total" />
           </div>
           <div role="group" aria-label="Installed" className="contents">
             <span className="text-xs text-slate-600" title="Completed, Offline or Needs More Work">

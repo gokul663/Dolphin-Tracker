@@ -53,25 +53,25 @@ describe("ProjectKpis", () => {
     expect(opened).toBe(1);
   });
 
-  it("needs review adds the Dolphin data's unknown screens and the screens missing at done stores", () => {
+  it("needs review counts the CMS data's new screens and the screens of another PA, not the missing ones", () => {
     const opened: string[] = [];
-    const props = { onDeviceReview: () => opened.push("dolphin"), onMissingScreens: () => opened.push("missing") };
-    const { rerender } = render(<ProjectKpis kpi={makeKpi({ review_screens: 4, review_stores: 3 })} reviewCount={35} {...props} />);
-    const both = screen.getByRole("button", { name: "39 screens need review" });
-    expect(both.textContent).toBe(" 39Needs review35 new · 4 missing");
-    both.click(); // the Dolphin data's list, which also points at the missing ones
-    rerender(<ProjectKpis kpi={makeKpi({ review_screens: 4, review_stores: 3 })} {...props} />);
-    screen.getByRole("button", { name: "4 screens need review" }).click(); // only missing screens: straight to those stores
-    expect(opened).toEqual(["dolphin", "missing"]);
-  });
-
-  it("needs review counts the screens of another PA at our addresses, and opens the review list for them", () => {
-    const opened: string[] = [];
-    const props = { onDeviceReview: () => opened.push("dolphin"), onMissingScreens: () => opened.push("missing") };
-    render(<ProjectKpis kpi={makeKpi({ review_screens: 4, review_stores: 3 })} otherPaCount={3} {...props} />);
-    const tile = screen.getByRole("button", { name: "7 screens need review" });
-    expect(tile.textContent).toBe(" 7Needs review4 missing · 3 other PA");
+    render(<ProjectKpis kpi={makeKpi({ review_screens: 4, review_stores: 3 })} reviewCount={35} otherPaCount={3} onDeviceReview={() => opened.push("dolphin")} />);
+    const tile = screen.getByRole("button", { name: "38 screens need review" });
+    expect(tile.textContent).toBe(" 38Needs review35 New\n3 Other PA"); // the 4 missing are found with a filter
     tile.click();
     expect(opened).toEqual(["dolphin"]);
+  });
+
+  it("the Completed tile is a button that filters to Online and Offline together, pressed while both are on", () => {
+    let clicks = 0;
+    const { rerender } = render(<ProjectKpis kpi={makeKpi({})} onBucket={() => {}} onCompleted={() => (clicks += 1)} />);
+    const tile = screen.getByRole("button", { name: "Completed screens" });
+    expect(tile.getAttribute("aria-pressed")).toBe("false");
+    tile.click();
+    expect(clicks).toBe(1);
+    rerender(<ProjectKpis kpi={makeKpi({})} onBucket={() => {}} onCompleted={() => {}} activeBuckets={["Completed"]} />);
+    expect(screen.getByRole("button", { name: "Completed screens" }).getAttribute("aria-pressed")).toBe("false"); // only Online
+    rerender(<ProjectKpis kpi={makeKpi({})} onBucket={() => {}} onCompleted={() => {}} activeBuckets={["Completed", "Offline"]} />);
+    expect(screen.getByRole("button", { name: "Completed screens" }).getAttribute("aria-pressed")).toBe("true");
   });
 });

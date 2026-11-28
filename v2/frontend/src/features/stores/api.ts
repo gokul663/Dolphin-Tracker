@@ -190,7 +190,7 @@ function settle(client: Client, projectId: string) {
 }
 
 /** Progress edits are optimistic: lists, detail, pins and the routes bundle update at once and roll back on error. */
-/** Enter the ExtID of a store that has none (added from the Dolphin data); fixed once saved. */
+/** Enter the ExtID of a store that has none (added from the CMS data); fixed once saved. */
 /** Delete a store for good (admins). Refreshes the dashboard's counts and everything under the project, except the
  *  deleted store's own entry: its window is still closing, and refetching it would only show a 404. */
 export function useDeleteStore(projectId: string) {

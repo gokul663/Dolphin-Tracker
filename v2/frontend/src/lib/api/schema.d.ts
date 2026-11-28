@@ -617,7 +617,7 @@ export interface paths {
         get?: never;
         /**
          * Set External Id
-         * @description The ExtID of a store that has none (added from the Dolphin data); fixed once set.
+         * @description The ExtID of a store that has none (added from the CMS data); fixed once set.
          */
         put: operations["set_external_id_api_projects__project_id__stores__stop_uid__external_id_put"];
         post?: never;
@@ -1031,7 +1031,7 @@ export interface paths {
         put?: never;
         /**
          * Refresh Venues
-         * @description Bring the all-venues list (every venue of every PA in the Dolphin data) up to date now. It runs in the
+         * @description Bring the all-venues list (every venue of every PA in the CMS data) up to date now. It runs in the
          *     background and takes a minute or two; the daily device sync does the same.
          */
         post: operations["refresh_venues_api_store_search_venues_refresh_post"];
@@ -1564,7 +1564,7 @@ export interface paths {
         put?: never;
         /**
          * Ignore Device Alert
-         * @description Hide "not in Dolphin data" until the next report day.
+         * @description Hide "not in CMS data" until the next report day.
          */
         post: operations["ignore_device_alert_api_projects__project_id__stores__stop_uid__device_alert_ignore_post"];
         delete?: never;
@@ -1742,8 +1742,8 @@ export interface components {
         };
         /**
          * DeviceLog
-         * @description One servicing log entry from the CMS (`dolphin_venue_vision.logs`): what was found at a device on a day and
-         *     who dealt with it. Read-only here; text is "" when the CMS has no value.
+         * @description One servicing log entry from the shared log collection (`dolphin_venue_vision.logs`): what was found at a
+         *     device on a day and who dealt with it. Text is "" when there is no value.
          */
         DeviceLog: {
             /**
@@ -1811,6 +1811,11 @@ export interface components {
              * @default
              */
             detailed_comments: string;
+            /**
+             * Source
+             * @default
+             */
+            source: string;
             /**
              * Created At
              * @default
@@ -2898,7 +2903,7 @@ export interface components {
         };
         /**
          * OtherPaScreen
-         * @description A screen of the Dolphin data at the address of one of the project's stores, under another PA or none (an ATM
+         * @description A screen of the CMS data at the address of one of the project's stores, under another PA or none (an ATM
          *     screen at the store, say). Shown for a check only: never added to the project; any fix is made in the CMS.
          */
         OtherPaScreen: {
@@ -4135,7 +4140,7 @@ export interface components {
         };
         /**
          * ScreenDevice
-         * @description What the report said about one screen on its latest day (shown in the "from Dolphin data" colour).
+         * @description What the report said about one screen on its latest day (shown in the "from CMS data" colour).
          */
         ScreenDevice: {
             /**
@@ -5181,6 +5186,11 @@ export interface components {
             plan_day: number | null;
             /** Created At */
             created_at: string;
+            /**
+             * Cms Logged At
+             * @default
+             */
+            cms_logged_at: string;
         };
         /**
          * StoreCommentInput
@@ -5677,6 +5687,16 @@ export interface components {
             plan_day: number | null;
             /** Created At */
             created_at: string;
+            /**
+             * Logged By
+             * @default
+             */
+            logged_by: string;
+            /**
+             * Cms Logged At
+             * @default
+             */
+            cms_logged_at: string;
         };
         /**
          * VisitInput

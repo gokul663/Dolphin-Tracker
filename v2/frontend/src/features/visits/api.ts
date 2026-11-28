@@ -56,7 +56,7 @@ export function useCreateStoreComment(projectId: string, uid: string) {
 export const venueCodeKey = (code: string) => code.replace(/\s+/g, "").toUpperCase().replace(/-/g, "_");
 export const venueUid = (code: string) => `v-${venueCodeKey(code).replace(/[^A-Z0-9_]/g, "")}`;
 
-/** What the Dolphin data (CMS) has for a DD code: its store name, venue name, address, PA, DMA and status. `null`
+/** What the CMS data (CMS) has for a DD code: its store name, venue name, address, PA, DMA and status. `null`
  *  when the code is not in the data (or is archived there). Read from the planner's all-venues list. */
 export function useVenue(code: string) {
   const key = venueCodeKey(code);

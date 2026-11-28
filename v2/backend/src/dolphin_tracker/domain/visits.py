@@ -81,6 +81,9 @@ class Visit(VisitInput):
     store_contact_phone: str = ""
     plan_day: int | None = None
     created_at: str = Field(default_factory=now_iso)
+    logged_by: str = ""  # the signed-in person who saved it
+    # When it was written to the shared log collection (domain/cms_log.py); "" = not there (yet).
+    cms_logged_at: str = ""
 
 
 class StoreCommentInput(ApiModel):
@@ -114,6 +117,7 @@ class StoreComment(StoreCommentInput):
     plan_name: str = ""  # snapshot, so the entry still says where it came from after the plan is renamed
     plan_day: int | None = None
     created_at: str = Field(default_factory=now_iso)
+    cms_logged_at: str = ""  # as a visit's
 
 
 def store_outcome(screen_ids: Iterable[str], visits: Iterable[Visit], plan_id: str) -> str:

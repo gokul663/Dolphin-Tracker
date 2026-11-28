@@ -430,7 +430,7 @@ class ImportRow(ApiModel):
     duplicate_of: int | None = None  # index of the earlier row this one repeats
     duplicate_reason: Literal["", "external_id", "address"] = ""
     fields: dict[str, str]  # unrecognised columns ("Other imported data"), keyed by normalised header
-    # A store we already know (another project's, or the Dolphin data's): what was taken from it, in words; where
+    # A store we already know (another project's, or the CMS data's): what was taken from it, in words; where
     # the address came from; and the known screens (already merged into `screens`).
     reused: str = ""
     known_address: str = ""

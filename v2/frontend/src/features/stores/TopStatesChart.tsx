@@ -20,7 +20,7 @@ interface Props {
   className?: string;
 }
 
-const ACTIVE = "#034EA1";
+const ACTIVE = "var(--color-brand)";
 const IDLE = "#94a3b8";
 
 /** "Top states" by stores or screens of every status under the active filters (STORE-MODEL §5): click a bar (or its button) to filter to that state,
@@ -48,7 +48,7 @@ export default function TopStatesChart({ data: all, selected, onToggle, limit, u
               <BarChart data={data} layout="vertical" margin={{ left: 4, right: 12, top: 4, bottom: 4 }}>
                 <XAxis type="number" allowDecimals={false} hide />
                 <YAxis type="category" dataKey="state" width={large ? 44 : 34} interval={0} tick={{ fontSize: large ? 13 : 11 }} />
-                <Tooltip cursor={{ fill: "#f1f5f9" }} formatter={(value) => [value, what]} />
+                <Tooltip cursor={{ fill: "var(--muted)" }} contentStyle={{ background: "var(--popover)", border: "1px solid var(--border)", borderRadius: 8, color: "var(--popover-foreground)" }} itemStyle={{ color: "var(--popover-foreground)" }} labelStyle={{ color: "var(--popover-foreground)", fontWeight: 600 }} formatter={(value) => [value, what]} />
                 <Bar
                   dataKey="count"
                   radius={[0, 4, 4, 0]}

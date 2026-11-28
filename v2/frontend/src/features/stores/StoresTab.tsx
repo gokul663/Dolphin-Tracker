@@ -86,7 +86,7 @@ export function StoresTab() {
   const byState = { data: overview.data?.by_state };
   const hardware = { data: overview.data?.hardware };
 
-  // The search also looks in "Needs review": a screen the Dolphin data reports that is in no store yet is not in
+  // The search also looks in "Needs review": a screen the CMS data reports that is in no store yet is not in
   // the list below, so a search for its ExtID or address would otherwise find nothing and say nothing.
   const searched = ui.search.trim();
   const waiting = useDeviceReview(
@@ -122,13 +122,13 @@ export function StoresTab() {
                 <span className="font-semibold">
                   {waitingCount} {waitingCount === 1 ? "screen" : "screens"} in Needs review
                 </span>{" "}
-                {waitingCount === 1 ? "matches" : "match"} "{searched}": in the Dolphin data, not in a store of this project yet.
+                {waitingCount === 1 ? "matches" : "match"} "{searched}": in the CMS data, not in a store of this project yet.
               </p>
               <Button size="sm" variant="outline" onClick={() => openReview(searched)}>
                 Show in Needs review
               </Button>
             </div>
-            {/* The records themselves, each with what the Dolphin data says about it. */}
+            {/* The records themselves, each with what the CMS data says about it. */}
             <ul className="divide-y divide-cyan-100">
               {(waiting.data?.items ?? []).map((item) => (
                 <li key={item.key} className="flex flex-wrap items-center gap-x-3 gap-y-0.5 py-1">

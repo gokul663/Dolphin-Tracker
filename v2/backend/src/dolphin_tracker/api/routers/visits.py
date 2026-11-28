@@ -32,9 +32,9 @@ def list_visits(
 
 
 @router.post("", response_model=Visit, status_code=201)
-def create_visit(project_id: str, stop_uid: str, body: VisitInput, service: ServiceDep) -> Visit:
+def create_visit(project_id: str, stop_uid: str, body: VisitInput, service: ServiceDep, who: PrincipalDep) -> Visit:
     """Log one visit for one stick. Never changes status."""
-    return service.create(project_id, stop_uid, body)
+    return service.create(project_id, stop_uid, body, logged_by=who.name or who.email)
 
 
 @comments_router.get("", response_model=Page[StoreComment])

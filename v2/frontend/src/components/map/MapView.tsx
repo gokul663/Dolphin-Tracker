@@ -1,5 +1,7 @@
+import { useTheme } from "@/lib/theme";
+import { ThemedMap } from "@/components/map/ThemedMap";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { APIProvider, InfoWindow, Map, useMap } from "@vis.gl/react-google-maps";
+import { APIProvider, InfoWindow, useMap } from "@vis.gl/react-google-maps";
 import { MarkerClusterer, SuperClusterAlgorithm, type Cluster, type Renderer } from "@googlemaps/markerclusterer";
 import { MapPinOff } from "lucide-react";
 import {
@@ -21,7 +23,7 @@ import {
 } from "@/components/map/pins";
 import { useMapsConfig } from "@/features/places/api";
 import type { Pin } from "@/lib/api/types";
-import { BUCKET_LABEL, BUCKET_META, BUCKETS, MAP_BUCKETS, bucketOf, bucketShade, darkTextUntil, shadeLevel, type StatusBucket } from "@/lib/status";
+import { BUCKET_LABEL, BUCKET_META, BUCKETS, MAP_BUCKETS, bucketBright, bucketDim, bucketOf, bucketShade, darkTextUntil, shadeLevel, type StatusBucket } from "@/lib/status";
 import { cn } from "@/lib/utils";
 import { LocationPopup, StorePopup } from "@/components/map/PinPopup";
 
@@ -40,18 +42,21 @@ const markerWeight = new WeakMap<object, number>();
 
 /** One bubble per status group: the group's colour, light for a few stores and dark for many. Bubbles of
  *  different groups around the same spot fan out a little so each stays readable. */
-export function clusterRenderer(bucket: StatusBucket): Renderer {
+export function clusterRenderer(bucket: StatusBucket, onDark = false): Renderer {
   const index = BUCKETS.indexOf(bucket);
   return {
     render: ({ markers, position }: Cluster) => {
       const count = (markers ?? []).reduce((sum, marker) => sum + (markerWeight.get(marker) ?? 1), 0);
       const size = clusterSize(count);
-      const color = bucketShade(bucket, count);
-      const text = shadeLevel(count) < darkTextUntil(bucket) ? BUCKET_META[bucket].dark : "#fff"; // dark text on the light end
+      const color = bucketShade(bucket, count, onDark);
+      // Dark text on the light end. On the dark map the number is always white, with a thin dark outline so it
+      // still reads on the bright end (bright yellow most of all).
+      const text = onDark ? "#fff" : shadeLevel(count) < darkTextUntil(bucket) ? BUCKET_META[bucket].dark : "#fff";
+      const outline = onDark ? ' stroke="#0b1220" stroke-opacity="0.55" stroke-width="2.5" paint-order="stroke" stroke-linejoin="round"' : "";
       const angle = (index * 2 * Math.PI) / BUCKETS.length - Math.PI / 2;
       const dx = Math.cos(angle) * size * 0.3;
       const dy = Math.sin(angle) * size * 0.3;
-      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}"><circle cx="${size / 2}" cy="${size / 2}" r="${size / 2 - 1}" fill="${color}" fill-opacity="0.3"/><circle cx="${size / 2}" cy="${size / 2}" r="${size / 2 - 6}" fill="${color}" stroke="#fff" stroke-width="2"/><text x="50%" y="50%" text-anchor="middle" dominant-baseline="central" fill="${text}" font-family="sans-serif" font-size="11" font-weight="700">${count}</text></svg>`;
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}"><circle cx="${size / 2}" cy="${size / 2}" r="${size / 2 - 1}" fill="${color}" fill-opacity="0.3"/><circle cx="${size / 2}" cy="${size / 2}" r="${size / 2 - 6}" fill="${color}" stroke="#fff" stroke-width="2"/><text x="50%" y="50%" text-anchor="middle" dominant-baseline="central" fill="${text}"${outline} font-family="sans-serif" font-size="11" font-weight="700">${count}</text></svg>`;
       return new google.maps.Marker({
         position,
         icon: {
@@ -123,6 +128,7 @@ export interface MapViewProps {
 /** Shared map for the Stores and Routes tabs: status pins, same-location stacks, legend, clustering, sync. */
 export function MapView({ pins, selectedId, hoveredId, onSelect, onBoundsChange, className, unit = "locations", controls, action, installerColors, labels, routes, popup = false, circle = null, onOpen, onPinClick, onNearby }: MapViewProps) {
   const config = useMapsConfig();
+  const onDark = useTheme() === "dark";
   // The map shows what the filters above select; the legend only explains the colours.
   const visible = pins;
   const groups = useMemo(() => groupPins(pins), [pins]);
@@ -155,7 +161,7 @@ export function MapView({ pins, selectedId, hoveredId, onSelect, onBoundsChange,
         )}
         <ul className="flex flex-wrap items-center gap-x-4 gap-y-1" aria-label="Status colours">
           {present.map((bucket) => (
-            <li key={bucket} className={cn("flex flex-col gap-1", counts[bucket] === 0 && "opacity-45")} title={`${BUCKET_META[bucket].members}. Bubbles go from light (few) to dark (many).`}>
+            <li key={bucket} className={cn("flex flex-col gap-1", counts[bucket] === 0 && "opacity-45")} title={`${BUCKET_META[bucket].members}. Bubbles go from ${onDark ? "dark (few) to bright (many)" : "light (few) to dark (many)"}.`}>
               <span className="flex items-center gap-1.5">
                 <span className="size-2.5 rounded-full" style={{ background: BUCKET_META[bucket].color }} aria-hidden />
                 {tag(bucket)} <span className="tabular-nums text-slate-400">{counts[bucket]}</span>
@@ -163,8 +169,8 @@ export function MapView({ pins, selectedId, hoveredId, onSelect, onBoundsChange,
               {/* This status's cluster bubbles, few → many, right under its name. */}
               <span
                 className="h-1.5 w-full min-w-12 rounded-full"
-                aria-label={`${tag(bucket)} clusters, light to dark`}
-                style={{ background: `linear-gradient(to right, ${BUCKET_META[bucket].light}, ${BUCKET_META[bucket].dark})` }}
+                aria-label={`${tag(bucket)} clusters, ${onDark ? "dark to bright" : "light to dark"}`}
+                style={{ background: `linear-gradient(to right, ${onDark ? bucketDim(bucket) : BUCKET_META[bucket].light}, ${onDark ? bucketBright(bucket) : BUCKET_META[bucket].dark})` }}
               />
             </li>
           ))}
@@ -189,7 +195,7 @@ export function MapView({ pins, selectedId, hoveredId, onSelect, onBoundsChange,
           <MapMessage text="Map unavailable: no Google Maps browser key is configured (DT_GOOGLE_BROWSER_KEY)." />
         ) : (
           <APIProvider apiKey={key}>
-            <Map
+            <ThemedMap
               mapId={mapId}
               defaultCenter={US_CENTER}
               defaultZoom={4}
@@ -210,7 +216,7 @@ export function MapView({ pins, selectedId, hoveredId, onSelect, onBoundsChange,
               <Markers groups={groups} fitSignature={fitSignature} selectedId={selectedId} hoveredId={hoveredId} onSelect={onSelect} unit={unit} paint={{ installerColors, labels }} popup={popup} circle={circle} onOpen={onOpen} onPinClick={onPinClick} onNearby={onNearby} />
               {routes && <RouteLines routes={routes} />}
               {circle && <NearbyCircle circle={circle} />}
-            </Map>
+            </ThemedMap>
           </APIProvider>
         )}
       </div>
@@ -306,6 +312,7 @@ function RouteLines({ routes }: { routes: NonNullable<MapViewProps["routes"]> })
 /** Imperative markers (one per location) in a clusterer that only clusters at low zoom. */
 function Markers({ groups, fitSignature, selectedId, hoveredId, onSelect, unit, paint, popup, circle, onOpen, onPinClick, onNearby }: MarkersProps) {
   const map = useMap();
+  const onDark = useTheme() === "dark"; // the dark map: bubbles go dark grey → bright
   const loose = Boolean(paint.installerColors); // installer-coloured pins sit on the map itself, never in a bubble
   const clusterers = useRef(new globalThis.Map<StatusBucket, MarkerClusterer>()); // one per status group
   const markers = useRef(new globalThis.Map<string, google.maps.Marker>()); // by location key
@@ -342,7 +349,7 @@ function Markers({ groups, fitSignature, selectedId, hoveredId, onSelect, unit, 
         new MarkerClusterer({
           map,
           algorithm: new SuperClusterAlgorithm({ maxZoom: CLUSTER_MAX_ZOOM, radius: 60 }),
-          renderer: clusterRenderer(bucket),
+          renderer: clusterRenderer(bucket, onDark),
         }),
       );
     }
@@ -354,7 +361,7 @@ function Markers({ groups, fitSignature, selectedId, hoveredId, onSelect, unit, 
       }
       current.clear();
     };
-  }, [map]);
+  }, [map, onDark]);
 
   // Rebuild markers only when the visible locations (or a location's status group) change; styling is the next
   // effect's job.

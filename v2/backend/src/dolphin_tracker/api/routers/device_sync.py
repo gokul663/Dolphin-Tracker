@@ -120,5 +120,5 @@ def list_store_logs(
 
 @router.post("/projects/{project_id}/stores/{stop_uid}/device-alert/ignore", response_model=Stop)
 def ignore_device_alert(project_id: str, stop_uid: str, service: ServiceDep) -> Stop:
-    """Hide "not in Dolphin data" until the next report day."""
+    """Hide "not in CMS data" until the next report day."""
     return service.ignore_alert(project_id, stop_uid)

@@ -12,7 +12,7 @@ const fmt = (lat: number | null, lng: number | null) => (lat === null || lng ===
 
 type Row = { field: OverwriteField | null; label: string; sheet: string; report: string };
 
-/** The sheet's values next to the Dolphin data's, one row per field (the CMS name has no sheet value). */
+/** The sheet's values next to the CMS data's, one row per field (the CMS name has no sheet value). */
 export function deviceRows(stop: Stop): Row[] {
   const device = stop.device;
   return device
@@ -30,12 +30,12 @@ export function deviceRows(stop: Stop): Row[] {
     : [];
 }
 
-/** The fields where the Dolphin data still differs from the sheet (Overwrite would copy them in). */
+/** The fields where the CMS data still differs from the sheet (Overwrite would copy them in). */
 export const deviceDifferences = (stop: Stop): OverwriteField[] =>
   deviceRows(stop).filter((row) => row.field && row.report && row.report !== row.sheet).map((row) => row.field as OverwriteField);
 
 /** The device report's values for this store next to the sheet's, with Overwrite per field or all at once, and the
- *  "not in Dolphin data" alert with Ignore (until the next report day). */
+ *  "not in CMS data" alert with Ignore (until the next report day). */
 export function StoreDeviceSection({
   project,
   stop,
@@ -67,7 +67,7 @@ export function StoreDeviceSection({
       : overwrite.mutate(
       { uid: stop.uid, fields },
       {
-        onSuccess: () => toast.success("Saved the Dolphin data value"),
+        onSuccess: () => toast.success("Saved the CMS data value"),
         onError: (error) => toast.error(error instanceof Error ? error.message : "Overwrite failed"),
       },
     );
@@ -76,14 +76,14 @@ export function StoreDeviceSection({
   // Nothing left to overwrite and no alert: the store window's header says it is synced, so nothing here.
   if (device && !missing && differing.length === 0) return null;
   return (
-    <section aria-label="Dolphin data" className={cn("space-y-2 rounded-xl border p-4 shadow-sm", DEVICE_TONE.panel)}>
+    <section aria-label="CMS data" className={cn("space-y-2 rounded-xl border p-4 shadow-sm", DEVICE_TONE.panel)}>
       <div className="flex flex-wrap items-center gap-2">
         {/* The explanation is a tooltip: the table's "(shown)" column already says which value the app uses. */}
         <h3
           className="font-mono text-[11px] uppercase tracking-wider text-cyan-900"
-          title={`The Dolphin data shows on the map and in the list; the sheet value stays underneath until you overwrite it. Fields: ${OVERWRITE_FIELDS.map(({ label }) => label).join(", ")}.`}
+          title={`The CMS data shows on the map and in the list; the sheet value stays underneath until you overwrite it. Fields: ${OVERWRITE_FIELDS.map(({ label }) => label).join(", ")}.`}
         >
-          Dolphin data
+          CMS data
         </h3>
         {day && <DeviceBadge date={day} />}
         {open.length > 0 && canEdit && (
@@ -96,7 +96,7 @@ export function StoreDeviceSection({
         <div role="alert" className="flex flex-wrap items-center gap-2 rounded-md border border-amber-300 bg-amber-50 px-2 py-1.5 text-sm text-amber-900">
           <AlertTriangle size={14} />
           <span className="min-w-0 flex-1">
-            Completed, but {lost.map((screen) => screen.venue_id).join(", ") || "its DD code"} is not in the Dolphin data of {reportDay(day)}.
+            Completed, but {lost.map((screen) => screen.venue_id).join(", ") || "its DD code"} is not in the CMS data of {reportDay(day)}.
             Check the DD code, or whether the screen is still registered.
           </span>
           <Button
@@ -116,7 +116,7 @@ export function StoreDeviceSection({
             <tr>
               <th className="py-1 pr-2 font-normal">Field</th>
               <th className="py-1 pr-2 font-normal">Sheet</th>
-              <th className="py-1 pr-2 font-normal">Dolphin data (shown)</th>
+              <th className="py-1 pr-2 font-normal">CMS data (shown)</th>
               <th />
             </tr>
           </thead>

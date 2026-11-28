@@ -43,6 +43,7 @@ const HUES = {
   violet: { chip: "bg-violet-100 text-violet-700", strip: "bg-violet-50/60", hover: "hover:bg-violet-50", title: "text-violet-900", summary: "text-violet-700", line: "border-violet-100" },
   indigo: { chip: "bg-indigo-100 text-indigo-700", strip: "bg-indigo-50/60", hover: "hover:bg-indigo-50", title: "text-indigo-900", summary: "text-indigo-700", line: "border-indigo-100" },
   orange: { chip: "bg-orange-100 text-orange-700", strip: "bg-orange-50/60", hover: "hover:bg-orange-50", title: "text-orange-900", summary: "text-orange-700", line: "border-orange-100" },
+  teal: { chip: "bg-teal-100 text-teal-700", strip: "bg-teal-50/60", hover: "hover:bg-teal-50", title: "text-teal-900", summary: "text-teal-700", line: "border-teal-100" },
   slate: { chip: "bg-slate-100 text-slate-600", strip: "bg-slate-50/70", hover: "hover:bg-slate-100/70", title: "text-slate-700", summary: "text-slate-600", line: "border-slate-100" },
 } satisfies Record<string, VisitTone>;
 
@@ -53,8 +54,8 @@ export const VISIT_TONE = {
   "The screen": { ...HUES.sky, icon: Monitor },
   Pictures: { ...HUES.rose, icon: Images },
   Network: { ...HUES.violet, icon: Wifi },
-  Software: { ...HUES.slate, icon: MonitorCog },
-  Issue: { ...HUES.slate, icon: ClipboardList },
+  Software: { ...HUES.teal, icon: MonitorCog },
+  Issue: { ...HUES.orange, icon: ClipboardList }, // what was wrong: the warm hue, like Inventory far above it
   Location: { ...HUES.emerald, icon: MapPin },
   "Store comment": { ...HUES.amber, icon: MessageSquareText },
   Store: { ...HUES.brand, icon: Store },

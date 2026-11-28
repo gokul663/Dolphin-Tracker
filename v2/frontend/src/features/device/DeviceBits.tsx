@@ -15,10 +15,11 @@ export const reportDay = (date: string) => (date.length >= 10 ? `${date.slice(5,
 export function DeviceBadge({ date, className }: { date: string; className?: string }) {
   return (
     <span
-      className={cn("inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[11px] font-medium", DEVICE_TONE.chip, className)}
+      // Green: the data is in and this is its day.
+      className={cn("inline-flex items-center gap-1 rounded border border-emerald-500/50 bg-emerald-50 px-1.5 py-0.5 text-[11px] font-medium text-emerald-700", className)}
       title={`From the Dolphin device report of ${date}`}
     >
-      <Radio size={10} /> Dolphin data · {reportDay(date)}
+      <Radio size={10} /> CMS Data · {reportDay(date)}
     </span>
   );
 }
@@ -43,7 +44,7 @@ export function ScreenDeviceLine({ device }: { device: ScreenDevice }) {
 
 export { splitCodes } from "@/lib/codes";
 
-/** The Dolphin data's own status word for a device, as a chip (Needs review, and the search's matches there). */
+/** The CMS data's own status word for a device, as a chip (Needs review, and the search's matches there). */
 export const REPORT_STATUS_TONE: Record<string, string> = {
   online: "border-emerald-200 bg-emerald-50 text-emerald-800",
   offline: "border-rose-200 bg-rose-50 text-rose-800",

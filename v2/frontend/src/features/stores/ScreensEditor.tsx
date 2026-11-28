@@ -330,7 +330,7 @@ export function ScreenFields({
                   </Label>
                   <Input id={`${row.key}-${key}`} className="h-8" value={row[key]} onChange={(event) => onPatch({ [key]: event.target.value })} />
                   {key === "stick_number" && device?.serial_number && device.serial_number !== row.stick_number && (
-                    <p className={cn("text-[11px]", DEVICE_TONE.text)}>Dolphin data: {device!.serial_number} (shown)</p>
+                    <p className={cn("text-[11px]", DEVICE_TONE.text)}>CMS data: {device!.serial_number} (shown)</p>
                   )}
                 </div>
               ))}
@@ -445,7 +445,7 @@ export function ScreensEditor({ project, stop, rows, onChange }: { project: Proj
   );
 }
 
-/** Stick #: the Dolphin data's serial number when it has one (it wins, in the Dolphin colour, the sheet's value on
+/** Stick #: the CMS data's serial number when it has one (it wins, in the Dolphin colour, the sheet's value on
  *  hover), else what the sheet or a person entered. */
 function StickNumber({ sheet, serial }: { sheet: string; serial?: string | null }) {
   const fromDolphin = Boolean(serial?.trim());
@@ -453,8 +453,8 @@ function StickNumber({ sheet, serial }: { sheet: string; serial?: string | null 
   return (
     <span
       className={cn("font-mono", fromDolphin ? DEVICE_TONE.text : "text-slate-800")}
-      title={fromDolphin ? `From the Dolphin data${sheet && sheet !== shown ? ` (sheet: ${sheet})` : ""}` : undefined}
-      aria-label={`Stick number${fromDolphin ? " (Dolphin data)" : ""}`}
+      title={fromDolphin ? `From the CMS data${sheet && sheet !== shown ? ` (sheet: ${sheet})` : ""}` : undefined}
+      aria-label={`Stick number${fromDolphin ? " (CMS data)" : ""}`}
     >
       {shown || <span className="text-slate-300">—</span>}
     </span>
@@ -463,7 +463,7 @@ function StickNumber({ sheet, serial }: { sheet: string; serial?: string | null 
 
 const dash = <span className="text-slate-300">—</span>;
 
-/** The Dolphin data's word on one screen, short: its status (and days offline); the rest on hover. */
+/** The CMS data's word on one screen, short: its status (and days offline); the rest on hover. */
 function DolphinCell({ device }: { device?: Stop["screens"][number]["device"] }) {
   if (!device) return dash;
   const seen = device.last_seen ? device.last_seen.slice(0, 16).replace("T", " ") : "";
@@ -478,7 +478,7 @@ function DolphinCell({ device }: { device?: Stop["screens"][number]["device"] })
   );
 }
 
-/** When this screen's device registered with the CMS, from the Dolphin data: its last registered date (a device that
+/** When this screen's device registered with the CMS, from the CMS data: its last registered date (a device that
  *  registered only once has no last date, so its first one shows); hovering gives both. */
 function RegisteredCell({ device, screen }: { device?: Stop["screens"][number]["device"]; screen: number }) {
   if (!device) return dash;
@@ -534,7 +534,7 @@ export function ScreensView({ project, stop, rows }: { project: Project; stop: S
               <th className={head}>Stick #</th>
               <th className={head}>DD code</th>
               <th className={head}>Venue type</th>
-              <th className={head}>Dolphin data</th>
+              <th className={head}>CMS data</th>
               <th className={head}>Registered</th>
               <th className={head}>Last visit</th>
               <th className={head}>Pictures</th>

@@ -290,7 +290,7 @@ class HardwareCostTests(StoresApiTestCase):
         self.assertEqual(self.client.patch("/api/projects/p1", json={"hardware_costs": None}).status_code, 422)
 
 
-# --- Venue type from the Dolphin data's OOH category -----------------------------------------------------------------
+# --- Venue type from the CMS data's OOH category -----------------------------------------------------------------
 
 from dolphin_tracker.domain.device import venue_type_label  # noqa: E402
 

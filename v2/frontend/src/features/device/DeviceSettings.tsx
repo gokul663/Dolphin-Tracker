@@ -61,7 +61,7 @@ export function DeviceSettings({ project }: { project: Project }) {
       onSuccess: (result) =>
         toast.success(
           result.stores_added
-            ? `${result.stores_added} stores added from the Dolphin data`
+            ? `${result.stores_added} stores added from the CMS data`
             : "No new stores: every venue of this PA is already in the project or waiting for review",
         ),
       onError: (error) => toast.error(error instanceof Error ? error.message : "Could not add the stores"),
@@ -71,7 +71,7 @@ export function DeviceSettings({ project }: { project: Project }) {
       { fields: [...fields] },
       {
         onSuccess: (result) => {
-          toast.success(`${result.stores_updated} stores now use the Dolphin data values`);
+          toast.success(`${result.stores_updated} stores now use the CMS data values`);
           setFields(new Set());
         },
         onError: (error) => toast.error(error instanceof Error ? error.message : "Overwrite failed"),
@@ -108,7 +108,7 @@ export function DeviceSettings({ project }: { project: Project }) {
               <DeviceBadge date={state.snapshot_date} />
               <span>
                 {state.matched_screens} screens matched · {state.status_changes} status changes last sync · {state.review_count} to review ·{" "}
-                {state.not_reporting} not in Dolphin data · synced {centralTime(state.synced_at)}
+                {state.not_reporting} not in CMS data · synced {centralTime(state.synced_at)}
               </span>
             </>
           ) : (
@@ -122,7 +122,7 @@ export function DeviceSettings({ project }: { project: Project }) {
             disabled={populate.isPending || sync.isPending}
             title="Every venue of this PA that no store has becomes a store, at the report's address"
           >
-            {populate.isPending ? <Loader2 className="animate-spin" /> : <DatabaseZap />} Add stores from Dolphin data
+            {populate.isPending ? <Loader2 className="animate-spin" /> : <DatabaseZap />} Add stores from CMS data
           </Button>
           <Button size="sm" variant="outline" onClick={syncNow} disabled={sync.isPending || populate.isPending}>
             {sync.isPending ? <Loader2 className="animate-spin" /> : <RefreshCw />} Sync now
@@ -131,7 +131,7 @@ export function DeviceSettings({ project }: { project: Project }) {
       )}
       {state && (
         <div className="space-y-2 border-t border-cyan-200 pt-3">
-          <p className="text-sm font-medium">Overwrite the sheet values with the Dolphin data, for every synced store</p>
+          <p className="text-sm font-medium">Overwrite the sheet values with the CMS data, for every synced store</p>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
             {OVERWRITE_FIELDS.map(({ field, label }) => (
               <label key={field} className="flex items-center gap-1.5">
@@ -165,7 +165,7 @@ export function DeviceSettings({ project }: { project: Project }) {
         }}
         onCancel={() => setConfirming(false)}
       >
-        {`${OVERWRITE_FIELDS.filter(({ field }) => fields.has(field)).map(({ label }) => label).join(", ")} of every store with Dolphin data is replaced by the report's value. Stores the report has no value for keep theirs. This cannot be undone.`}
+        {`${OVERWRITE_FIELDS.filter(({ field }) => fields.has(field)).map(({ label }) => label).join(", ")} of every store with CMS data is replaced by the report's value. Stores the report has no value for keep theirs. This cannot be undone.`}
       </ConfirmDialog>
     </Card>
   );

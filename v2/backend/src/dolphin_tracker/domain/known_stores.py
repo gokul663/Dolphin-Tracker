@@ -1,6 +1,6 @@
 """Stores we already know, offered to a sheet being imported. Pure.
 
-A sheet often lists stores that are already in another project of the tracker, or in the Dolphin data (every venue
+A sheet often lists stores that are already in another project of the tracker, or in the CMS data (every venue
 the CMS reports). For those the work is done: the address was verified (or fixed by hand) and the DD codes are known.
 The import reuses it instead of asking Google again.
 
@@ -9,8 +9,8 @@ one; the same address under another PA is another store), and never the ExtID ac
 one).
 
 - The address and map location come from the tracker's store when it has a verified one (someone may have corrected
-  it there), else from the Dolphin data.
-- The screens (DD code, stick number, status) come from the Dolphin data when it has the store, else from the
+  it there), else from the CMS data.
+- The screens (DD code, stick number, status) come from the CMS data when it has the store, else from the
   tracker's store. They fill the sheet's rows that have no DD code before adding rows.
 """
 from __future__ import annotations
@@ -26,7 +26,7 @@ from dolphin_tracker.domain.models import NeedsAttention, Project, ScreenStatus,
 from dolphin_tracker.domain.validation import normalize_external_id
 
 TRACKER, DOLPHIN = "tracker", "dolphin_data"
-DOLPHIN_LABEL = "the Dolphin data"
+DOLPHIN_LABEL = "the CMS data"
 CLOSED = frozenset({ScreenStatus.CANCELLED, ScreenStatus.ARCHIVED})
 
 
@@ -38,7 +38,7 @@ def pa_keys(value: str) -> set[str]:
 @dataclass(frozen=True)
 class KnownStore:
     source: str  # TRACKER or DOLPHIN
-    label: str  # the project's name, or "the Dolphin data"
+    label: str  # the project's name, or "the CMS data"
     stop: Stop
     external_id: str  # normalised; "" when it has none
 
@@ -60,13 +60,13 @@ class KnownMatch:
 
     @property
     def location(self) -> KnownStore | None:
-        """Where the verified address comes from: the tracker's store first, else the Dolphin data."""
+        """Where the verified address comes from: the tracker's store first, else the CMS data."""
         candidates = ([self.tracker] if self.tracker else []) + self.dolphin
         return next((known for known in candidates if known.located), None)
 
     @property
     def screens(self) -> list[dict[str, Any]]:
-        """The known screens that carry a DD code: the Dolphin data's when it has the store, else the tracker's."""
+        """The known screens that carry a DD code: the CMS data's when it has the store, else the tracker's."""
         stores = self.dolphin or ([self.tracker] if self.tracker else [])
         rows: list[dict[str, Any]] = []
         for known in stores:
@@ -88,7 +88,7 @@ class KnownStores:
         self._by_id: dict[tuple[str, str], list[KnownStore]] = {}
         self._by_address: dict[tuple[str, str], list[KnownStore]] = {}
         # A project's own PA name → the name the CMS uses for it (the project's device PA), so a sheet that says
-        # "IBC" also finds the Dolphin data's "IBC Bakeries".
+        # "IBC" also finds the CMS data's "IBC Bakeries".
         self._aliases: dict[str, set[str]] = {}
         self.count = 0
 

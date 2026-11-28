@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { screen, within } from "@testing-library/react";
 import { circleBounds, MapView } from "@/components/map/MapView";
-import { bucketShade, BUCKET_META } from "@/lib/status";
+import { bucketDim, bucketShade, BUCKET_META } from "@/lib/status";
 import { mockApi, renderWithProviders } from "@/test/render";
 import type { Pin } from "@/lib/api/types";
 
@@ -48,5 +48,12 @@ describe("MapView", () => {
     expect(bucketShade("Offline", 200)).toBe(BUCKET_META.Offline.dark);
     expect(bucketShade("Completed", 5000)).toBe(BUCKET_META.Completed.dark);
     expect(bucketShade("Completed", 20)).not.toBe(BUCKET_META.Completed.light);
+  });
+
+  it("on the dark map the bubbles go from a dark shade of the group's colour (few) to its bright colour (many)", () => {
+    expect(bucketShade("Upcoming", 1, true)).toBe(bucketDim("Upcoming"));
+    expect(bucketShade("Upcoming", 200, true)).toBe(BUCKET_META.Upcoming.color);
+    expect(bucketDim("Upcoming")).not.toBe(bucketDim("Offline")); // dark yellow and dark red, not one grey
+    expect(bucketShade("Cancelled", 200, true)).toBe(BUCKET_META.Cancelled.light); // its own colour is near black
   });
 });

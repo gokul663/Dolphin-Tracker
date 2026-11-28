@@ -331,6 +331,12 @@ class InMemoryVisitRepository:
         self._items: list[Visit] = []
         self._comments: list[StoreComment] = []
 
+    def mark_cms_logged(self, entry: Visit | StoreComment, at: str) -> None:
+        kept = self._items if isinstance(entry, Visit) else self._comments
+        for index, item in enumerate(kept):
+            if item.id == entry.id:
+                kept[index] = item.model_copy(update={"cms_logged_at": at})
+
     def add(self, visit: Visit) -> Visit:
         stop = self._stores.get(visit.project_id, visit.stop_uid)
         if stop is None:

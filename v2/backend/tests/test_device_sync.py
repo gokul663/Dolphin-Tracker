@@ -343,7 +343,7 @@ class ServiceTests(ServiceTestCase):
         self.source.rows[2] = report_row("DD_NEW001", Address="1 Lake Rd, Kalamazoo, MI 49009")
         self.service.sync("p1")
         added = self.service.add_from_review("p1", "DD_NEW001")
-        # Verified with Google like an imported row: Google's location, the report's stays as Dolphin data.
+        # Verified with Google like an imported row: Google's location, the report's stays as CMS data.
         self.assertEqual((added.store_name, added.addr, added.lat), ("Store DD_NEW001", "1 Lake Rd", 42.29))
         self.assertEqual(added.device.lat, 42.2675)
         self.assertIn(("geocode", "1 Lake Rd, Kalamazoo, MI 49009"), self.geocoder.calls)
@@ -405,7 +405,7 @@ class ServiceTests(ServiceTestCase):
             stores.set_external_id("p1", added.uid, "LA99999")
 
     def test_add_joins_the_store_already_at_that_address(self):
-        # Store "a" (sheet address 1 Main St) synced, so its Dolphin data address is 5680 Stadium Dr, Kalamazoo.
+        # Store "a" (sheet address 1 Main St) synced, so its CMS data address is 5680 Stadium Dr, Kalamazoo.
         self.service.sync("p1")
         added = self.service.add_from_review("p1", "DD_NEW001")
         self.assertEqual(added.uid, "a")
@@ -497,7 +497,7 @@ class ServiceTests(ServiceTestCase):
 
 
 class PopulateTests(ServiceTestCase):
-    """A project started from the Dolphin data alone, with no sheet."""
+    """A project started from the CMS data alone, with no sheet."""
 
     def setUp(self):
         super().setUp()
@@ -573,7 +573,7 @@ class ApiTests(ServiceTestCase):
         self.assertEqual((review["total"], len(review["items"]), bool(review["next_cursor"])), (2, 1, True))
         added = self.client.post("/api/projects/p1/device-sync/review/DD_NEW001/add")
         self.assertEqual(added.status_code, 201)
-        self.assertEqual(added.json()["uid"], "a")  # same address as store a's Dolphin data: a second stick there
+        self.assertEqual(added.json()["uid"], "a")  # same address as store a's CMS data: a second stick there
         self.assertEqual(self.client.post("/api/projects/p1/device-sync/review/DD_NEW001/add").status_code, 404)
         pins = {pin["uid"]: pin for pin in self.client.get("/api/projects/p1/stores/pins").json()}
         self.assertEqual(pins["a"]["lat"], 42.2675)  # the report's location
@@ -581,7 +581,7 @@ class ApiTests(ServiceTestCase):
 
     def test_create_a_project_without_a_sheet_then_populate(self):
         created = self.client.post("/api/projects", json={
-            "name": "From Dolphin data", "device_pa": "IBC", "project_type": "new_installation",
+            "name": "From CMS data", "device_pa": "IBC", "project_type": "new_installation",
         })
         self.assertEqual(created.status_code, 201, created.text)
         project = created.json()["project"]

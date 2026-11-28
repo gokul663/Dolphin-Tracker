@@ -7,6 +7,9 @@ class EnvConfig:
     name: str
     retain_data: bool
     cors_origins: list[str] = field(default_factory=list)
+    # Write Tracker's log entries to the shared log collection in MongoDB (insert only). Off until the team is
+    # ready to log from Tracker for real: every entry saved while it is on lands in the production log collection.
+    cms_log_write: bool = False
     domain_name: str | None = None          # e.g. "tracker.example.com"; None = CloudFront default domain
     certificate_arn: str | None = None      # ACM cert in us-east-1 for the domain above
     cloudfront_domain: str | None = None    # e.g. "d1234abcd.cloudfront.net", once the Web stack has deployed
@@ -67,6 +70,10 @@ class EnvConfig:
     @property
     def ssm_google_server_key(self) -> str:
         return f"/dolphin-tracker/{self.name}/google-maps-server-key"
+
+    @property
+    def cms_log_env(self) -> dict[str, str]:
+        return {"DT_CMS_LOG_WRITE": "true"} if self.cms_log_write else {}
 
     @property
     def ssm_mongo_uri(self) -> str:

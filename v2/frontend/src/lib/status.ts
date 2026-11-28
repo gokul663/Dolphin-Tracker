@@ -85,7 +85,7 @@ export const BUCKET_META: Record<StatusBucket, { color: string; light: string; d
   "In Progress": {
     color: "#7c3aed", light: "#c4b5fd", dark: "#4c1d95",
     chip: "bg-violet-50 text-violet-700 border-violet-200",
-    members: "In Progress: a screen is in the Dolphin data but has not registered yet",
+    members: "In Progress: a screen is in the CMS data but has not registered yet",
   },
   Offline: {
     color: "#dc2626", light: "#fca5a5", dark: "#7f1d1d",
@@ -93,7 +93,7 @@ export const BUCKET_META: Record<StatusBucket, { color: string; light: string; d
   },
   "Not Registered": {
     color: "#7c3aed", light: "#c4b5fd", dark: "#4c1d95",
-    chip: "bg-violet-50 text-violet-700 border-violet-200", members: "Not Registered: in the Dolphin data, never registered",
+    chip: "bg-violet-50 text-violet-700 border-violet-200", members: "Not Registered: in the CMS data, never registered",
   },
   Cancelled: {
     color: "#3f3f46", light: "#a1a1aa", dark: "#18181b",
@@ -125,10 +125,38 @@ export function shadeLevel(count: number): number {
   return Math.min(1, Math.max(0, Math.log(Math.max(count, min) / min) / Math.log(max / min)));
 }
 
-/** A cluster bubble's colour: the group's light shade for a few stores, its dark shade for many. */
-export function bucketShade(bucket: StatusBucket, count: number): string {
+/** A cluster bubble's colour: the group's light shade for a few stores, its dark shade for many. On the dark map
+ *  the scale is turned round, since dark means nothing there: a dark shade of the group's own colour for a few (dark yellow, dark red), the group's bright colour for
+ *  many, so the busy places are the ones that glow. */
+export function bucketShade(bucket: StatusBucket, count: number, onDark = false): string {
   const meta = BUCKET_META[bucket];
-  return mix(meta.light, meta.dark, shadeLevel(count));
+  return onDark ? mix(bucketDim(bucket), bucketBright(bucket), shadeLevel(count)) : mix(meta.light, meta.dark, shadeLevel(count));
+}
+
+/** What the dark map's few end is mixed from: a dark grey that still stands off the map… */
+const DARK_MAP_GREY = "#4b5563";
+/** …and how much of the group's colour goes into it: enough to tell a dark yellow from a dark red. */
+const DIM_TINT = 0.45;
+
+/** The few end of the dark map's scale: the group's bright colour dimmed towards dark grey. */
+export function bucketDim(bucket: StatusBucket): string {
+  return mix(DARK_MAP_GREY, bucketBright(bucket), DIM_TINT);
+}
+
+/** The many end of the dark map's scale: the group's colour, or its light shade where the colour itself is too
+ *  dark or too grey to glow on a dark map (Cancelled, Archived, the violet). Red, green and yellow stay themselves. */
+export function bucketBright(bucket: StatusBucket): string {
+  const meta = BUCKET_META[bucket];
+  return bucket === "Archived" || luminance(meta.color) < 0.15 ? meta.light : meta.color;
+}
+
+/** Relative luminance (WCAG), 0 black … 1 white. */
+function luminance(hex: string): number {
+  const [r, g, b] = [0, 1, 2].map((i) => {
+    const c = parseInt(hex.slice(1 + i * 2, 3 + i * 2), 16) / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  }) as [number, number, number];
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 }
 
 export const INSTALL_TYPES = ["Technician", "Self install", "Rep install"] as const;

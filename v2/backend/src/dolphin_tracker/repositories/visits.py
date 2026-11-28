@@ -33,11 +33,23 @@ class VisitRepository(Protocol):
     ) -> Page[StoreComment]:
         """Newest first."""
         ...
+    def mark_cms_logged(self, entry: Visit | StoreComment, at: str) -> None:
+        """Record that the entry is in the shared log collection (`cms_logged_at`)."""
+        ...
 
 
 class DynamoVisitRepository:
     def __init__(self, table) -> None:
         self._table = table
+
+    def mark_cms_logged(self, entry: Visit | StoreComment, at: str) -> None:
+        key = (Keys.visit if isinstance(entry, Visit) else Keys.store_comment)(
+            entry.project_id, entry.stop_uid, entry.created_at, entry.id
+        )
+        self._table.update_item(
+            Key=key, UpdateExpression="SET cms_logged_at = :at", ConditionExpression="attribute_exists(PK)",
+            ExpressionAttributeValues={":at": at},
+        )
 
     def add(self, visit: Visit) -> Visit:
         stop_key = Keys.stop(visit.project_id, visit.stop_uid)

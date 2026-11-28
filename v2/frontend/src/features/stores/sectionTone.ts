@@ -51,7 +51,7 @@ const HUES = {
 
 /** Every section and summary card of the store window, with its hue and icon. The one place to change either. */
 export const SECTION_TONE = {
-  // The window's own sections (the Dolphin data comparison keeps its own cyan panel, DEVICE_TONE).
+  // The window's own sections (the CMS data comparison keeps its own cyan panel, DEVICE_TONE).
   "Identity & address": { ...HUES.brand, icon: Store },
   Screens: { ...HUES.sky, icon: Monitor },
   Notes: { ...HUES.amber, icon: StickyNote },

@@ -184,7 +184,7 @@ describe("StoreSummary cards", () => {
   it("committed reads as numbers until Edit; Edit shows the boxes (focused), View goes back keeping the draft", async () => {
     renderWithProviders(<Harness initial={draftOf([makeScreen({ id: "a" })], { committed_dolphin_screens: "4", committed_store_tvs: "" })} />);
     expect(within(card()).getByLabelText("Committed screens").textContent).toBe("4");
-    expect(within(card()).getByLabelText("Committed TVs").textContent).toBe("—");
+    expect(within(card()).getByLabelText("Committed TVs").textContent).toBe("0"); // blank counts as 0
     expect(within(card()).queryByRole("textbox")).toBeNull();
     await userEvent.click(within(card()).getByRole("button", { name: "Edit committed counts" }));
     const boxes = within(card()).getByLabelText("Screens") as HTMLInputElement;
@@ -212,10 +212,15 @@ describe("StoreSummary cards", () => {
     expect(within(card()).queryByRole("button", { name: /committed counts/ })).toBeNull();
   });
 
-  it("with nothing committed the card stays neutral, however much is installed", () => {
-    renderWithProviders(<Harness initial={draftOf([makeScreen({ id: "a", status: "Completed" })])} />);
+  it("a blank committed count is 0: anything installed meets it (green), nothing installed does not", () => {
+    const { unmount } = renderWithProviders(<Harness initial={draftOf([makeScreen({ id: "a", status: "Completed" })])} />);
+    expect(card().className).toContain("bg-green-50");
+    expect(within(card()).getByText("1 of 0 committed")).toBeTruthy();
+    expect(within(card()).getByLabelText("Committed screens").textContent).toBe("0");
+    expect(within(card()).getByLabelText("Committed total").textContent).toBe("0");
+    unmount();
+    renderWithProviders(<Harness initial={draftOf([makeScreen({ id: "a", status: "Upcoming" })])} />);
     expect(card().className).not.toContain("bg-green-50");
-    expect(within(card()).getByText("No commitment yet")).toBeTruthy();
   });
 
   it("hardware cost is its own card, second in the row, and absent when the project hides it", () => {

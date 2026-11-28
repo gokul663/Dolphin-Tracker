@@ -157,8 +157,8 @@ class DeviceSnapshot(ApiModel):
 
 
 class DeviceLog(ApiModel):
-    """One servicing log entry from the CMS (`dolphin_venue_vision.logs`): what was found at a device on a day and
-    who dealt with it. Read-only here; text is "" when the CMS has no value."""
+    """One servicing log entry from the shared log collection (`dolphin_venue_vision.logs`): what was found at a
+    device on a day and who dealt with it. Text is "" when there is no value."""
 
     id: str = ""
     date: str = ""  # the day of the work, YYYY-MM-DD
@@ -173,6 +173,7 @@ class DeviceLog(ApiModel):
     dolphin_manager: str = ""
     category: str = ""
     detailed_comments: str = ""
+    source: str = ""  # "dolphin-tracker" for the entries Tracker wrote (domain/cms_log.py); "" for the older system's
     created_at: str = ""
 
     @classmethod
@@ -188,7 +189,7 @@ def code_variants(codes: Iterable[object]) -> list[str]:
 
 
 class ScreenDevice(ApiModel):
-    """What the report said about one screen on its latest day (shown in the "from Dolphin data" colour)."""
+    """What the report said about one screen on its latest day (shown in the "from CMS data" colour)."""
 
     status: str = ""
     last_seen: str = ""
@@ -228,7 +229,7 @@ class DeviceSyncState(ApiModel):
     matched_screens: int = 0
     status_changes: int = 0  # screens whose work status the last sync changed
     review_count: int = 0  # records not in the project, not snoozed
-    not_reporting: int = 0  # stores flagged "Completed but not in Dolphin data"
+    not_reporting: int = 0  # stores flagged "Completed but not in CMS data"
     other_pa_count: int = 0  # screens of another PA (or none) at a store's address, not marked reviewed
 
 
@@ -240,7 +241,7 @@ class ReviewItem(DeviceRecord):
 
 
 class OtherPaScreen(ApiModel):
-    """A screen of the Dolphin data at the address of one of the project's stores, under another PA or none (an ATM
+    """A screen of the CMS data at the address of one of the project's stores, under another PA or none (an ATM
     screen at the store, say). Shown for a check only: never added to the project; any fix is made in the CMS."""
 
     key: str  # "<venue key>:<store uid>", one row per screen and store of ours

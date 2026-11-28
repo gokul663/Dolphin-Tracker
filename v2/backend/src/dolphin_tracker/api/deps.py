@@ -21,6 +21,7 @@ from dolphin_tracker.repositories.route_plans import DynamoRoutePlanRepository, 
 from dolphin_tracker.repositories.stores import DynamoStoreRepository, StoreRepository
 from dolphin_tracker.repositories.visits import DynamoVisitRepository, VisitRepository
 from dolphin_tracker.repositories.worker_invoker import WorkerInvoker, make_invoker
+from dolphin_tracker.services.cms_logs import CmsLogWriter
 from dolphin_tracker.services.device_sync import DeviceSyncService
 from dolphin_tracker.services.drive_times import GoogleDriveTimes
 from dolphin_tracker.services.geocoding import GoogleGeocoder
@@ -220,8 +221,10 @@ def get_visit_service(
     projects: Annotated[ProjectRepository, Depends(get_project_repository)],
     lists: Annotated[ListService, Depends(get_list_service)],
     plans: Annotated[RoutePlanService, Depends(get_route_plan_service)],
+    settings: SettingsDep,
 ) -> VisitService:
-    return VisitService(visits, stores, projects, lists, plans)
+    cms_logs = CmsLogWriter(get_device_data(settings), enabled=settings.cms_log_write)
+    return VisitService(visits, stores, projects, lists, plans, cms_logs)
 
 
 def get_places_service(geocoder: Annotated[GoogleGeocoder, Depends(get_geocoder)]) -> PlacesService:

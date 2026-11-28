@@ -3,7 +3,7 @@
 A search is words, not one exact phrase: every word typed must be somewhere in the store's text, in any of its
 fields. So a whole address ("12000 South Shore Boulevard, Wellington, FL 33414") finds the store although the street,
 city, state and ZIP are separate fields, and so does a part of it. Street words are compared in one spelling, since
-the sheet, Google's verified address and the Dolphin data each abbreviate differently ("South Shore Boulevard",
+the sheet, Google's verified address and the CMS data each abbreviate differently ("South Shore Boulevard",
 "S Shore Blvd").
 """
 from __future__ import annotations

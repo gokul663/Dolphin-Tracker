@@ -2,13 +2,15 @@
 status. Store, address, PA/FA and contacts are snapshotted from the store at submission."""
 from __future__ import annotations
 
+from dolphin_tracker.domain.cms_log import comment_log, visit_log
 from dolphin_tracker.domain.errors import NotFoundError, ValidationFailed
 from dolphin_tracker.domain.lists import REPLACED_WITH_SUBCATEGORIES, NameListKind
-from dolphin_tracker.domain.models import Page, Project, Stop
+from dolphin_tracker.domain.models import Page, Project, Stop, now_iso
 from dolphin_tracker.domain.visits import StoreComment, StoreCommentInput, Visit, VisitInput, store_outcome
 from dolphin_tracker.repositories.projects import ProjectRepository
 from dolphin_tracker.repositories.stores import StoreRepository
 from dolphin_tracker.repositories.visits import VisitRepository
+from dolphin_tracker.services.cms_logs import CmsLogWriter
 from dolphin_tracker.services.lists import ListService
 from dolphin_tracker.services.route_plans import RoutePlanService
 
@@ -21,7 +23,9 @@ class VisitService:
         projects: ProjectRepository,
         lists: ListService,
         plans: RoutePlanService | None = None,
+        cms_logs: CmsLogWriter | None = None,
     ) -> None:
+        self._cms_logs = cms_logs
         self._visits = visits
         self._stores = stores
         self._projects = projects
@@ -41,7 +45,7 @@ class VisitService:
         self._load(project_id, stop_uid)
         return self._visits.list_for_store(project_id, stop_uid, limit=limit, cursor=cursor)
 
-    def build(self, project: Project, stop: Stop, body: VisitInput) -> Visit:
+    def build(self, project: Project, stop: Stop, body: VisitInput, *, logged_by: str = "") -> Visit:
         """Validate the form against the store and the pick lists and snapshot the store's details."""
         if not any(screen.id == body.screen_id for screen in stop.screens):
             raise ValidationFailed("That stick is not on this store", fields={"screen_id": "Unknown stick"})
@@ -69,11 +73,40 @@ class VisitService:
             owner_email=stop.owner_email,
             store_contact_name=stop.onsite_contact_name,
             store_contact_phone=stop.onsite_contact_phone,
+            logged_by=logged_by,
         )
 
-    def create(self, project_id: str, stop_uid: str, body: VisitInput) -> Visit:
+    # ---- the shared log collection (services/cms_logs.py): every entry is also written there ----------------
+
+    def _to_cms(self, entry: Visit | StoreComment, project: Project, stop: Stop) -> str:
+        """Write one entry to the shared log collection; when it was written, or "" (off, or it failed: the entry
+        stays as it is in Tracker and is sent again by `_send_waiting`)."""
+        if self._cms_logs is None or not self._cms_logs.enabled or entry.cms_logged_at:
+            return entry.cms_logged_at
+        log = visit_log(entry) if isinstance(entry, Visit) else comment_log(entry, stop, project)
+        if not self._cms_logs.write(log):
+            return ""
+        at = now_iso()
+        self._visits.mark_cms_logged(entry, at)
+        return at
+
+    def _send_waiting(self, project: Project, stop: Stop, *, skip: str) -> None:
+        """Send the store's earlier entries that did not reach the log collection (it was unreachable then)."""
+        if self._cms_logs is None or not self._cms_logs.enabled:
+            return
+        waiting: list[Visit | StoreComment] = [
+            *self._visits.list_for_store(project.id, stop.uid, limit=200).items,
+            *self._visits.list_store_comments(project.id, stop.uid, limit=200).items,
+        ]
+        for entry in waiting:
+            if not entry.cms_logged_at and entry.id != skip:
+                self._to_cms(entry, project, stop)
+
+    def create(self, project_id: str, stop_uid: str, body: VisitInput, *, logged_by: str = "") -> Visit:
         project, stop = self._load(project_id, stop_uid)
-        visit = self._visits.add(self.build(project, stop, body))
+        visit = self._visits.add(self.build(project, stop, body, logged_by=logged_by))
+        visit = visit.model_copy(update={"cms_logged_at": self._to_cms(visit, project, stop)})
+        self._send_waiting(project, stop, skip=visit.id)
         if visit.route_plan_id and self._plans:
             self._plans.record_visit(visit.route_plan_id, project_id, stop_uid, visit.screen_id)
             if visit.outcome:
@@ -107,7 +140,7 @@ class VisitService:
         plan_id = body.route_plan_id or stop.route_plan_id
         plan_day = self._plans.stop_day(plan_id, project.id, stop.uid) if plan_id and self._plans else None
         in_plan = plan_day is not None
-        return self._visits.add_store_comment(StoreComment(
+        comment = self._visits.add_store_comment(StoreComment(
             **body.model_dump(exclude={"route_plan_id"}),
             route_plan_id=plan_id if in_plan else "",
             plan_name=self._plans.plan_name(plan_id) if in_plan and self._plans else "",
@@ -116,3 +149,6 @@ class VisitService:
             stop_uid=stop.uid,
             created_by=created_by,
         ))
+        comment = comment.model_copy(update={"cms_logged_at": self._to_cms(comment, project, stop)})
+        self._send_waiting(project, stop, skip=comment.id)
+        return comment

@@ -30,6 +30,9 @@ class Settings(BaseSettings):
     mongo_uri: str = ""  # direct value for local dev
     mongo_uri_param: str = ""  # SSM SecureString name, used in Lambda when the direct value is empty
     device_data_function_name: str = ""  # the device-data Lambda; when set, the report is read through it
+    # Write Tracker's log entries to the shared log collection (services/cms_logs.py). Off by default, so a local
+    # run or a test environment that reads the same database never adds entries to it.
+    cms_log_write: bool = False
     # Sign-in. "off": no login, everyone is a Super Admin (and an X-Dev-Role header tries another role), for local
     # work. "jwt": every request carries the ID token of the shared Dolphin Nexus login (a Cognito user pool),
     # checked here.

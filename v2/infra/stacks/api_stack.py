@@ -88,6 +88,7 @@ class ApiStack(cdk.Stack):
         }
         # Sign-in on (issuer, JWKS URL and client ID set): every request must carry the Nexus login's ID token.
         common_env.update(cfg.auth_env())
+        common_env.update(cfg.cms_log_env)
 
         # The only function that holds the Mongo secret: reads the CMS device report for the API and the worker.
         self.device_data_fn = lambda_.Function(
@@ -101,7 +102,7 @@ class ApiStack(cdk.Stack):
             memory_size=512,
             timeout=Duration.seconds(25),  # under the API's 29 s, so a slow Mongo fails the call cleanly
             environment={**common_env, "DT_MONGO_URI_PARAM": cfg.ssm_mongo_uri},
-            description="Reads the CMS device report (MongoDB, read-only)",
+            description="Reads the CMS device report and inserts Tracker log entries (MongoDB)",
         )
         mongo_uri.grant_read(self.device_data_fn)
         common_env = {**common_env, "DT_DEVICE_DATA_FUNCTION_NAME": self.device_data_fn.function_name}

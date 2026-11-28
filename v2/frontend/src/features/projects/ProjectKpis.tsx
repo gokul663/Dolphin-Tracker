@@ -1,3 +1,4 @@
+import { useBrandHex, useTheme } from "@/lib/theme";
 import { AlertTriangle, Inbox } from "lucide-react";
 import { OVERLAY_COLORS } from "@/components/map/pins";
 import { screenTotals } from "@/features/dashboard/aggregate";
@@ -12,38 +13,43 @@ const HEADER_BUCKETS: StatusBucket[] = ["Completed", "Offline", "Not Registered"
  *  attention), then a gap and the screens by status (Online, Offline, Not Registered, Cancelled, Archived, stores
  *  under each). On a narrow window the statuses drop to a second line together. A status bubble filters the Stores
  *  tab to that group. */
+/** What "Completed" is made of, as store status groups: Online (stored as Completed) and Offline. */
+export const COMPLETED_BUCKETS: readonly StatusBucket[] = ["Completed", "Offline"];
+
 export function ProjectKpis({
   kpi,
   reviewCount = 0,
   otherPaCount = 0,
   onDeviceReview,
-  onMissingScreens,
   onNeedsAttention,
   onBucket,
+  onCompleted,
   activeBuckets = [],
 }: {
   kpi: Kpi;
-  /** Screens the Dolphin data reports for this PA that are in no store here. */
+  /** Screens the CMS data reports for this PA that are in no store here. */
   reviewCount?: number;
   /** Screens of another PA (or none) at one of the stores' addresses, not marked reviewed. */
   otherPaCount?: number;
   onDeviceReview?: () => void;
-  /** Show the done stores with fewer screens than committed. */
-  onMissingScreens?: () => void;
   onNeedsAttention?: () => void;
   /** Toggle the Stores tab's status-group filter. */
+  /** The Completed tile: filter the stores to Online and Offline together (again: take both off). */
+  onCompleted?: () => void;
   onBucket?: (bucket: StatusBucket) => void;
   activeBuckets?: readonly string[];
 }) {
+  const brand = useBrandHex();
+  const onDark = useTheme() === "dark"; // the dark green cannot be read on a dark tile
   const screens = screenTotals([kpi]);
   const visits = kpi.by_visit ?? { none: 0, partly: 0, visited: 0 };
   const share = (count: number) => (kpi.screens_total ? `${Math.round((count / kpi.screens_total) * 1000) / 10}%` : "");
-  const missing = kpi.review_screens ?? 0;
-  const review = reviewCount + missing + otherPaCount;
+  // The CMS data's two lists only. Stores with fewer screens than committed are not counted here: they are
+  // found with the Committed > Installed filter (and from a button inside the review window).
+  const review = reviewCount + otherPaCount;
   const reviewParts = [
-    reviewCount > 0 && `${reviewCount.toLocaleString()} new`,
-    missing > 0 && `${missing.toLocaleString()} missing`,
-    otherPaCount > 0 && `${otherPaCount.toLocaleString()} other PA`,
+    reviewCount > 0 && `${reviewCount.toLocaleString()} New`,
+    otherPaCount > 0 && `${otherPaCount.toLocaleString()} Other PA`,
   ].filter(Boolean);
   const statusBubble = (bucket: StatusBucket) => {
     const count = kpi.screens_by_bucket?.[bucket] ?? 0;
@@ -77,26 +83,28 @@ export function ProjectKpis({
           value={(screens.committedDolphin + screens.committedTvs).toLocaleString()}
           sub={`${(kpi.committed_stores ?? 0).toLocaleString()} stores`}
           note={`From the sheet: ${screens.committedDolphin} Dolphin screens · ${screens.committedTvs} store TVs`}
-          color="#034EA1"
+          color={brand}
         />
         <Bubble
           label="Completed"
           ariaLabel="Completed screens"
           value={(kpi.installed_screens ?? 0).toLocaleString()}
           sub={`${(kpi.installed_stores ?? 0).toLocaleString()} stores`}
-          note="Installed: online and offline screens together (and any serviced that need more work)"
-          color={BUCKET_META.Completed.dark}
+          note={`Installed: online and offline screens together (and any serviced that need more work)${onBucket ? " · click to filter the stores to Online and Offline" : ""}`}
+          color={onDark ? BUCKET_META.Completed.color : BUCKET_META.Completed.dark}
+          active={COMPLETED_BUCKETS.every((bucket) => activeBuckets.includes(bucket))}
+          onClick={onCompleted}
         />
         {statusBubble("Upcoming")}
         <AlertBubble
           label="Needs review"
           count={review}
-          sub={reviewParts.join(" · ")}
+          sub={reviewParts.join("\n")} // one per line
           icon={<Inbox className="size-5" />}
           tone="cyan"
           ariaLabel={`${review} screens need review`}
-          title="Screens the Dolphin data reports for this PA that are in no store here, committed screens missing at stores that read as done (Completed or Offline with fewer screen rows than the sheet committed), and screens of another PA at our stores' addresses"
-          onClick={reviewCount > 0 || otherPaCount > 0 ? onDeviceReview : onMissingScreens}
+          title="Screens the CMS data reports for this PA that are in no store here (new), and screens of another PA at our stores' addresses (other PA)"
+          onClick={onDeviceReview}
         />
         <AlertBubble
           label="Need attention"
@@ -104,7 +112,7 @@ export function ProjectKpis({
           icon={<AlertTriangle className="size-5" />}
           tone="amber"
           ariaLabel={`${kpi.needs_attention} stores need attention`}
-          title="Stores needing attention (no name, ExtID or verified address; Completed but not in the Dolphin data; several DD codes in one entry): show them"
+          title="Stores needing attention (no name, ExtID or verified address; Completed but not in the CMS data; several DD codes in one entry): show them"
           onClick={onNeedsAttention}
         />
       </div>
@@ -166,7 +174,7 @@ function AlertBubble({
         {icon} {count.toLocaleString()}
       </span>
       <span className="text-balance font-mono text-xs font-medium uppercase leading-tight tracking-wider">{label}</span>
-      {sub && <span className="text-balance font-mono text-xs leading-tight opacity-75">{sub}</span>}
+      {sub && <span className="text-balance font-mono text-xs leading-tight whitespace-pre-line opacity-75">{sub}</span>}
     </button>
   );
 }

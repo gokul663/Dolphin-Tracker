@@ -81,7 +81,7 @@ describe("More Filters panel", () => {
     renderMap();
     const panel = await openPanel();
     const headers = within(panel).getAllByRole("heading", { level: 3 }).map((heading) => within(heading).getByRole("button"));
-    expect(headers.map((header) => header.textContent)).toEqual(["Location", "Screens", "Mounts", "Dolphin Data", "Work"]);
+    expect(headers.map((header) => header.textContent)).toEqual(["Location", "Screens", "Mounts", "CMS Data", "Work"]);
     expect(headers.map((header) => header.getAttribute("aria-expanded"))).toEqual(["false", "false", "false", "false", "false"]);
     const work = headers[4]!;
     expect(document.getElementById(work.getAttribute("aria-controls")!)!.hidden).toBe(true);

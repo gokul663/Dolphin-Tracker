@@ -328,7 +328,7 @@ describe("ImportWizard: stores we already know", () => {
       ...RESULT,
       rows: RESULT.rows.map((r) =>
         r.index === 0
-          ? { ...r, coordinates_source: "known", verified_by: ["tracker"], reused: "Address from project Wave 1 · 2 DD codes from the Dolphin data",
+          ? { ...r, coordinates_source: "known", verified_by: ["tracker"], reused: "Address from project Wave 1 · 2 DD codes from the CMS data",
               screens: [{ stick_number: "SN-1", venue_id: "DD_AAA111", status: "Completed" }, { stick_number: "SN-2", venue_id: "DD_AAA222", status: "Offline" }] }
           : r,
       ),
@@ -341,13 +341,13 @@ describe("ImportWizard: stores we already know", () => {
     expect(calls.find((call) => call.url.pathname === "/api/jobs/imports")?.body).toMatchObject({ pa: "North" });
     await userEvent.click(screen.getByRole("button", { name: /Next: review 4 rows/ }));
     await userEvent.click(screen.getByRole("button", { name: /4 all rows/ }));
-    expect(screen.getByLabelText("Already known, row 1").textContent).toBe("Address from project Wave 1 · 2 DD codes from the Dolphin data");
+    expect(screen.getByLabelText("Already known, row 1").textContent).toBe("Address from project Wave 1 · 2 DD codes from the CMS data");
     expect(screen.getByLabelText("Screens, row 1").textContent).toBe("2 screens · SN-1/DD_AAA111, SN-2/DD_AAA222");
     expect(screen.queryByLabelText("Already known, row 2")).toBeNull();
   });
 });
 
-describe("ImportWizard: from the Dolphin data", () => {
+describe("ImportWizard: from the CMS data", () => {
   it("creates the project with no sheet, then builds its stores from the PA's records", async () => {
     const { calls } = mockApi({
       "GET /api/device-data/pas": () => ({ date: "2026-11-09", pas: ["IBC", "North"] }),
@@ -359,13 +359,13 @@ describe("ImportWizard: from the Dolphin data", () => {
     renderWithProviders(<ImportWizard open onClose={() => {}} />);
 
     await userEvent.type(screen.getByLabelText("Project name *"), "Wave 4");
-    await userEvent.click(screen.getByRole("radio", { name: /Dolphin data only/ }));
+    await userEvent.click(screen.getByRole("radio", { name: /CMS data only/ }));
     expect(screen.queryByText(/Upload the store list/)).toBeNull(); // no upload, columns or review steps
-    await userEvent.click(screen.getByRole("button", { name: /Create project from the Dolphin data/ }));
+    await userEvent.click(screen.getByRole("button", { name: /Create project from the CMS data/ }));
     expect(calls.some((call) => call.method === "POST" && call.url.pathname === "/api/projects")).toBe(false);
 
-    await userEvent.type(screen.getByLabelText("PA in the Dolphin data *"), "IBC");
-    await userEvent.click(screen.getByRole("button", { name: /Create project from the Dolphin data/ }));
+    await userEvent.type(screen.getByLabelText("PA in the CMS data *"), "IBC");
+    await userEvent.click(screen.getByRole("button", { name: /Create project from the CMS data/ }));
     await waitFor(() =>
       expect(calls.some((call) => call.url.pathname === "/api/projects/new2/device-sync/populate")).toBe(true),
     );
@@ -373,7 +373,7 @@ describe("ImportWizard: from the Dolphin data", () => {
       device_pa: string; pa: string; stops?: unknown;
     };
     expect(body.device_pa).toBe("IBC");
-    expect(body.pa).toBe("IBC"); // the PA name defaults to the Dolphin data's PA
+    expect(body.pa).toBe("IBC"); // the PA name defaults to the CMS data's PA
     expect(body.stops).toBeUndefined();
   });
 });

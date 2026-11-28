@@ -52,7 +52,7 @@ interface Props {
 
 type Group = StoreFieldSpec["group"];
 /** Every collapsible section, in order: on the left what gets edited on site, on the right the reference material
- *  (the Dolphin data comparison sits after WiFi and is not collapsible: it shows only while something differs). */
+ *  (the CMS data comparison sits after WiFi and is not collapsible: it shows only while something differs). */
 const SECTIONS = [
   "Identity & address", "Screens", "Notes", "Pictures", "Location",
   "WiFi", "Contacts", "Installation", "Site notes", "Site checklist", "Other imported data",
@@ -79,12 +79,12 @@ interface Sections {
   open: (name: SectionName) => void;
 }
 
-/** The header's information chips: status, Dolphin data, anything to fix, the route. One shape, 28 px high. */
+/** The header's information chips: status, CMS data, anything to fix, the route. One shape, 28 px high. */
 const CHIP = "inline-flex h-7 items-center gap-1 rounded-full border px-2.5 text-xs font-medium";
 
 /** Full editor for one store in a large modal, in two columns like the visit log: on the left what gets edited on
  *  site (address, then the screens right under it, then the manager's notes); on the right the
- *  reference material (pictures, WiFi, Dolphin data, contacts, installation, site notes and checklist, other
+ *  reference material (pictures, WiFi, CMS data, contacts, installation, site notes and checklist, other
  *  imported data), which a switch swaps for the logs (the CMS's servicing log and the visits logged here). Every section stays collapsible and editable. */
 export function StoreDrawer({ project, stopId, open, onClose }: Props) {
   const canLog = useCan("visits.log");
@@ -205,7 +205,7 @@ export function StoreDrawer({ project, stopId, open, onClose }: Props) {
           {store.isError && <p className="py-4 text-sm text-rose-700">{store.error.message}</p>}
           {specs.isError && <p className="py-4 text-sm text-rose-700">Could not load the store fields: {specs.error.message}</p>}
           {stop && specs.data && (
-            // Re-keyed when an Overwrite from the Dolphin data changes the saved values, so the form shows them.
+            // Re-keyed when an Overwrite from the CMS data changes the saved values, so the form shows them.
             <DetailsEditor
               key={`${stop.uid}-details-${[stop.store_name, stop.addr, stop.city, stop.state, stop.zip, stop.lat, stop.lng].join("|")}`}
               project={project}
@@ -257,7 +257,7 @@ export function StoreDrawer({ project, stopId, open, onClose }: Props) {
   );
 }
 
-/** The store's standing at a glance, beside its name: whether it matches the Dolphin data, and anything that needs
+/** The store's standing at a glance, beside its name: whether it matches the CMS data, and anything that needs
  *  fixing (an unverified address, a DD code entry holding several codes, no ExtID or name). */
 function StoreAlerts({ project, stop }: { project: Project; stop: Stop }) {
   const day = project.device_sync?.snapshot_date ?? stop.device?.date ?? "";
@@ -275,13 +275,13 @@ function StoreAlerts({ project, stop }: { project: Project; stop: Stop }) {
   const warn = "border-amber-300 bg-amber-50 text-amber-800";
   const bad = "border-rose-200 bg-rose-50 text-rose-700";
   const sync = missing
-    ? pill(bad, "Not in Dolphin data", <AlertTriangle size={12} />, "Completed, but its DD code is missing from the latest Dolphin data")
+    ? pill(bad, "Not in CMS data", <AlertTriangle size={12} />, "Completed, but its DD code is missing from the latest CMS data")
     : stop.device
       ? differs
-        ? pill(warn, `Differs from Dolphin data (${differs})`, <AlertTriangle size={12} />, "The Dolphin data shows on the map and in the list; overwrite the sheet's values under Dolphin data")
-        : pill(ok, `Synced with Dolphin data${day ? ` · ${reportDay(day)}` : ""}`, <CheckCircle2 size={12} />)
+        ? pill(warn, `Differs from CMS data (${differs})`, <AlertTriangle size={12} />, "The CMS data shows on the map and in the list; overwrite the sheet's values under CMS data")
+        : pill(ok, `Synced with CMS data${day ? ` · ${reportDay(day)}` : ""}`, <CheckCircle2 size={12} />)
       : project.device_pa
-        ? pill("border-slate-200 bg-slate-50 text-slate-600", "Not synced with Dolphin data", <CircleSlash size={12} />, "None of its DD codes is in the Dolphin data")
+        ? pill("border-slate-200 bg-slate-50 text-slate-600", "Not synced with CMS data", <CircleSlash size={12} />, "None of its DD codes is in the CMS data")
         : null;
   return (
     <span className="contents" aria-label="Store alerts">
@@ -644,7 +644,7 @@ function DetailsEditor({
   const [technician, setTechnician] = useState(stop.installer_name);
   const [comment, setComment] = useState(stop.comment);
   const [reviewNotes, setReviewNotes] = useState(stop.review_notes);
-  // The Dolphin data's pin, taken with Overwrite "Map location": saved with the rest (as a picked place, so it is not
+  // The CMS data's pin, taken with Overwrite "Map location": saved with the rest (as a picked place, so it is not
   // looked up with Google again).
   const [deviceLocation, setDeviceLocation] = useState(false);
   const errors = { ...(touched ? detailsErrors(form, specs) : {}), ...serverErrors };
@@ -657,14 +657,14 @@ function DetailsEditor({
   if (reviewNotes !== stop.review_notes) progressPatch.review_notes = reviewNotes;
   const rowsDirty = screensChanged(stop, rows);
   const dirty = Object.keys(patch).length > 0 || Object.keys(progressPatch).length > 0 || rowsDirty || deviceLocation;
-  /** Fields Overwrite has taken into the draft: the draft holds the Dolphin data's value but the store does not yet. */
+  /** Fields Overwrite has taken into the draft: the draft holds the CMS data's value but the store does not yet. */
   const overwritten: OverwriteField[] = stop.device
     ? (["store_name", "addr", "city", "state", "zip", "dma", "venue_type"] as const).filter(
         (name) => stop.device![name] && form[name] === stop.device![name] && stop[name] !== stop.device![name],
       )
     : [];
   if (deviceLocation) overwritten.push("location");
-  /** Overwrite from the Dolphin data: into the draft, like any other edit (Save details writes it). */
+  /** Overwrite from the CMS data: into the draft, like any other edit (Save details writes it). */
   const takeFromDevice = (fields: OverwriteField[]) => {
     const device = stop.device;
     if (!device) return;
@@ -896,7 +896,7 @@ function DetailsEditor({
           {/* The address's standing, in words and an icon as well as its colour: green once Google placed it, amber
               while it is not verified. */}
           {verified ? (
-            <p role="note" aria-label="Address verified" className="flex items-start gap-1.5 rounded-md border border-green-200 bg-green-50 px-2 py-1.5 text-xs text-green-900">
+            <p role="note" aria-label="Address verified" className="flex items-start gap-1.5 rounded-md border border-green-200 bg-green-50 px-2 py-1.5 text-xs text-green-900 dark:border-transparent dark:bg-transparent dark:px-0 dark:text-green-700">
               <BadgeCheck size={14} aria-hidden className="mt-px shrink-0 text-green-700" />
               <span className="min-w-0 [overflow-wrap:anywhere]">
                 <span className="font-semibold">Verified</span> as {stop.geocoded}
@@ -1065,7 +1065,7 @@ function DetailsEditor({
           <div hidden={asideView !== "details"} className="space-y-3">
             {ASIDE_GROUPS.flatMap((group) => {
               const panel = detailPanel(group);
-              // The Dolphin data's values sit right after WiFi, as before; shown (open) only while something differs.
+              // The CMS data's values sit right after WiFi, as before; shown (open) only while something differs.
               return group === "WiFi"
                 ? [panel, <div key="device" className="empty:hidden"><StoreDeviceSection project={project} stop={stop} pending={overwritten} onOverwrite={takeFromDevice} /></div>]
                 : [panel];
@@ -1150,7 +1150,7 @@ function OtherData({ project, stop, sections }: { project: Project; stop: Stop; 
   );
 }
 
-/** A store added from the Dolphin data has no ExtID: enter it once here (it is fixed after that, like any ExtID). */
+/** A store added from the CMS data has no ExtID: enter it once here (it is fixed after that, like any ExtID). */
 function ExternalIdInput({ projectId, uid }: { projectId: string; uid: string }) {
   const [value, setValue] = useState("");
   const save = useSetExternalId(projectId);
@@ -1179,7 +1179,7 @@ function ExternalIdInput({ projectId, uid }: { projectId: string; uid: string })
           {save.isPending && <Loader2 className="animate-spin" />} Save
         </Button>
       </form>
-      <p className="text-xs text-slate-600" title="The Dolphin data has no ExtID for this store.">It cannot be changed once saved.</p>
+      <p className="text-xs text-slate-600" title="The CMS data has no ExtID for this store.">It cannot be changed once saved.</p>
     </div>
   );
 }

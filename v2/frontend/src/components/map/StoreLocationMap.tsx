@@ -1,4 +1,5 @@
-import { APIProvider, Map, Marker } from "@vis.gl/react-google-maps";
+import { ThemedMap } from "@/components/map/ThemedMap";
+import { APIProvider, Marker } from "@vis.gl/react-google-maps";
 import { MapPin, MapPinOff } from "lucide-react";
 import { useMapsConfig } from "@/features/places/api";
 import type { Stop } from "@/lib/api/types";
@@ -7,7 +8,7 @@ import { cn } from "@/lib/utils";
 /** About a one-mile radius around the store in a box this size. */
 const NEIGHBOURHOOD_ZOOM = 14;
 
-/** Where the map draws a store: the Dolphin data's location when it has one, else the sheet's (as the big map). */
+/** Where the map draws a store: the CMS data's location when it has one, else the sheet's (as the big map). */
 export function shownLocation(stop: Pick<Stop, "lat" | "lng" | "device">): { lat: number; lng: number } | null {
   const lat = stop.device?.lat ?? stop.lat;
   const lng = stop.device?.lng ?? stop.lng;
@@ -56,7 +57,7 @@ function LocationBody({ stop, at, mapHeight }: { stop: Stop; at: { lat: number; 
     <div className={cn("relative overflow-hidden rounded-lg", mapHeight)}>
       <APIProvider apiKey={key}>
         {/* Keyed by position, so a verified or overwritten location recentres the map. */}
-        <Map
+        <ThemedMap
           key={`${at.lat},${at.lng}`}
           defaultCenter={at}
           defaultZoom={NEIGHBOURHOOD_ZOOM}
@@ -70,7 +71,7 @@ function LocationBody({ stop, at, mapHeight }: { stop: Stop; at: { lat: number; 
           className="absolute inset-0"
         >
           <Marker position={at} title={stop.store_name} />
-        </Map>
+        </ThemedMap>
       </APIProvider>
     </div>
   );

@@ -13,7 +13,7 @@ const SOURCES: { value: StoreSource; label: string; hint: string }[] = [
   { value: "sheet", label: "Upload a sheet", hint: "Import the store list from an Excel or CSV file." },
   {
     value: "dolphin",
-    label: "Dolphin data only",
+    label: "CMS data only",
     hint: "No sheet: every venue of the PA in the device report becomes a store, at the report's address, and stays in sync.",
   },
 ];
@@ -62,7 +62,7 @@ export function DetailsStep({
         {source === "dolphin" && (
           <div className="space-y-1.5">
             <Label htmlFor="wizard-device-pa" className="font-mono text-[11px] uppercase tracking-wider text-slate-600">
-              PA in the Dolphin data *
+              PA in the CMS data *
             </Label>
             <SuggestInput
               id="wizard-device-pa"

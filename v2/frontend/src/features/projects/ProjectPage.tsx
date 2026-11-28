@@ -17,7 +17,7 @@ import {
   useProject,
   useRefreshWhenRoutingFinishes,
 } from "@/features/projects/api";
-import { ProjectKpis } from "@/features/projects/ProjectKpis";
+import { COMPLETED_BUCKETS, ProjectKpis } from "@/features/projects/ProjectKpis";
 import { useAutoDeviceSync } from "@/features/device/api";
 import { DeviceBadge } from "@/features/device/DeviceBits";
 import { ReviewDialog } from "@/features/device/ReviewDialog";
@@ -124,11 +124,19 @@ export function ProjectPage() {
             reviewCount={project.device_sync?.review_count ?? 0}
             otherPaCount={project.device_sync?.other_pa_count ?? 0}
             onDeviceReview={() => openReview()}
-            onMissingScreens={showMissingScreens}
             activeBuckets={activeBuckets}
             onBucket={(bucket) => {
               useStoresUi.getState().enterProject(project.id);
               useStoresUi.getState().toggleFacet("bucket", bucket);
+              navigate("stores");
+            }}
+            onCompleted={() => {
+              const ui = useStoresUi.getState();
+              ui.enterProject(project.id);
+              const on = useStoresUi.getState().facets.bucket;
+              const both = COMPLETED_BUCKETS.every((bucket) => on.includes(bucket));
+              // Both on: take both off. Otherwise switch on whichever is missing.
+              for (const bucket of COMPLETED_BUCKETS) if (both || !on.includes(bucket)) ui.toggleFacet("bucket", bucket);
               navigate("stores");
             }}
             onNeedsAttention={() => {
@@ -138,7 +146,7 @@ export function ProjectPage() {
             }}
           />
         </div>
-        {/* One column width: the tabs and the Dolphin data pill line up edge to edge. */}
+        {/* One column width: the tabs and the CMS data pill line up edge to edge. */}
         <div className="flex flex-col items-stretch justify-center gap-1.5">
           <nav
             aria-label="Project sections"
@@ -165,10 +173,10 @@ export function ProjectPage() {
               </NavLink>
             )}
           </nav>
-          {/* Under the tabs: when the Dolphin data was last synced. */}
+          {/* Under the tabs: when the CMS data was last synced. */}
           {autoSync.isPending ? (
             <span className="flex items-center gap-1 font-mono text-xs text-cyan-800">
-              <Loader2 className="size-3 animate-spin" /> Syncing Dolphin data
+              <Loader2 className="size-3 animate-spin" /> Syncing CMS data
             </span>
           ) : (
             project.device_sync && <DeviceBadge date={project.device_sync.snapshot_date} className="w-full justify-center py-1" />

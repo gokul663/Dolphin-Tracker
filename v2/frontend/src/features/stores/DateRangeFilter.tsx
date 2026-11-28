@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { RANGE_LABELS, rangeText } from "@/features/stores/filters";
-import { cn } from "@/lib/utils";
+import { cn, FILTER_TRIGGER } from "@/lib/utils";
 import { isRelative, NO_RANGE, rangeActive, useStoresUi, type DateRange, type DateRangeFilter, type RelativeRange } from "@/stores/ui";
 
 /** One click each; "Today" is the last 1 day. */
@@ -36,6 +36,7 @@ export function DateRangeFilter({ name, wide = false }: { name: DateRangeFilter;
           size="sm"
           aria-label={active ? `${label}: ${rangeText(range)}` : label}
           className={cn(
+            !wide && FILTER_TRIGGER, // in the bar; inside the More Filters panel it is a plain field
             "font-mono text-xs",
             wide ? "h-9 w-full justify-start" : "max-w-64",
             active && "border-brand/40 bg-brand/10 text-brand hover:bg-brand/15 hover:text-brand",

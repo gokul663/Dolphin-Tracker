@@ -2,7 +2,8 @@
 
 Only the device-data Lambda (`handlers/device_data.py`) holds the Mongo secret and talks to Mongo; the API and the
 worker reach it through `LambdaDeviceData`. Locally, with DT_MONGO_URI set, `MongoDeviceData` runs in-process.
-Read-only: nothing here writes to Mongo.
+The device report is read-only. The one write is `add_log`: it inserts a Tracker log entry into the `logs`
+collection, and never changes or removes a document.
 """
 from __future__ import annotations
 
@@ -51,6 +52,10 @@ class DeviceDataSource(Protocol):
     def logs(self, codes: list[str]) -> list[DeviceLog]:
         """The servicing log entries of these DD codes, newest first (at most MAX_LOGS)."""
         ...
+    def add_log(self, log: dict[str, str]) -> bool:
+        """Insert a Tracker log entry (domain/cms_log.py) unless one with its `tracker_id` is already there.
+        True when inserted. Insert only: no document is ever changed or removed."""
+        ...
 
 
 class MongoDeviceData:
@@ -88,6 +93,24 @@ class MongoDeviceData:
         logs = [DeviceLog.from_log(doc) for doc in docs]
         logs.sort(key=lambda log: (log.date, log.created_at), reverse=True)
         return logs
+
+    def add_log(self, log: dict[str, str]) -> bool:
+        tracker_id = log.get("tracker_id", "")
+        if not tracker_id:
+            raise DeviceDataUnavailable("A log entry needs its tracker_id")
+        self._collection()  # connects (or says why not)
+        try:
+            from pymongo import ReadPreference  # the check must see what was just written: ask the primary
+
+            logs = self._client[DATABASE].get_collection(LOGS_COLLECTION, read_preference=ReadPreference.PRIMARY)
+            if logs.find_one({"tracker_id": tracker_id}, {"_id": 1}, max_time_ms=QUERY_MS) is not None:
+                return False  # written before (a retry): leave it exactly as it is
+            logs.insert_one(dict(log))
+        except DeviceDataUnavailable:
+            raise
+        except Exception as exc:
+            raise DeviceDataUnavailable(f"Log entry not written: {type(exc).__name__}") from exc
+        return True
 
     def _newest_raw_date(self) -> tuple[str, str]:
         """(the stored MM-DD-YYYY text, its ISO date). `Date` is text, so the newest is found by parsing every
@@ -163,6 +186,9 @@ class LambdaDeviceData:
         if not codes:
             return []
         return [DeviceLog.model_validate(log) for log in self._call({"op": "logs", "codes": codes})["logs"]]
+
+    def add_log(self, log: dict[str, str]) -> bool:
+        return bool(self._call({"op": "add_log", "log": log})["inserted"])
 
 
 def make_device_data(settings: Settings) -> DeviceDataSource | None:

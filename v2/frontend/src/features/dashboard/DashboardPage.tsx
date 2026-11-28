@@ -1,3 +1,4 @@
+import { useBrandHex } from "@/lib/theme";
 import { useCan } from "@/lib/auth/me";
 import { lazy, Suspense, useMemo, useState } from "react";
 import { AlertTriangle, Briefcase, CheckCircle2, Clock, MapPin, MonitorPlay, Plus, Users, type LucideIcon } from "lucide-react";
@@ -47,6 +48,7 @@ const CHART_PLACEHOLDERS = (
 );
 
 export function DashboardPage() {
+  const brand = useBrandHex();
   const projectsQuery = useAllProjects();
   const projects = useMemo(() => projectsQuery.data ?? [], [projectsQuery.data]);
   const [selected, setSelected] = useState<string[] | null>(null);
@@ -79,7 +81,7 @@ export function DashboardPage() {
           <ProjectFilter projects={projects} selected={selected} onChange={setSelected} />
         </div>
         <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-7">
-          <KpiCard icon={Briefcase} label="Total projects" value={totals.projects} color="#034EA1" />
+          <KpiCard icon={Briefcase} label="Total projects" value={totals.projects} color={brand} />
           <KpiCard icon={MapPin} label="Total sites" value={totals.sites} color="#009dda" />
           <KpiCard icon={Users} label="Total installers" value={totals.installers} color="#7c3aed" />
           <KpiCard icon={CheckCircle2} label="Completed" value={totals.complete} color="#16a34a" />

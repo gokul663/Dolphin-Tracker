@@ -1,3 +1,4 @@
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { Link, Outlet, useLocation } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { LogOut } from "lucide-react";
@@ -153,6 +154,7 @@ export function AppShell() {
         <div className="flex items-center gap-4">
           <WhoAmI />
           <HealthBadge />
+          <ThemeToggle />
         </div>
       </header>
       <main className="mx-auto max-w-[1900px] px-6 py-6">

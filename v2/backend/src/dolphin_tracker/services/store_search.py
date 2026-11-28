@@ -23,7 +23,7 @@ POOL_ATTRIBUTES = (
     "uid", "external_id", "store_name", "addr", "city", "state", "zip", "lat", "lng", "status", "screens",
     "route_plan_id", "pa", "dma", "display_id",
 )
-MAX_PINS = 20000  # every routable venue of the Dolphin data fits (about 7,500 today)
+MAX_PINS = 20000  # every routable venue of the CMS data fits (about 7,500 today)
 
 
 @dataclass
@@ -86,7 +86,7 @@ class StoreSearchService:
         return cached[1]
 
     def _rows(self, project_ids: list[str] | None = None) -> list[PoolStore]:
-        """Every project's stores, then every other venue of the Dolphin data (the all-venues list): a venue whose
+        """Every project's stores, then every other venue of the CMS data (the all-venues list): a venue whose
         DD code is on a project's store is that store, so it is not listed a second time."""
         rows: list[PoolStore] = []
         in_projects: set[str] = set()  # DD codes on project stores, whatever their status

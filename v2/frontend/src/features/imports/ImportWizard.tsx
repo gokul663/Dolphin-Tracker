@@ -149,7 +149,7 @@ function WizardBody({
   const populate = usePopulateFromDevice();
   const creating = create.isPending || populate.isPending;
 
-  /** No sheet: create the project with its Dolphin data PA, then build its stores from the report. */
+  /** No sheet: create the project with its CMS data PA, then build its stores from the report. */
   const createFromDolphin = async (values: WizardDetails) => {
     const pa = devicePa.trim();
     let created;
@@ -162,10 +162,10 @@ function WizardBody({
     const name = created.project.name;
     try {
       const result = await populate.mutateAsync(created.project.id);
-      toast.success(`Created ${name} with ${result.stores_added} stores from the Dolphin data`);
+      toast.success(`Created ${name} with ${result.stores_added} stores from the CMS data`);
     } catch (error) {
       toast.error(
-        `Created ${name}, but its stores could not be loaded from the Dolphin data (${
+        `Created ${name}, but its stores could not be loaded from the CMS data (${
           error instanceof Error ? error.message : "unknown error"
         }). Try again from Settings → Dolphin device data.`,
       );
@@ -177,11 +177,11 @@ function WizardBody({
   const nextFromDetails = (event?: BaseSyntheticEvent) => {
     if (source === "dolphin") {
       if (!devicePa.trim()) {
-        toast.error("Pick the PA in the Dolphin data");
+        toast.error("Pick the PA in the CMS data");
         event?.preventDefault();
         return;
       }
-      // A single-PA project's name defaults to the Dolphin data's PA.
+      // A single-PA project's name defaults to the CMS data's PA.
       if (details.getValues("single_pa") && !details.getValues("pa").trim()) {
         details.setValue("pa", devicePa.trim());
       }
@@ -308,7 +308,7 @@ function WizardBody({
             {source === "dolphin" ? (
               <Button type="submit" disabled={creating}>
                 {creating && <Loader2 className="animate-spin" />}
-                {populate.isPending ? "Adding stores from the Dolphin data…" : "Create project from the Dolphin data"}
+                {populate.isPending ? "Adding stores from the CMS data…" : "Create project from the CMS data"}
               </Button>
             ) : (
               <Button type="submit">

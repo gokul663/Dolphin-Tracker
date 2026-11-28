@@ -12,7 +12,7 @@ import { DateRangeFilter } from "@/features/stores/DateRangeFilter";
 import { INLINE_FACETS, MoreFilters } from "@/features/stores/MoreFilters";
 import type { ScreenStatus, StoreFilterOptions } from "@/lib/api/types";
 import { STATUS_META } from "@/lib/status";
-import { cn } from "@/lib/utils";
+import { cn, FILTER_TRIGGER } from "@/lib/utils";
 import { DATE_RANGES, type Facet, type FacetSelection } from "@/stores/ui";
 
 interface Props {
@@ -49,7 +49,7 @@ export function FilterBar({ options, facets, onToggle }: Props) {
                 size="sm"
                 aria-label={disabled ? `${facetSummary(facet, selected)} (no values)` : facetSummary(facet, selected)}
                 title={disabled ? "No store in this project has a value for this filter" : undefined}
-                className={cn("max-w-52 font-mono text-xs", // Tinted, not inverted: it stays readable when the filter has nothing else to offer (disabled).
+                className={cn(FILTER_TRIGGER, "max-w-52", // Tinted, not inverted: it stays readable when the filter has nothing else to offer (disabled).
                   selected.length > 0 && "border-brand/40 bg-brand/10 text-brand hover:bg-brand/15 hover:text-brand disabled:opacity-100")}
               >
                 <span className="truncate">{facetSummary(facet, selected)}</span>

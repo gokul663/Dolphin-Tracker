@@ -1,4 +1,4 @@
-"""Every venue of the Dolphin data, kept outside the projects for the Route Planner.
+"""Every venue of the CMS data, kept outside the projects for the Route Planner.
 
 A project shows only its own stores. The planner also offers every other venue the device report has (any PA), so
 one trip can take in stores of other projects and venues nobody has put in a project: an Offline screen down the
@@ -61,7 +61,7 @@ def venue_stop(record: DeviceRecord) -> Stop | None:
         pa=record.pa_name, dma=record.dma, venue_type=record.venue_type,
         screens=[Screen(id=f"{uid}-s1", venue_id=record.venue_id, stick_number=record.serial_number, status=status,
                         cms_name=record.venue_name, venue_type=record.venue_type)],
-        updated_by="Dolphin data",
+        updated_by="CMS data",
     )
 
 
@@ -78,4 +78,4 @@ def refreshed(old: Stop, new: Stop) -> Stop | None:
         return None
     return Stop.model_validate({**old.model_dump(), **{k: v for k, v in changes.items() if k != "screens"},
                                 "screens": [s.model_dump() for s in changes.get("screens", old.screens)],
-                                "updated_by": "Dolphin data"})
+                                "updated_by": "CMS data"})

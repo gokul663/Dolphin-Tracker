@@ -44,7 +44,7 @@ export function UploadStep({ projectId, pa, jobId, onJobId }: Props) {
         <FileSpreadsheet className="size-8 text-brand" />
         <span className="font-medium">{file ? file.name : "Choose or drop a .csv or .xlsx file"}</span>
         <span className="text-xs text-slate-500">Needs an address column; a store name column is strongly recommended. Stores we already know (in another
-          project or in the Dolphin data, same PA) keep their verified address and DD codes.</span>
+          project or in the CMS data, same PA) keep their verified address and DD codes.</span>
       </button>
       <input
         ref={input}

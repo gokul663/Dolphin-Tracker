@@ -1,6 +1,6 @@
 """Device sync use cases: pick a project's PA in the device report, sync it (on open when the report has a newer day,
 on "Sync now", and daily from the worker), review report records the project lacks, check screens of another PA at
-the stores' addresses, overwrite sheet values with the report's, and ignore a "not in Dolphin data" alert until the
+the stores' addresses, overwrite sheet values with the report's, and ignore a "not in CMS data" alert until the
 next report day. Rules: `domain/device_sync.py`."""
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ import logging
 from typing import Any
 
 from dolphin_tracker.domain.base import ApiModel
+from dolphin_tracker.domain.cms_log import SOURCE as CMS_LOG_SOURCE
 from dolphin_tracker.domain.cursors import encode_cursor, offset_from_cursor
 from dolphin_tracker.domain.device import (
     DeviceLog,
@@ -170,7 +171,7 @@ class DeviceSyncService:
         now = now_iso()
         stops = self._stores.list_all(project_id)
         writes: list[tuple[str, dict[str, Any]]] = []
-        located: list[Stop] = []  # the stores with this sync's Dolphin data address, for the other-PA check
+        located: list[Stop] = []  # the stores with this sync's CMS data address, for the other-PA check
         status_changes = matched = flagged = 0
         for stop in stops:
             changes = sync_stop(stop, codes, snapshot, now)
@@ -315,7 +316,7 @@ class DeviceSyncService:
         add_anyway: bool = False,
     ) -> Stop:
         """Add the report's stick to the project. The DD code is the key: a store can hold several sticks, so when a
-        store is already there (same ExtID, or the same address as its sheet or its Dolphin data) the stick joins it
+        store is already there (same ExtID, or the same address as its sheet or its CMS data) the stick joins it
         as a new screen. Otherwise the address is checked with Google like an imported row (the report's address,
         or `address` / a picked Google `place` from the person); one that cannot be verified is refused with
         Google's suggestions, unless `add_anyway` (the store is then flagged for an address check)."""
@@ -396,7 +397,7 @@ class DeviceSyncService:
                 if row.id == waiting.id else row
                 for row in rows
             ]
-        return self._store_service.update_screens(project_id, stop.uid, rows, updated_by="Dolphin data", stops=stops)
+        return self._store_service.update_screens(project_id, stop.uid, rows, updated_by="CMS data", stops=stops)
 
     def _create_store(self, project_id: str, item: ReviewItem, *, verified: bool) -> Stop:
         located = verified and item.lat is not None and item.lng is not None and bool(item.addr)
@@ -448,12 +449,15 @@ class DeviceSyncService:
             if not wanted:
                 raise ValidationFailed(f"{dd_code.strip()} is not a DD code of this store")
         logs = self._require_source().logs(wanted) if wanted else []
+        # Tracker's own entries are in the collection too (domain/cms_log.py); the store's log already lists them
+        # from Tracker, so here they would show twice.
+        logs = [log for log in logs if log.source != CMS_LOG_SOURCE]
         start = offset_from_cursor(cursor)
         next_cursor = encode_cursor({"offset": start + limit}) if start + limit < len(logs) else None
         return LogPage(items=logs[start : start + limit], next_cursor=next_cursor, total=len(logs), codes=codes)
 
     def ignore_alert(self, project_id: str, stop_uid: str) -> Stop:
-        """Hide "not in Dolphin data" for this store until the next report day."""
+        """Hide "not in CMS data" for this store until the next report day."""
         project = self._project(project_id)
         stop = self._store_service.get(project_id, stop_uid)
         if project.device_sync is None:

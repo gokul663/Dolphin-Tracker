@@ -32,7 +32,7 @@ class VisitSearchTests(unittest.TestCase):
         self.stores.put_many("p2", [
             store("b1", "Main Deli", "40 Main St", "DD_ABC1234", city="Macon"),
         ])
-        # The Dolphin data's all-venues list is not a project: never searched.
+        # The CMS data's all-venues list is not a project: never searched.
         self.stores.put_many(VENUES_PROJECT_ID, [store("v1", "Venue Main", "1 Main St", "DD_ABC123")])
         app = create_app()
         app.dependency_overrides[get_project_repository] = lambda: self.projects

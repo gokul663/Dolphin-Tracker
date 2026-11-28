@@ -7,7 +7,7 @@
   A screen the tracker has Cancelled or Archived only moves between those two. Testing and Unclassified only show.
 - The store gets the report's name, address and location from its first matched screen (`Stop.device`), shown
   over the sheet values. Nothing overwrites the sheet values except an explicit Overwrite.
-- A Completed screen with a DD code the report lacks flags the store "not in Dolphin data", unless it became
+- A Completed screen with a DD code the report lacks flags the store "not in CMS data", unless it became
   Completed after the report was loaded, or someone ignored the alert for this report day.
 - A store with no DMA takes the report's (from any matched screen); a DMA already set is never replaced. The venue
   type works the same way, from the report's OOH category.
@@ -224,7 +224,7 @@ def store_with_code(code: object, stops: Iterable[Stop], *, exclude_uid: str = "
 
 def store_for_record(record: DeviceRecord, stops: Iterable[Stop]) -> Stop | None:
     """The store a report record's stick belongs to, when the project has it: same ExtID (the CMS's external id),
-    else the same normalised address as the store's sheet address or its Dolphin data address. The record's own
+    else the same normalised address as the store's sheet address or its CMS data address. The record's own
     DD code is in no store (that is why it is under review), so it never decides this."""
     stops = list(stops)
     external_id = normalize_external_id(record.external_id)
@@ -239,7 +239,7 @@ def store_for_record(record: DeviceRecord, stops: Iterable[Stop]) -> Stop | None
 
 
 def stop_address_keys(stop: Stop) -> set[str]:
-    """The store's normalised addresses: its sheet's and its Dolphin data's (none without a street)."""
+    """The store's normalised addresses: its sheet's and its CMS data's (none without a street)."""
     keys = {dedupe_key_address({"addr": stop.addr, "city": stop.city, "state": stop.state, "zip": stop.zip})}
     if stop.device:
         device = stop.device
@@ -265,7 +265,7 @@ def placeholder_screen(screens: Iterable[Screen], record: DeviceRecord) -> Scree
 
 def add_record_changes(stop: Stop, record: DeviceRecord, snapshot: DeviceSnapshot, now: str) -> dict[str, Any]:
     """Apply one report record to the screen with its DD code only; the store's other screens keep what the last
-    sync gave them. The store takes the record's values when it has no Dolphin data yet."""
+    sync gave them. The store takes the record's values when it has no CMS data yet."""
     key = venue_code_key(record.venue_id)
     screens = [
         sync_screen(screen, record, now) if venue_code_key(screen.venue_id) == key else screen
@@ -363,7 +363,7 @@ def other_pa_situation(item: OtherPaScreen) -> str:
 def other_pa_screens(
     venues: Iterable[Stop], stops: Iterable[Stop], device_pa: str, reviewed: set[str]
 ) -> list[OtherPaScreen]:
-    """Screens of the Dolphin data (the all-venues list, `domain/venues.py`) at the same normalised address as one of
+    """Screens of the CMS data (the all-venues list, `domain/venues.py`) at the same normalised address as one of
     the project's stores, whose PA is not the project's device PA (or is blank) and whose DD code no store here has.
     Address alone on purpose: this only asks for a check, it never merges. Archived venues are skipped, as in review;
     `reviewed` holds the `other_pa_situation`s someone marked fine. Nothing without a device PA."""

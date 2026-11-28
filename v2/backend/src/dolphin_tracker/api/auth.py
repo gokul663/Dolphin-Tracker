@@ -119,7 +119,7 @@ POLICY: dict[tuple[str, str], Permission | str] = {
     # A technician's own
     ("GET", "/api/my/route"): P.ROUTES_OWN,
     ("PUT", "/api/my/profile"): P.ROUTES_OWN,
-    # Dolphin data
+    # CMS data
     ("GET", "/api/device-data/pas"): P.PROJECTS_VIEW,
     ("POST", _PROJECT + "/device-sync"): P.PROJECTS_EDIT,
     ("POST", _PROJECT + "/device-sync/populate"): P.PROJECTS_EDIT,

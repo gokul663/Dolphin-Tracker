@@ -467,7 +467,7 @@ describe("StoresTab", () => {
     expect(within(drawer).queryByText("Not in a route")).toBeNull();
   });
 
-  it("the store window's header shows its standing: Dolphin data sync and anything to fix", async () => {
+  it("the store window's header shows its standing: CMS data sync and anything to fix", async () => {
     const device = { store_name: "Alpha Mart", venue_name: "CMS_A", address: "", addr: "1 Main St", city: "Atlanta", state: "GA",
       zip: "30303", lat: 33.75, lng: -84.39, dma: "", date: "2026-11-15" };
     renderTab({
@@ -478,18 +478,18 @@ describe("StoresTab", () => {
     });
     const drawer = await openDrawer();
     const alerts = within(drawer).getByLabelText("Store alerts");
-    expect(alerts.textContent).toContain("Synced with Dolphin data");
+    expect(alerts.textContent).toContain("Synced with CMS data");
     expect(alerts.textContent).toContain("Address not verified");
     expect(alerts.textContent).toContain("DD code holds several codes");
   });
 
-  it("a store whose Dolphin data differs, or that is not in it, says so in the header", async () => {
+  it("a store whose CMS data differs, or that is not in it, says so in the header", async () => {
     renderTab({ "GET /api/projects/p1/stores/u1": () => ({ ...STOPS[0], needs_attention: ["not_reporting"] }) });
     const drawer = await openDrawer();
-    expect(within(drawer).getByLabelText("Store alerts").textContent).toContain("Not in Dolphin data");
+    expect(within(drawer).getByLabelText("Store alerts").textContent).toContain("Not in CMS data");
   });
 
-  it("Stick # shows the Dolphin data's serial number when it has one, else the sheet's", async () => {
+  it("Stick # shows the CMS data's serial number when it has one, else the sheet's", async () => {
     const device = { status: "Online", last_seen: "", offline_days: null, serial_number: "DD-002-09999", venue_name: "CMS_A", date: "2026-11-15", first_registered: "2026-10-12T14:35:34+00:00", last_registered: "" };
     renderTab({
       "GET /api/projects/p1/stores/u1": () => ({
@@ -502,21 +502,21 @@ describe("StoresTab", () => {
     });
     const drawer = await openDrawer();
     const list = within(drawer).getByRole("region", { name: "Screen list" });
-    const fromDolphin = within(list).getByLabelText("Stick number (Dolphin data)");
+    const fromDolphin = within(list).getByLabelText("Stick number (CMS data)");
     expect(fromDolphin.textContent).toBe("DD-002-09999");
     expect(fromDolphin.getAttribute("title")).toContain("sheet: DD-002-01111");
     expect(within(list).getByLabelText("Stick number").textContent).toBe("DD-002-02222");
     // Registered is per screen: the device's last registered date, or its first when it registered only once.
     expect(within(list).getByLabelText("Registered, screen 1").textContent).toBe("2026-10-12");
-    expect(within(list).queryByLabelText("Registered, screen 2")).toBeNull(); // no Dolphin data for it
+    expect(within(list).queryByLabelText("Registered, screen 2")).toBeNull(); // no CMS data for it
   });
 
-  it("Overwrite from the Dolphin data waits for Save details, then goes with the rest", async () => {
+  it("Overwrite from the CMS data waits for Save details, then goes with the rest", async () => {
     const device = { store_name: "Sunoco Alpha", venue_name: "CMS_A", address: "2 Oak Ave, Atlanta, GA 30303", addr: "2 Oak Ave",
       city: "Atlanta", state: "GA", zip: "30303", lat: 33.8, lng: -84.4, dma: "", venue_type: "", date: "2026-11-15" };
     const { calls } = renderTab({ "GET /api/projects/p1/stores/u1": () => ({ ...STOPS[0], device }) });
     const drawer = await openDrawer();
-    const section = within(drawer).getByRole("region", { name: "Dolphin data" });
+    const section = within(drawer).getByRole("region", { name: "CMS data" });
     await userEvent.click(within(section).getByRole("button", { name: /Overwrite all \(3\)/ })); // name, address, location
     expect(calls.some((call) => call.method === "POST" || call.method === "PATCH")).toBe(false); // nothing saved yet
     expect(within(section).getAllByText("Unsaved")).toHaveLength(3);

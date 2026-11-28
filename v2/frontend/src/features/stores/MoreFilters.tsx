@@ -10,7 +10,7 @@ import { DateRangeFilter } from "@/features/stores/DateRangeFilter";
 import { COMPARE_LABELS, FACET_LABELS, NUMBER_LABELS, RANGE_LABELS, facetOptions, optionLabel } from "@/features/stores/filters";
 import type { ScreenStatus, StoreFilterOptions } from "@/lib/api/types";
 import { STATUS_META } from "@/lib/status";
-import { cn } from "@/lib/utils";
+import { cn, FILTER_TRIGGER } from "@/lib/utils";
 import {
   COMPARE_OPS, numberActive, rangeActive, useStoresUi,
   type DateRangeFilter as RangeName, type DateRanges, type Facet, type FacetSelection, type NumberFilter, type NumberFilters,
@@ -30,7 +30,7 @@ export const PANEL_GROUPS: { title: string; entries: Entry[] }[] = [
     ],
   },
   { title: "Mounts", entries: [{ facet: "mount" }, { number: "mounts_needed" }, { number: "mounts_installed" }] },
-  { title: "Dolphin Data", entries: [{ range: "first_registered" }, { range: "last_registered" }] },
+  { title: "CMS Data", entries: [{ range: "first_registered" }, { range: "last_registered" }] },
   {
     title: "Work",
     entries: [
@@ -131,7 +131,7 @@ export function MoreFilters({ options }: { options: StoreFilterOptions | undefin
         aria-label={count ? `More Filters (${count} active)` : "More Filters"}
         aria-expanded={open}
         onClick={() => show(!open)}
-        className={cn("font-mono text-xs", count > 0 && "border-brand/40 bg-brand/10 text-brand hover:bg-brand/15 hover:text-brand")}
+        className={cn(FILTER_TRIGGER, count > 0 && "border-brand/40 bg-brand/10 text-brand hover:bg-brand/15 hover:text-brand")}
       >
         <SlidersHorizontal /> More Filters
         {count > 0 && (

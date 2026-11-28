@@ -317,7 +317,7 @@ def update_screens(project_id: str, stop_uid: str, body: ScreensUpdate, service:
 
 @router.put("/{stop_uid}/external-id", response_model=Stop)
 def set_external_id(project_id: str, stop_uid: str, body: ExternalIdSet, service: ServiceDep) -> Stop:
-    """The ExtID of a store that has none (added from the Dolphin data); fixed once set."""
+    """The ExtID of a store that has none (added from the CMS data); fixed once set."""
     return service.set_external_id(project_id, stop_uid, body.external_id)
 
 

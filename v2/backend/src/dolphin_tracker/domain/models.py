@@ -330,7 +330,7 @@ class StoreDetails(ApiModel):
 class NeedsAttention(StrEnum):
     STORE_NAME = "store_name"
     ADDRESS = "address"
-    # Added from the Dolphin data without an ExtID: entered once in the store (then fixed like any ExtID).
+    # Added from the CMS data without an ExtID: entered once in the store (then fixed like any ExtID).
     EXTERNAL_ID = "external_id"
     # A Completed screen whose DD code is missing from the device report (set and cleared by the device sync).
     NOT_REPORTING = "not_reporting"
@@ -371,7 +371,7 @@ class Stop(StoreDetails):
     # itself once fixed: a name is entered, or the address is verified (or a Google place picked).
     needs_attention: list[NeedsAttention] = Field(default_factory=list)
     device: StoreDevice | None = None  # device-report values shown over the sheet's (Overwrite copies them in)
-    device_alert_ignored: str = ""  # report day whose "not in Dolphin data" alert was ignored
+    device_alert_ignored: str = ""  # report day whose "not in CMS data" alert was ignored
     # Route Planner (ROUTE-PLANNER §3, §7): the active plan holding this store ("" = none), and when the store last
     # joined a plan (kept after the plan closes; the "Visited" overlay counts visits from then on).
     route_plan_id: str = ""
@@ -402,7 +402,7 @@ class Stop(StoreDetails):
         return self
 
     def _place(self) -> tuple[str, str]:
-        """(city, state) as lists, filters and charts show them: the Dolphin data's when the store has it, else the
+        """(city, state) as lists, filters and charts show them: the CMS data's when the store has it, else the
         verified address's (so "texas" typed in the sheet reads TX), else what was typed, the state as its code ("" when
         it is not one).""" 
         verified = parse_us_formatted_address(self.geocoded)
@@ -464,9 +464,9 @@ class Stop(StoreDetails):
 
 def merge_same_code(screens: list[Screen]) -> list[Screen]:
     """One row per DD code. `DD-H5036X` and `DD_H5036X` are the same screen, so rows that share a code (a sheet row and
-    the row the Dolphin data added for it, say) become one, where the first of them stood: each value is the first
+    the row the CMS data added for it, say) become one, where the first of them stood: each value is the first
     row's when it has one, else the next's (stick #, size); mount flags are kept if any row has them; the status is
-    the first that is not Upcoming; the Dolphin data comes from whichever row has it. Rows without a code, or with
+    the first that is not Upcoming; the CMS data comes from whichever row has it. Rows without a code, or with
     several codes in one entry, are left alone."""
     groups: dict[str, list[Screen]] = {}
     for screen in screens:

@@ -1,4 +1,5 @@
-import { APIProvider, Map, Marker } from "@vis.gl/react-google-maps";
+import { ThemedMap } from "@/components/map/ThemedMap";
+import { APIProvider, Marker } from "@vis.gl/react-google-maps";
 import { useMapsConfig } from "@/features/places/api";
 import { cn } from "@/lib/utils";
 
@@ -15,7 +16,7 @@ export function PointMap({ at, title, className }: { at: { lat: number; lng: num
     <div className={cn("relative h-48 overflow-hidden rounded-lg border", className)} role="img" aria-label={title ? `Map of ${title}` : "Map of the location"}>
       <APIProvider apiKey={key}>
         {/* Keyed by position, so another address recentres the map. */}
-        <Map
+        <ThemedMap
           key={`${at.lat},${at.lng}`}
           defaultCenter={at}
           defaultZoom={NEIGHBOURHOOD_ZOOM}
@@ -28,7 +29,7 @@ export function PointMap({ at, title, className }: { at: { lat: number; lng: num
           className="absolute inset-0"
         >
           <Marker position={at} title={title} />
-        </Map>
+        </ThemedMap>
       </APIProvider>
     </div>
   );
